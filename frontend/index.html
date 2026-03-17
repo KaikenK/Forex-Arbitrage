@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FX Price Monitor - Real-time Charts</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card h3 {
+            color: #999;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-card .change {
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .stat-card .change.positive {
+            color: #10b981;
+        }
+
+        .stat-card .change.negative {
+            color: #ef4444;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .chart-container h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 500px;
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-dot.error {
+            background: #ef4444;
+            animation: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-wrapper {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 FX Price Monitor</h1>
+            <p>Real-time currency exchange rate tracking</p>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <h3>Current Price</h3>
+                <div class="value" id="currentPrice">--</div>
+                <div class="change" id="priceChange"></div>
+            </div>
+            <div class="stat-card">
+                <h3>Currency Pair</h3>
+                <div class="value" id="currencyPair">--</div>
+            </div>
+            <div class="stat-card">
+                <h3>Min Price</h3>
+                <div class="value" id="minPrice">--</div>
+            </div>
+            <div class="stat-card">
+                <h3>Max Price</h3>
+                <div class="value" id="maxPrice">--</div>
+            </div>
+            <div class="stat-card">
+                <h3>Average Price</h3>
+                <div class="value" id="avgPrice">--</div>
+            </div>
+            <div class="stat-card">
+                <h3>Data Points</h3>
+                <div class="value" id="dataCount">0</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2>Price Chart</h2>
+            <div class="chart-wrapper">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </div>
+
+        <div class="status">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+            <div id="lastUpdate">Last update: --</div>
+        </div>
+    </div>
+
+    <script>
+        // Chart configuration
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        let priceChart;
+        let previousPrice = null;
+
+        // Initialize chart
+        function initChart() {
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Price',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            ticks: {
+                                maxTicksLimit: 20
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Price'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    // Show up to 10 decimal places, remove trailing zeros
+                                    return value.toFixed(10).replace(/\.?0+$/, '');
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // Format timestamp for display
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString();
+        }
+
+        // Update chart with new data
+        function updateChart(data) {
+            if (!priceChart) return;
+
+            const labels = data.map(d => formatTime(d.timestamp));
+            const prices = data.map(d => d.price);
+
+            priceChart.data.labels = labels;
+            priceChart.data.datasets[0].data = prices;
+            priceChart.update('none'); // 'none' mode for smooth updates
+        }
+
+        // Format price with full precision (up to 10 decimals, remove trailing zeros)
+        function formatPrice(price) {
+            if (!price) return '--';
+            return price.toFixed(10).replace(/\.?0+$/, '');
+        }
+
+        // Update statistics
+        function updateStats(stats) {
+            document.getElementById('currentPrice').textContent = 
+                formatPrice(stats.latest_price);
+            document.getElementById('currencyPair').textContent = 
+                stats.currency_pair || '--';
+            document.getElementById('minPrice').textContent = 
+                formatPrice(stats.min_price);
+            document.getElementById('maxPrice').textContent = 
+                formatPrice(stats.max_price);
+            document.getElementById('avgPrice').textContent = 
+                formatPrice(stats.avg_price);
+            document.getElementById('dataCount').textContent = 
+                stats.count || 0;
+
+            // Update price change indicator
+            const currentPriceEl = document.getElementById('priceChange');
+            if (previousPrice !== null && stats.latest_price) {
+                const change = stats.latest_price - previousPrice;
+                const changePercent = ((change / previousPrice) * 100).toFixed(6);
+                const changeFormatted = formatPrice(change);
+                currentPriceEl.textContent = 
+                    `${change >= 0 ? '+' : ''}${changeFormatted} (${changePercent}%)`;
+                currentPriceEl.className = `change ${change >= 0 ? 'positive' : 'negative'}`;
+            } else {
+                currentPriceEl.textContent = '';
+            }
+            previousPrice = stats.latest_price;
+        }
+
+        // Update status
+        function updateStatus(success, message) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (success) {
+                statusDot.className = 'status-dot';
+                statusText.textContent = 'Connected';
+            } else {
+                statusDot.className = 'status-dot error';
+                statusText.textContent = message || 'Connection Error';
+            }
+        }
+
+        // Fetch data from API
+        async function fetchData() {
+            try {
+                // Fetch price data
+                const dataResponse = await fetch('/api/price-data?limit=500');
+                const dataResult = await dataResponse.json();
+
+                if (dataResult.success && dataResult.data.length > 0) {
+                    updateChart(dataResult.data);
+                }
+
+                // Fetch statistics
+                const statsResponse = await fetch('/api/stats');
+                const statsResult = await statsResponse.json();
+
+                if (statsResult.success) {
+                    updateStats(statsResult.stats);
+                    document.getElementById('lastUpdate').textContent = 
+                        `Last update: ${formatTime(statsResult.stats.last_timestamp)}`;
+                }
+
+                updateStatus(true);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                updateStatus(false, 'Failed to fetch data');
+            }
+        }
+
+        // Initialize
+        initChart();
+        fetchData();
+
+        // Update every second
+        setInterval(fetchData, 1000);
+    </script>
+</body>
+</html>
+
