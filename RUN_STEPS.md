@@ -218,27 +218,25 @@ marketWs.onmessage = (event) => {
 
 ## Step 7: Use with Frontend
 
-### Option 1: Use the Provided Client
+### Option 1: Open the Arbitrage Research Terminal
 
-```javascript
-// In your React/Next.js app
-import { connectTickStream, useTickStream } from './frontend/marketDataClient';
-
-// Using hook
-const { tick, connected } = useTickStream('EURUSD');
-
-// Or using function
-const ws = connectTickStream('EURUSD', (tick) => {
-    console.log('Tick:', tick);
-});
+Open in your browser:
+```
+http://localhost:8000/research
 ```
 
-### Option 2: See Examples
+This opens the Bloomberg-style 3-column Arbitrage Research terminal with:
+- Per-session candlestick charts (Tokyo/London/New York)
+- Real-time confidence scoring and arbitrage detection
+- Execution integration with ranked opportunities
 
-Check `frontend/example_realtime_chart.md` for:
-- React integration examples
-- TradingView widget integration
-- Complete dashboard examples
+### Option 2: Custom Integration
+
+The `arbitrage_research.html` source code provides a reference implementation for:
+- WebSocket connection management (auto-reconnect)
+- Lightweight Charts candlestick rendering
+- Real-time opportunity card rendering
+- Status icon tooltips
 
 ---
 
@@ -312,7 +310,7 @@ MT5_SERVER = "YourBroker-Demo"
 
 1. ✅ Server is running
 2. ✅ WebSocket connections tested
-3. 📖 Read `frontend/example_realtime_chart.md` for integration examples
+3. 📖 Open the **Arbitrage Research terminal** at `http://localhost:8000/research`
 4. 📖 Read `README.md` for full API documentation
 5. 🚀 Build your trading dashboard!
 

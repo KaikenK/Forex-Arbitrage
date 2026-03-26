@@ -66,8 +66,8 @@ DATA_MODE = DataMode.SYNTHETIC_USDINR_ONLY
 # The only currency pair supported in research mode
 RESEARCH_SYMBOL = "USDINR"
 
-# Base price for USD/INR (current real-world reference Feb 6, 2026)
-USDINR_BASE_PRICE = 90.42
+# Base price for USD/INR (close to real-world reference, Mar 2026)
+USDINR_BASE_PRICE = 86.50
 
 # ============================================================================
 # SESSION-SPECIFIC MARKET PARAMETERS

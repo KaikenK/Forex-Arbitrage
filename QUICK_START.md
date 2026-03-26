@@ -67,7 +67,7 @@ uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
 ## Next Steps
 
 See `README.md` for:
-- Frontend integration examples
+- Arbitrage Research terminal at `/research`
 - WebSocket API details
 - Configuration options
 - Troubleshooting

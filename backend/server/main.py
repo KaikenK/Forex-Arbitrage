@@ -94,6 +94,9 @@ from backend.core.state.control_state import (
     ControlStateManager,
 )
 
+# NEW: Experimental metrics collection for research output
+from backend.core.analytics.metrics_collector import MetricsCollector
+
 # WebSocket routes (extended with arbitrage endpoints)
 from backend.server.websocket_routes import (
     ws_manager, 
@@ -172,6 +175,9 @@ time_weighted_metrics: Optional[TimeWeightedMetrics] = None
 execution_engine: Optional[ExecutionEngine] = None
 semantic_context_engine: Optional[SemanticContextEngine] = None
 
+# v3.0: Experimental metrics collection
+metrics_collector: Optional[MetricsCollector] = None
+
 
 
 
@@ -194,6 +200,7 @@ async def lifespan(app: FastAPI):
     global mt5_data_source, synthetic_sources, multi_source_streamer
     global state_store, arbitrage_state_machine, time_weighted_metrics
     global execution_engine, semantic_context_engine
+    global metrics_collector
     
     # Import bar aggregator here to avoid circular imports
     from backend.core.bar_aggregator import MultiIntervalAggregator
@@ -426,6 +433,10 @@ async def lifespan(app: FastAPI):
     )
     semantic_context_engine = SemanticContextEngine(config=context_config)
     logger.info("Initialized SemanticContextEngine")
+    
+    # Initialize MetricsCollector for research analytics
+    metrics_collector = MetricsCollector()
+    logger.info("Initialized MetricsCollector for experimental output")
     
     logger.info("=" * 60)
     logger.info("Server startup complete")
@@ -1483,6 +1494,198 @@ async def get_symbol_metrics(symbol: str):
         return {"symbol": symbol, "error": "No metrics available"}
     
     return metrics.to_dict()
+
+
+# ============================================================================
+# ANALYTICS ENDPOINTS — Experimental Research Output
+# ============================================================================
+
+@app.get("/analytics/summary")
+async def get_analytics_summary():
+    """
+    Get experimental analytics summary.
+    
+    Returns aggregate research metrics including:
+    - Total opportunities detected
+    - Average opportunity duration
+    - Persistence class distribution (% ephemeral vs flickering vs persistent)
+    - Session-wise opportunity counts and average spreads
+    - System uptime
+    """
+    if not metrics_collector:
+        return {"error": "MetricsCollector not initialized"}
+    
+    summary = metrics_collector.get_summary()
+    
+    # Enrich with engine stats if available
+    if multi_source_streamer:
+        summary["engine_stats"] = multi_source_streamer.get_stats()
+    
+    return summary
+
+
+@app.post("/analytics/reset")
+async def reset_analytics():
+    """
+    Reset analytics metrics for a new research session.
+    
+    Clears all accumulated opportunity counts, session metrics,
+    and persistence distributions. Does not affect the data pipeline.
+    """
+    if not metrics_collector:
+        return {"error": "MetricsCollector not initialized"}
+    
+    metrics_collector.reset()
+    return {"status": "reset", "message": "Analytics metrics cleared"}
+
+# ============================================================================
+# SEMANTIC INTELLIGENCE ENDPOINTS
+# ============================================================================
+
+def _get_current_session_context():
+    """Helper to determine current SessionContext from UTC hour."""
+    from datetime import datetime, timezone
+    hour = datetime.now(timezone.utc).hour
+
+    if 0 <= hour < 7:
+        return SessionContext.TOKYO
+    elif 7 <= hour < 12:
+        return SessionContext.LONDON
+    elif 12 <= hour < 16:
+        # London/NY overlap — use London for semantic
+        return SessionContext.LONDON
+    elif 16 <= hour < 21:
+        return SessionContext.NEW_YORK
+    else:
+        return SessionContext.SYDNEY
+
+
+def _run_semantic_analysis(symbol: str):
+    """Run semantic analysis for a symbol, returns dict."""
+    if not semantic_context_engine:
+        return {"error": "SemanticContextEngine not initialized"}
+
+    session = _get_current_session_context()
+
+    context_input = ContextInput(
+        symbol=symbol,
+        session=session,
+        volatility_samples=[],
+        spread_samples=[],
+        text_signals=[],
+    )
+
+    result = semantic_context_engine.analyze(context_input)
+    result_dict = result.to_dict()
+
+    # Derive human-readable market regime and session bias
+    risk = result.risk_score
+    if risk < 0.3:
+        market_regime = "low_risk"
+        risk_label = "Low"
+    elif risk < 0.6:
+        market_regime = "moderate_risk"
+        risk_label = "Moderate"
+    else:
+        market_regime = "high_risk"
+        risk_label = "High"
+
+    session_bias = session.value if hasattr(session, 'value') else str(session)
+
+    return {
+        "symbol": symbol,
+        "market_regime": market_regime,
+        "session_bias": session_bias,
+        "risk_level": risk_label,
+        "risk_score": result_dict["risk_score"],
+        "confidence_adjustment": result_dict["confidence_adjustment"],
+        "confidence_adjustment_pct": round(result_dict["confidence_adjustment"] * 100, 1),
+        "volatility_regime": result_dict["volatility_regime"],
+        "spread_regime": result_dict["spread_regime"],
+        "explanation": result_dict["reasoning"],
+        "components": {
+            "session_risk": result_dict["session_risk"],
+            "volatility_risk": result_dict["volatility_risk"],
+            "spread_risk": result_dict["spread_risk"],
+            "sentiment_risk": result_dict["sentiment_risk"],
+        },
+        "computed_at": result_dict["computed_at"],
+    }
+
+
+@app.get("/semantic/{symbol}")
+async def get_semantic_analysis(symbol: str):
+    """
+    Get semantic intelligence analysis for a symbol.
+
+    Returns market regime, session bias, risk level, confidence adjustment,
+    and AI explanation for the current market context.
+
+    Args:
+        symbol: Currency pair (e.g., "USDINR")
+    """
+    symbol = symbol.upper()
+    if symbol not in DEFAULT_SYMBOLS:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not available")
+
+    return _run_semantic_analysis(symbol)
+
+
+@app.websocket("/ws/semantic/{symbol}")
+async def websocket_semantic(websocket: WebSocket, symbol: str):
+    """
+    WebSocket endpoint for real-time semantic intelligence streaming.
+
+    Streams market regime, risk level, confidence adjustments, and
+    AI explanations every 2 seconds.
+
+    Example: ws://localhost:8000/ws/semantic/USDINR
+    """
+    symbol = symbol.upper()
+    if symbol not in DEFAULT_SYMBOLS:
+        await websocket.close(code=1008, reason=f"Symbol {symbol} not available")
+        return
+
+    await websocket.accept()
+    channel = f"semantic:{symbol}"
+
+    try:
+        ws_manager.connections[channel].add(websocket)
+        logger.info(f"Semantic client connected for {symbol}")
+
+        while True:
+            try:
+                # Run analysis
+                analysis = _run_semantic_analysis(symbol)
+                analysis["type"] = "semantic_update"
+
+                await websocket.send_json(analysis)
+
+                # Wait 2 seconds or handle client message
+                try:
+                    message = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=2.0,
+                    )
+                    import json
+                    try:
+                        data = json.loads(message)
+                        if data.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                    except json.JSONDecodeError:
+                        pass
+                except asyncio.TimeoutError:
+                    pass
+
+            except Exception as e:
+                logger.warning(f"Semantic WS error for {symbol}: {e}")
+                break
+
+    except WebSocketDisconnect:
+        logger.info(f"Semantic client disconnected for {symbol}")
+    finally:
+        ws_manager.disconnect(websocket, channel)
 
 
 # ============================================================================

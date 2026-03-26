@@ -12,8 +12,8 @@ Production-ready real-time market data streaming engine using MetaTrader 5, Fast
 # 2. Start the server
 uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
 
-# 3. Open the unified dashboard
-# http://localhost:8000/dashboard
+# 3. Open the Arbitrage Research terminal
+# http://localhost:8000/research
 ```
 
 **Prerequisites:** MetaTrader 5 must be running and logged in.
@@ -81,11 +81,9 @@ uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
 │       ├── main.py                    # FastAPI app & startup
 │       └── websocket_routes.py        # WebSocket endpoints
 ├── frontend/
-│   ├── index.html                     # Main dashboard
-│   ├── unified_dashboard.html         # v2.0 Unified dashboard
-│   ├── arbitrage_dashboard.html       # Arbitrage monitoring
-│   ├── research_dashboard.html        # Research-grade diagnostics
-│   └── marketDataClient.js            # WebSocket client library
+│   └── arbitrage_research.html        # Bloomberg-style Arbitrage Research terminal
+├── frontend_example/
+│   └── candle_dashboard.html          # Reference candlestick dashboard
 └── requirements.txt
 ```
 
@@ -145,13 +143,12 @@ Server will start on: **http://localhost:8000**
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | Main dashboard (serves index.html) |
+| `GET /` | Redirects to Arbitrage Research terminal |
 | `GET /health` | Health check with detailed status |
 | `GET /symbols` | List available symbols |
 | `GET /intervals` | List available intervals |
 | `GET /snapshot/{symbol}` | Current market snapshot |
-| `GET /dashboard` | **v2.0 Unified Dashboard** |
-| `GET /research` | Research-grade dashboard |
+| `GET /research` | **Arbitrage Research terminal** (Bloomberg-style) |
 | `GET /session` | Current trading session info |
 | `GET /sources` | List all data sources |
 | `GET /sources/{symbol}/comparison` | Cross-source price comparison |
@@ -535,26 +532,19 @@ The system automatically detects and tracks FX trading sessions:
 
 **No Arbitrage Opportunities:**
 - This is normal - opportunities are rare in efficient markets
-- Check the Research Dashboard at `/research` for diagnostics
-- The diagnostics panel explains WHY no opportunities exist
+- Check the Arbitrage Research terminal at `/research` for live diagnostics
+- The confidence panel and opportunity cards explain detection state
 - Try increasing `SYNTHETIC_NOISE_PIPS` for testing
 
-## Dashboards
+## Dashboard
 
-### Main Dashboard (`/`)
-Basic market data display with tick and candle streaming.
+### Arbitrage Research Terminal (`/research`)
+Bloomberg-style 3-column trading terminal for USD/INR cross-session arbitrage research:
+- **Column 1 — Market Sessions**: Per-session candlestick charts (Lightweight Charts), real-time Bid/Ask/Drift per provider (Bloomberg/Reuters × Tokyo/London/New York)
+- **Column 2 — Confidence & Detection**: Composite confidence scoring (Raw → Semantic Adj → Final), arbitrage opportunity cards with hoverable status icons, Semantic News Engine (WIP)
+- **Column 3 — Execution Integration**: Aggregated profit display, top-ranked opportunities by confidence, buy/sell routing with session/provider, risk decomposition
 
-### Arbitrage Dashboard (`/static/arbitrage_dashboard.html`)
-Real-time arbitrage opportunity monitoring.
-
-### Research Dashboard (`/research`)
-Professional, diagnostic-first UI designed for research:
-- **Metrics Bar**: Session, sources, latency, spread, ticks, opportunities
-- **Source Comparison**: Aligned prices with difference highlighting
-- **Time Series**: Mini charts for spread, mid-diff, and latency
-- **Diagnostics Panel**: Explains WHY opportunities exist or don't
-- **Threshold Display**: Current detection parameters
-- **Opportunity History**: Recent detections with type badges
+**Technologies**: Lightweight Charts v4.1.3, Motion One (animations), Inter + JetBrains Mono fonts
 
 ## Adding Custom Data Sources
 

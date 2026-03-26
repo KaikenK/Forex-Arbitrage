@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Research | USD/INR Terminal</title>
+    <meta name="description" content="Bloomberg-style FX arbitrage research terminal for USD/INR cross-session and cross-provider analysis.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/motion@11.18.0/dist/motion.js"></script>
+    <style>
+:root {
+    --bg-base:#08090d;--bg-panel:#0e1018;--bg-card:#141620;--bg-card-hover:#1a1d2e;
+    --bg-surface:#1c1f30;--border:#1e2235;--border-active:#2a3050;
+    --text-primary:#e8ecf4;--text-secondary:#8892a8;--text-muted:#505872;
+    --accent-blue:#3b82f6;--accent-cyan:#22d3ee;--accent-green:#10b981;
+    --accent-red:#ef4444;--accent-amber:#f59e0b;--accent-purple:#a78bfa;
+    --accent-orange:#fb923c;
+    --session-tokyo:#f87171;--session-london:#60a5fa;--session-ny:#34d399;
+    --provider-bloomberg:#fb923c;--provider-reuters:#22d3ee;
+    --font-data:'JetBrains Mono',monospace;--font-ui:'Inter',sans-serif;
+    --glow-green:0 0 20px rgba(16,185,129,0.3);--glow-red:0 0 20px rgba(239,68,68,0.3);
+    --glow-blue:0 0 20px rgba(59,130,246,0.2);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font-ui);background:var(--bg-base);color:var(--text-primary);font-size:13px;line-height:1.5;overflow:hidden;height:100vh;}
+
+/* ═══ TOP BAR ═══ */
+.topbar{background:var(--bg-panel);border-bottom:1px solid var(--border);padding:0 16px;height:40px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-brand{display:flex;align-items:center;gap:10px;}
+.topbar-brand svg{width:18px;height:18px;fill:var(--accent-blue);}
+.topbar-brand h1{font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-primary);}
+.topbar-brand .tag{font-size:9px;padding:2px 6px;border-radius:3px;background:var(--accent-purple);color:#fff;font-weight:600;letter-spacing:0.5px;}
+.topbar-right{display:flex;align-items:center;gap:16px;}
+.status-pill{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);font-family:var(--font-data);}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent-red);transition:background 0.3s;}
+.status-dot.live{background:var(--accent-green);box-shadow:0 0 8px rgba(16,185,129,0.5);animation:pulse-dot 2s infinite;}
+@keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.6;}}
+.clock{font-family:var(--font-data);font-size:11px;color:var(--text-muted);letter-spacing:1px;}
+
+/* ═══ TICKER STRIP ═══ */
+.ticker-strip{background:var(--bg-panel);border-bottom:1px solid var(--border);height:32px;display:flex;align-items:center;padding:0 16px;gap:24px;overflow-x:auto;flex-shrink:0;}
+.ticker-item{display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.ticker-label{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);}
+.ticker-value{font-family:var(--font-data);font-size:12px;font-weight:600;color:var(--text-primary);transition:color 0.4s;}
+.ticker-value.up{color:var(--accent-green);}
+.ticker-value.down{color:var(--accent-red);}
+
+/* ═══ MAIN 3-COL GRID ═══ */
+.main-grid{display:grid;grid-template-columns:1fr 1.1fr 0.9fr;height:calc(100vh - 72px);gap:1px;background:var(--border);}
+@media(max-width:1400px){.main-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr;}}
+
+/* ═══ PANELS ═══ */
+.panel{background:var(--bg-panel);display:flex;flex-direction:column;overflow:hidden;}
+.panel-head{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg-card);}
+.panel-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);}
+.panel-body{flex:1;overflow-y:auto;padding:10px;}
+.panel-body::-webkit-scrollbar{width:5px;}
+.panel-body::-webkit-scrollbar-track{background:transparent;}
+.panel-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ═══ SESSION CARDS ═══ */
+.session-card{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;overflow:hidden;transition:border-color 0.3s;}
+.session-card:hover{border-color:var(--border-active);}
+.session-header{padding:8px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);}
+.session-label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;}
+.session-dot{width:8px;height:8px;border-radius:50%;}
+.session-prices{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;padding:6px 12px;font-family:var(--font-data);font-size:11px;}
+.price-cell{display:flex;flex-direction:column;gap:1px;}
+.price-cell .lbl{font-size:8px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);font-family:var(--font-ui);}
+.price-cell .val{font-weight:500;transition:color 0.3s;}
+.price-cell .val.best{font-weight:700;}
+.chart-wrap{height:120px;padding:0 4px 4px;}
+
+/* ═══ CONFIDENCE GAUGE ═══ */
+.confidence-section{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;}
+.confidence-bar-wrap{position:relative;height:6px;background:var(--bg-surface);border-radius:3px;overflow:hidden;margin:8px 0;}
+.confidence-bar{height:100%;border-radius:3px;transition:width 0.6s ease,background 0.3s;}
+.confidence-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:4px;}
+.score-flow{display:flex;align-items:center;gap:6px;font-family:var(--font-data);font-size:12px;margin-top:6px;}
+.score-chip{padding:2px 8px;border-radius:4px;font-weight:600;font-size:11px;}
+
+/* ═══ OPPORTUNITY CARDS ═══ */
+.opp-card{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;transition:all 0.3s;position:relative;}
+.opp-card:hover{border-color:var(--border-active);background:var(--bg-card-hover);}
+.opp-card.active{border-color:var(--accent-green);box-shadow:var(--glow-green);}
+.opp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.opp-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:3px;}
+.opp-type.cross_source{background:rgba(16,185,129,0.15);color:var(--accent-green);}
+.opp-type.session{background:rgba(168,139,250,0.15);color:var(--accent-purple);}
+.opp-type.latency{background:rgba(245,158,11,0.15);color:var(--accent-amber);}
+.opp-profit{font-family:var(--font-data);font-size:14px;font-weight:700;color:var(--accent-green);}
+.opp-meta{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-secondary);}
+.opp-route{font-family:var(--font-data);font-size:11px;color:var(--text-secondary);margin-top:4px;}
+
+/* ═══ STATUS ICONS ═══ */
+.status-icons{display:flex;gap:4px;}
+.status-icon{position:relative;cursor:default;font-size:14px;transition:transform 0.2s;}
+.status-icon:hover{transform:scale(1.3);}
+.status-icon .tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--bg-surface);border:1px solid var(--border-active);padding:4px 8px;border-radius:4px;font-size:10px;font-family:var(--font-ui);white-space:nowrap;color:var(--text-primary);opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:10;}
+.status-icon:hover .tip{opacity:1;}
+
+/* ═══ SEMANTIC ENGINE WIP ═══ */
+.semantic-section{background:var(--bg-card);border:2px dashed var(--border-active);border-radius:6px;padding:12px;margin-bottom:10px;position:relative;}
+.wip-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:var(--accent-amber);color:#000;letter-spacing:0.5px;}
+.semantic-title{font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.semantic-sources{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
+.source-tag{font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-data);}
+.intel-item{display:flex;justify-content:space-between;padding:4px 0;font-size:11px;}
+.intel-item .k{color:var(--text-muted);}
+.intel-item .v{font-family:var(--font-data);font-weight:500;}
+
+/* ═══ EXECUTION PANEL (COL 3) ═══ */
+.exec-card{background:var(--bg-card);border:1px solid var(--accent-green);border-radius:6px;padding:12px;margin-bottom:10px;box-shadow:var(--glow-green);}
+.exec-card.neutral{border-color:var(--border);box-shadow:none;}
+.exec-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.exec-rank{font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--accent-green);color:#000;}
+.exec-profit{font-family:var(--font-data);font-size:20px;font-weight:700;color:var(--accent-green);}
+.exec-route{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:8px;background:var(--bg-surface);border-radius:4px;margin-top:8px;font-size:11px;}
+.exec-route .arrow{color:var(--text-muted);font-size:16px;}
+.exec-side{text-align:center;}
+.exec-side .side-label{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:2px;}
+.exec-side .side-value{font-family:var(--font-data);font-weight:600;font-size:12px;}
+.exec-side.buy .side-value{color:var(--accent-green);}
+.exec-side.sell .side-value{color:var(--accent-red);}
+
+.total-profit-box{background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(59,130,246,0.05));border:1px solid var(--accent-green);border-radius:8px;padding:16px;text-align:center;margin-bottom:12px;}
+.total-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;}
+.total-value{font-family:var(--font-data);font-size:28px;font-weight:700;color:var(--accent-green);}
+.total-sub{font-size:10px;color:var(--text-secondary);margin-top:2px;font-family:var(--font-data);}
+
+/* ═══ EMPTY STATE ═══ */
+.empty{text-align:center;padding:30px 16px;color:var(--text-muted);font-size:12px;}
+.empty-icon{font-size:24px;margin-bottom:8px;opacity:0.4;}
+
+/* ═══ SECTION DIVIDER ═══ */
+.section-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:8px;}
+    </style>
+</head>
+<body>
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-brand">
+            <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <h1>Arbitrage Research</h1>
+            <span class="tag">SYNTHETIC USD/INR</span>
+        </div>
+        <div class="topbar-right">
+            <div class="status-pill"><span class="status-dot" id="connDot"></span><span id="connText">OFFLINE</span></div>
+            <div class="status-pill" id="sessionPill">SESSION: --</div>
+            <div class="clock" id="clock">--:--:--</div>
+        </div>
+    </div>
+
+    <!-- TICKER STRIP -->
+    <div class="ticker-strip">
+        <div class="ticker-item"><span class="ticker-label">Mode</span><span class="ticker-value" style="color:var(--accent-purple)">SYNTHETIC</span></div>
+        <div class="ticker-item"><span class="ticker-label">Pair</span><span class="ticker-value" style="color:var(--accent-blue)">USD/INR</span></div>
+        <div class="ticker-item"><span class="ticker-label">Sources</span><span class="ticker-value" id="tkSources">6</span></div>
+        <div class="ticker-item"><span class="ticker-label">Latency</span><span class="ticker-value" id="tkLatency">--ms</span></div>
+        <div class="ticker-item"><span class="ticker-label">Spread</span><span class="ticker-value" id="tkSpread">--</span></div>
+        <div class="ticker-item"><span class="ticker-label">Ticks</span><span class="ticker-value" id="tkTicks">0</span></div>
+        <div class="ticker-item"><span class="ticker-label">Opportunities</span><span class="ticker-value" id="tkOpps">0</span></div>
+        <div class="ticker-item"><span class="ticker-label">Det. Rate</span><span class="ticker-value" id="tkRate">0%</span></div>
+    </div>
+
+    <!-- MAIN 3-COLUMN GRID -->
+    <div class="main-grid">
+        <!-- ═══════ COLUMN 1: SESSIONS & CHARTS ═══════ -->
+        <div class="panel" id="col1">
+            <div class="panel-head">
+                <span class="panel-title">Market Sessions — USD/INR</span>
+                <div style="display:flex;gap:6px;">
+                    <span style="font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--session-tokyo);color:var(--session-tokyo);">TYO</span>
+                    <span style="font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--session-london);color:var(--session-london);">LDN</span>
+                    <span style="font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--session-ny);color:var(--session-ny);">NYC</span>
+                </div>
+            </div>
+            <div class="panel-body" id="sessionsBody">
+                <!-- Session cards injected by JS -->
+                <div class="session-card" id="card-tokyo">
+                    <div class="session-header">
+                        <div class="session-label"><span class="session-dot" style="background:var(--session-tokyo)"></span>Tokyo</div>
+                        <div style="display:flex;gap:4px;">
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(251,146,60,0.15);color:var(--provider-bloomberg);">BBG</span>
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(34,211,238,0.15);color:var(--provider-reuters);">RTR</span>
+                        </div>
+                    </div>
+                    <div class="session-prices" id="prices-tokyo">
+                        <div class="price-cell"><span class="lbl">Bid</span><span class="val" id="bid-tokyo">--</span></div>
+                        <div class="price-cell"><span class="lbl">Ask</span><span class="val" id="ask-tokyo">--</span></div>
+                        <div class="price-cell"><span class="lbl">Drift</span><span class="val" id="drift-tokyo">--</span></div>
+                    </div>
+                    <div class="chart-wrap"><div id="chart-tokyo" style="width:100%;height:100%;"></div></div>
+                </div>
+                <div class="session-card" id="card-london">
+                    <div class="session-header">
+                        <div class="session-label"><span class="session-dot" style="background:var(--session-london)"></span>London</div>
+                        <div style="display:flex;gap:4px;">
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(251,146,60,0.15);color:var(--provider-bloomberg);">BBG</span>
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(34,211,238,0.15);color:var(--provider-reuters);">RTR</span>
+                        </div>
+                    </div>
+                    <div class="session-prices" id="prices-london">
+                        <div class="price-cell"><span class="lbl">Bid</span><span class="val" id="bid-london">--</span></div>
+                        <div class="price-cell"><span class="lbl">Ask</span><span class="val" id="ask-london">--</span></div>
+                        <div class="price-cell"><span class="lbl">Drift</span><span class="val" id="drift-london">--</span></div>
+                    </div>
+                    <div class="chart-wrap"><div id="chart-london" style="width:100%;height:100%;"></div></div>
+                </div>
+                <div class="session-card" id="card-newyork">
+                    <div class="session-header">
+                        <div class="session-label"><span class="session-dot" style="background:var(--session-ny)"></span>New York</div>
+                        <div style="display:flex;gap:4px;">
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(251,146,60,0.15);color:var(--provider-bloomberg);">BBG</span>
+                            <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(34,211,238,0.15);color:var(--provider-reuters);">RTR</span>
+                        </div>
+                    </div>
+                    <div class="session-prices" id="prices-newyork">
+                        <div class="price-cell"><span class="lbl">Bid</span><span class="val" id="bid-newyork">--</span></div>
+                        <div class="price-cell"><span class="lbl">Ask</span><span class="val" id="ask-newyork">--</span></div>
+                        <div class="price-cell"><span class="lbl">Drift</span><span class="val" id="drift-newyork">--</span></div>
+                    </div>
+                    <div class="chart-wrap"><div id="chart-newyork" style="width:100%;height:100%;"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ COLUMN 2: CONFIDENCE & OPPORTUNITIES ═══════ -->
+        <div class="panel" id="col2" style="border-left:1px solid var(--border);border-right:1px solid var(--border);">
+            <div class="panel-head">
+                <span class="panel-title">Confidence & Arbitrage Detection</span>
+            </div>
+            <div class="panel-body">
+                <!-- Confidence Score -->
+                <div class="confidence-section" id="confSection">
+                    <div class="confidence-row">
+                        <span style="font-size:11px;font-weight:600;color:var(--text-secondary);">Composite Confidence</span>
+                        <span id="confValue" style="font-family:var(--font-data);font-size:14px;font-weight:700;color:var(--accent-blue);">--</span>
+                    </div>
+                    <div class="confidence-bar-wrap"><div class="confidence-bar" id="confBar" style="width:0%;background:var(--accent-blue);"></div></div>
+                    <div class="score-flow">
+                        <span class="score-chip" style="background:rgba(59,130,246,0.15);color:var(--accent-blue);" id="rawScore">Raw: --</span>
+                        <span style="color:var(--text-muted);">→</span>
+                        <span class="score-chip" style="background:rgba(168,139,250,0.15);color:var(--accent-purple);" id="semAdj">Sem: ±0%</span>
+                        <span style="color:var(--text-muted);">→</span>
+                        <span class="score-chip" style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-weight:700;" id="finalScore">Final: --</span>
+                    </div>
+                </div>
+
+                <!-- Detected Opportunities -->
+                <div class="section-label">Detected Opportunities</div>
+                <div id="oppList">
+                    <div class="empty"><div class="empty-icon">📡</div>Scanning for arbitrage opportunities...</div>
+                </div>
+
+                <!-- Semantic Intelligence Engine (WIP) -->
+                <div class="semantic-section" id="semanticPanel">
+                    <span class="wip-badge">WIP</span>
+                    <div class="semantic-title">
+                        <span>🧠</span> Semantic News Engine
+                        <span class="status-dot" id="semDot" style="width:6px;height:6px;"></span>
+                    </div>
+                    <div id="intelGrid">
+                        <div class="intel-item"><span class="k">Market Regime</span><span class="v" id="siRegime">--</span></div>
+                        <div class="intel-item"><span class="k">Session Bias</span><span class="v" id="siBias">--</span></div>
+                        <div class="intel-item"><span class="k">Risk Level</span><span class="v" id="siRisk">--</span></div>
+                        <div class="intel-item"><span class="k">Confidence Adj</span><span class="v" id="siConfAdj">±0%</span></div>
+                    </div>
+                    <div id="siExplanation" style="margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:4px;font-size:11px;color:var(--text-muted);min-height:32px;">
+                        Connecting to semantic intelligence stream...
+                    </div>
+                    <div class="semantic-sources">
+                        <span class="source-tag">𝕏 / Twitter</span>
+                        <span class="source-tag">Reddit</span>
+                        <span class="source-tag">Bloomberg Wire</span>
+                        <span class="source-tag">Reuters News</span>
+                        <span class="source-tag">FX Street</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ COLUMN 3: EXECUTION & INTEGRATION ═══════ -->
+        <div class="panel" id="col3">
+            <div class="panel-head">
+                <span class="panel-title">Execution Integration</span>
+            </div>
+            <div class="panel-body">
+                <!-- Total Profit -->
+                <div class="total-profit-box">
+                    <div class="total-label">Aggregated Profit (Session)</div>
+                    <div class="total-value" id="totalProfit">+0.00 <span style="font-size:14px;">pips</span></div>
+                    <div class="total-sub" id="totalCount">0 opportunities captured</div>
+                </div>
+
+                <!-- Best Opportunities -->
+                <div class="section-label">Top Ranked Opportunities</div>
+                <div id="execList">
+                    <div class="empty"><div class="empty-icon">🎯</div>Awaiting high-confidence opportunities...</div>
+                </div>
+
+                <!-- Risk Components -->
+                <div class="section-label" style="margin-top:12px;">Risk Decomposition</div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px;">
+                    <div class="intel-item"><span class="k">Session Risk</span><span class="v" id="rcSession">--</span></div>
+                    <div class="intel-item"><span class="k">Volatility Risk</span><span class="v" id="rcVolatility">--</span></div>
+                    <div class="intel-item"><span class="k">Spread Risk</span><span class="v" id="rcSpread">--</span></div>
+                    <div class="intel-item"><span class="k">Sentiment Risk</span><span class="v" id="rcSentiment">--</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const S = {
+    connected:false, ws:null, sourceWs:null, semanticWs:null,
+    symbol:'USDINR',
+    sources:{},
+    history:[],          // all detected opportunities
+    bestOpps:[],         // top-ranked for column 3
+    lastSemanticAdj:0,
+    totalProfit:0,
+    totalCount:0,
+    metrics:{ticks:0,opportunities:0,spreads:[]},
+    // Per-session candlestick data
+    candles:{tokyo:[],london:[],newyork:[]},
+    charts:{tokyo:null,london:null,newyork:null},
+    series:{tokyo:null,london:null,newyork:null},
+    lastCandleTime:{tokyo:0,london:0,newyork:0},
+};
+
+// ═══════════════════════════════════════════════════════════════
+// CHARTS — Lightweight Charts per session
+// ═══════════════════════════════════════════════════════════════
+function initCharts(){
+    ['tokyo','london','newyork'].forEach(sess=>{
+        const el=document.getElementById('chart-'+sess);
+        if(!el||S.charts[sess])return;
+        const colors={tokyo:'#f87171',london:'#60a5fa',newyork:'#34d399'};
+        const chart=LightweightCharts.createChart(el,{
+            layout:{background:{type:'solid',color:'#0e1018'},textColor:'#505872',fontSize:9},
+            grid:{vertLines:{visible:false},horzLines:{color:'#1e2235'}},
+            rightPriceScale:{borderColor:'#1e2235',scaleMargins:{top:0.15,bottom:0.15}},
+            timeScale:{timeVisible:true,secondsVisible:true,borderColor:'#1e2235',rightOffset:3},
+            crosshair:{mode:LightweightCharts.CrosshairMode.Magnet,vertLine:{color:'#505872',width:1,style:2},horzLine:{color:'#505872',width:1,style:2}},
+            width:el.clientWidth,height:el.clientHeight||110,
+        });
+        const series=chart.addCandlestickSeries({
+            upColor:colors[sess],downColor:'#ef4444',
+            wickUpColor:colors[sess],wickDownColor:'#ef4444',
+            borderVisible:false,
+            priceFormat:{type:'price',precision:4,minMove:0.0001},
+        });
+        S.charts[sess]=chart;
+        S.series[sess]=series;
+        if(typeof ResizeObserver!=='undefined'){
+            new ResizeObserver(()=>{if(el.clientWidth>0)chart.applyOptions({width:el.clientWidth,height:el.clientHeight||110});}).observe(el);
+        }
+    });
+}
+
+function pushCandle(sess,mid){
+    const nowSec=Math.floor(Date.now()/1000);
+    const candles=S.candles[sess];
+    const last=candles.length?candles[candles.length-1]:null;
+    if(last&&last.time===nowSec){
+        last.high=Math.max(last.high,mid);
+        last.low=Math.min(last.low,mid);
+        last.close=mid;
+    } else {
+        candles.push({time:nowSec,open:mid,high:mid,low:mid,close:mid});
+        if(candles.length>300)candles.shift();
+    }
+    if(S.series[sess]){
+        try{
+            const c=candles[candles.length-1];
+            S.series[sess].update({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
+        }catch(e){}
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════════════════
+function connect(){
+    S.ws=new WebSocket('ws://localhost:8000/ws/arbitrage');
+    S.ws.onopen=()=>{S.connected=true;updateConn();connectSources();connectSemantic();fetchInit();};
+    S.ws.onmessage=(e)=>{try{const d=JSON.parse(e.data.trim());if(d.opportunity)handleOpp(d);}catch(x){}};
+    S.ws.onclose=()=>{S.connected=false;updateConn();setTimeout(connect,3000);};
+    S.ws.onerror=()=>{};
+}
+
+function connectSources(){
+    if(S.sourceWs)S.sourceWs.close();
+    S.sourceWs=new WebSocket('ws://localhost:8000/ws/sources/'+S.symbol);
+    S.sourceWs.onmessage=(e)=>{try{const d=JSON.parse(e.data.trim());if(d.sources||d.symbol)handleSourceData(d);}catch(x){}};
+}
+
+function connectSemantic(){
+    if(S.semanticWs)S.semanticWs.close();
+    S.semanticWs=new WebSocket('ws://localhost:8000/ws/semantic/'+S.symbol);
+    S.semanticWs.onopen=()=>{const d=document.getElementById('semDot');if(d)d.style.background='var(--accent-green)';};
+    S.semanticWs.onmessage=(e)=>{try{const d=JSON.parse(e.data.trim());if(d.type==='semantic_update')updateIntel(d);}catch(x){}};
+    S.semanticWs.onclose=()=>{const d=document.getElementById('semDot');if(d)d.style.background='var(--accent-red)';setTimeout(connectSemantic,5000);};
+}
+
+async function fetchInit(){
+    try{
+        const r=await fetch('/health');
+        if(r.ok){const d=await r.json();document.getElementById('tkSources').textContent=d.synthetic_sources||6;}
+    }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DATA HANDLERS
+// ═══════════════════════════════════════════════════════════════
+function handleSourceData(data){
+    S.sources=data;
+    S.metrics.ticks++;
+    renderSessions(data);
+    updateTicker();
+}
+
+function handleOpp(data){
+    S.metrics.opportunities++;
+    const opp=data.opportunity||{};
+    const persistence=data.persistence||{};
+    const execution=data.execution||{};
+
+    const entry={
+        time:new Date(),
+        ...opp,
+        score:data.composite_score,
+        persistence,
+        execution,
+        ranking_reason:data.ranking_reason||'',
+    };
+    S.history.unshift(entry);
+    if(S.history.length>50)S.history.pop();
+
+    // Update confidence
+    const raw=data.composite_score||0;
+    const sem=S.lastSemanticAdj||0;
+    const final_=raw*(1+sem/100);
+    document.getElementById('rawScore').textContent='Raw: '+raw.toFixed(1);
+    document.getElementById('semAdj').textContent='Sem: '+(sem>=0?'+':'')+sem.toFixed(1)+'%';
+    document.getElementById('finalScore').textContent='Final: '+final_.toFixed(1);
+    document.getElementById('confValue').textContent=final_.toFixed(1);
+    const pct=Math.min(100,final_);
+    const bar=document.getElementById('confBar');
+    bar.style.width=pct+'%';
+    bar.style.background=pct>70?'var(--accent-green)':pct>40?'var(--accent-amber)':'var(--accent-red)';
+
+    // Accumulate profit
+    const profit=opp.estimated_profit_pips||0;
+    S.totalProfit+=profit;
+    S.totalCount++;
+    document.getElementById('totalProfit').innerHTML='+'+S.totalProfit.toFixed(2)+' <span style="font-size:14px;">pips</span>';
+    document.getElementById('totalCount').textContent=S.totalCount+' opportunities captured';
+
+    renderOppList();
+    renderExecList();
+    updateTicker();
+
+    // Animate the new opportunity card
+    try{
+        const cards=document.querySelectorAll('.opp-card');
+        if(cards.length>0 && window.Motion){
+            window.Motion.animate(cards[0],{opacity:[0,1],y:[20,0]},{duration:0.4,easing:'ease-out'});
+        }
+    }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDERERS
+// ═══════════════════════════════════════════════════════════════
+function renderSessions(data){
+    const sources=Array.isArray(data.sources)?data.sources:Object.values(data.sources||{});
+    if(!sources.length)return;
+
+    const pip=0.01;
+    const mids=sources.map(s=>s.mid);
+    const avgMid=mids.reduce((a,b)=>a+b,0)/mids.length;
+
+    // Group by session
+    const groups={tokyo:[],london:[],newyork:[]};
+    sources.forEach(s=>{
+        const id=s.source_id||'';
+        let sess='';
+        if(id.includes('tokyo'))sess='tokyo';
+        else if(id.includes('london'))sess='london';
+        else if(id.includes('newyork'))sess='newyork';
+        if(sess)groups[sess].push(s);
+    });
+
+    // Update session cards
+    for(const [sess,list] of Object.entries(groups)){
+        if(!list.length)continue;
+        const bestBid=Math.max(...list.map(s=>s.bid));
+        const bestAsk=Math.min(...list.map(s=>s.ask));
+        const sessMid=list.reduce((a,s)=>a+s.mid,0)/list.length;
+        const drift=((sessMid-avgMid)/pip).toFixed(2);
+
+        const bidEl=document.getElementById('bid-'+sess);
+        const askEl=document.getElementById('ask-'+sess);
+        const driftEl=document.getElementById('drift-'+sess);
+        if(bidEl){
+            const prev=parseFloat(bidEl.textContent);
+            bidEl.textContent=bestBid.toFixed(4);
+            if(!isNaN(prev)){
+                if(bestBid>prev)flashEl(bidEl,'up');
+                else if(bestBid<prev)flashEl(bidEl,'down');
+            }
+        }
+        if(askEl){
+            const prev=parseFloat(askEl.textContent);
+            askEl.textContent=bestAsk.toFixed(4);
+            if(!isNaN(prev)){
+                if(bestAsk<prev)flashEl(askEl,'up');
+                else if(bestAsk>prev)flashEl(askEl,'down');
+            }
+        }
+        if(driftEl){
+            driftEl.textContent=(drift>0?'+':'')+drift;
+            driftEl.style.color=drift>0?'var(--accent-green)':drift<0?'var(--accent-red)':'var(--text-secondary)';
+        }
+
+        // Push candlestick data
+        pushCandle(sess,sessMid);
+    }
+
+    // Update spread metric
+    const spreads=sources.map(s=>(s.ask-s.bid)/pip);
+    const avgSpread=spreads.reduce((a,b)=>a+b,0)/spreads.length;
+    S.metrics.spreads.push(avgSpread);
+    if(S.metrics.spreads.length>100)S.metrics.spreads.shift();
+    const sorted=[...S.metrics.spreads].sort((a,b)=>a-b);
+    const medSpread=sorted[Math.floor(sorted.length/2)];
+    document.getElementById('tkSpread').textContent=(medSpread||0).toFixed(2)+' pips';
+}
+
+function flashEl(el,dir){
+    el.style.color=dir==='up'?'var(--accent-green)':'var(--accent-red)';
+    setTimeout(()=>{el.style.color='';},600);
+}
+
+function renderOppList(){
+    const container=document.getElementById('oppList');
+    if(!S.history.length){
+        container.innerHTML='<div class="empty"><div class="empty-icon">📡</div>Scanning for arbitrage opportunities...</div>';
+        return;
+    }
+    container.innerHTML=S.history.slice(0,8).map((o,i)=>{
+        const type=o.type||'cross_source';
+        const profit=(o.estimated_profit_pips||0).toFixed(2);
+        const conf=o.confidence_score?(o.confidence_score*100).toFixed(0)+'%':'--';
+        const time=o.time.toLocaleTimeString();
+
+        const p=o.persistence||{};
+        const pClass=(p.class||'EPHEMERAL');
+        const pBadge=pClass==='PERSISTENT'?'🧱':pClass==='FLICKERING'?'🔄':'⚡';
+        const ex=o.execution||{};
+        const exV=(ex.verdict||'RISKY');
+        const exBadge=exV==='VIABLE'?'✅':exV==='UNLIKELY'?'❌':'⚠️';
+
+        return `<div class="opp-card ${i===0?'active':''}">
+            <div class="opp-header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="opp-type ${type}">${type.replace('_',' ')}</span>
+                    <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);">${time}</span>
+                </div>
+                <div class="status-icons">
+                    <span class="status-icon">${pBadge}<span class="tip">${pClass}${p.duration_ms?' ('+p.duration_ms+'ms)':''}</span></span>
+                    <span class="status-icon">${exBadge}<span class="tip">${exV}</span></span>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span class="opp-profit">+${profit} pips</span>
+                <span style="font-size:11px;color:var(--text-secondary);font-family:var(--font-data);">Conf: ${conf}</span>
+            </div>
+            <div class="opp-route">Buy: ${o.buy_source||'--'} → Sell: ${o.sell_source||'--'}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderExecList(){
+    const container=document.getElementById('execList');
+    // Sort history by composite score descending, take top 5
+    const ranked=[...S.history].sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,5);
+    if(!ranked.length){
+        container.innerHTML='<div class="empty"><div class="empty-icon">🎯</div>Awaiting high-confidence opportunities...</div>';
+        return;
+    }
+    container.innerHTML=ranked.map((o,i)=>{
+        const profit=(o.estimated_profit_pips||0).toFixed(2);
+        const score=(o.score||0).toFixed(1);
+        const buySession=extractSession(o.buy_source||'');
+        const sellSession=extractSession(o.sell_source||'');
+        const buyProvider=extractProvider(o.buy_source||'');
+        const sellProvider=extractProvider(o.sell_source||'');
+
+        return `<div class="exec-card ${i===0?'':'neutral'}">
+            <div class="exec-header">
+                <span class="exec-rank" style="${i>0?'background:var(--accent-blue);':''}">RANK #${i+1}</span>
+                <span class="exec-profit">+${profit} pips</span>
+            </div>
+            <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);margin-bottom:4px;">Score: ${score} | ${(o.type||'cross_source').replace('_',' ').toUpperCase()}</div>
+            <div class="exec-route">
+                <div class="exec-side buy">
+                    <div class="side-label">BUY FROM</div>
+                    <div class="side-value">${buySession}</div>
+                    <div style="font-size:9px;color:var(--text-muted);">${buyProvider}</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="exec-side sell">
+                    <div class="side-label">SELL TO</div>
+                    <div class="side-value">${sellSession}</div>
+                    <div style="font-size:9px;color:var(--text-muted);">${sellProvider}</div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function extractSession(sourceId){
+    if(sourceId.includes('tokyo'))return 'TOKYO';
+    if(sourceId.includes('london'))return 'LONDON';
+    if(sourceId.includes('newyork'))return 'NEW YORK';
+    return sourceId.split('_')[0]||'--';
+}
+
+function extractProvider(sourceId){
+    if(sourceId.includes('bloomberg'))return 'Bloomberg';
+    if(sourceId.includes('reuters'))return 'Reuters';
+    return '--';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SEMANTIC INTELLIGENCE
+// ═══════════════════════════════════════════════════════════════
+function updateIntel(data){
+    const regimeEl=document.getElementById('siRegime');
+    if(regimeEl){
+        regimeEl.textContent=(data.market_regime||'--').replace('_',' ');
+        regimeEl.style.color=data.market_regime==='low_risk'?'var(--accent-green)':data.market_regime==='high_risk'?'var(--accent-red)':'var(--accent-amber)';
+    }
+    const biasEl=document.getElementById('siBias');if(biasEl)biasEl.textContent=data.session_bias||'--';
+    const riskEl=document.getElementById('siRisk');
+    if(riskEl){
+        riskEl.textContent=data.risk_level||'--';
+        riskEl.style.color=data.risk_level==='Low'?'var(--accent-green)':data.risk_level==='High'?'var(--accent-red)':'var(--accent-amber)';
+    }
+    const adjEl=document.getElementById('siConfAdj');
+    if(adjEl){
+        const pct=data.confidence_adjustment_pct||0;
+        adjEl.textContent=(pct>=0?'+':'')+pct.toFixed(1)+'%';
+        adjEl.style.color=pct>=0?'var(--accent-green)':'var(--accent-red)';
+    }
+    const explEl=document.getElementById('siExplanation');
+    if(explEl&&data.explanation){
+        const reasons=Array.isArray(data.explanation)?data.explanation:[data.explanation];
+        explEl.innerHTML=reasons.map(r=>'<div style="margin-bottom:3px;">• '+r+'</div>').join('');
+    }
+    // Risk components
+    const c=data.components||{};
+    const ids=['rcSession','rcVolatility','rcSpread','rcSentiment'];
+    const keys=['session_risk','volatility_risk','spread_risk','sentiment_risk'];
+    ids.forEach((id,i)=>{const el=document.getElementById(id);if(el){const v=(c[keys[i]]||0);el.textContent=v.toFixed(3);el.style.color=v>0.5?'var(--accent-red)':v>0.3?'var(--accent-amber)':'var(--accent-green)';}});
+    S.lastSemanticAdj=data.confidence_adjustment_pct||0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+function updateConn(){
+    const dot=document.getElementById('connDot');
+    const txt=document.getElementById('connText');
+    if(S.connected){dot.classList.add('live');txt.textContent='LIVE';}
+    else{dot.classList.remove('live');txt.textContent='OFFLINE';}
+}
+
+function updateTicker(){
+    document.getElementById('tkTicks').textContent=fmtNum(S.metrics.ticks);
+    document.getElementById('tkOpps').textContent=S.metrics.opportunities;
+    const rate=S.metrics.ticks>0?(S.metrics.opportunities/S.metrics.ticks*100).toFixed(2):'0';
+    document.getElementById('tkRate').textContent=rate+'%';
+}
+
+function fmtNum(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString();}
+
+function updateClock(){
+    const now=new Date();
+    document.getElementById('clock').textContent=now.toLocaleTimeString('en-US',{hour12:false});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT with Motion One staggered entry
+// ═══════════════════════════════════════════════════════════════
+function init(){
+    initCharts();
+    connect();
+    setInterval(updateClock,1000);
+    updateClock();
+
+    // Staggered panel entrance animation
+    try{
+        if(window.Motion){
+            const panels=document.querySelectorAll('.panel');
+            panels.forEach((p,i)=>{
+                p.style.opacity='0';
+                p.style.transform='translateY(20px)';
+                setTimeout(()=>{
+                    window.Motion.animate(p,{opacity:[0,1],y:[20,0]},{duration:0.5,easing:'ease-out'});
+                    p.style.opacity='1';
+                    p.style.transform='none';
+                },i*150);
+            });
+        }
+    }catch(e){}
+
+    // Periodic session check
+    setInterval(async()=>{
+        try{
+            const r=await fetch('/session');
+            if(r.ok){const d=await r.json();document.getElementById('sessionPill').textContent='SESSION: '+(d.primary_session||d.display_name||'--');}
+        }catch(e){}
+    },30000);
+}
+
+init();
+</script>
+</body>
+</html>

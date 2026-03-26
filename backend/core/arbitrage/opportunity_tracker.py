@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
+from threading import RLock
 
 from backend.core.arbitrage.arbitrage_engine import ArbitrageOpportunity, ArbitrageType
 
@@ -156,6 +157,9 @@ class OpportunityTracker:
         """
         self.config = config or TrackerConfig()
         
+        # Thread safety lock for concurrent access
+        self._lock = RLock()
+        
         # Active opportunities (currently being detected)
         self._active: Dict[str, TrackedOpportunity] = {}
         
@@ -171,8 +175,8 @@ class OpportunityTracker:
         self._total_ephemeral = 0
         
         logger.info(f"[OpportunityTracker] Initialized with config: "
-                   f"ephemeral<{config.ephemeral_threshold_ms}ms, "
-                   f"persistent>{config.persistent_threshold_ms}ms")
+                   f"ephemeral<{self.config.ephemeral_threshold_ms}ms, "
+                   f"persistent>{self.config.persistent_threshold_ms}ms")
     
     def on_state_change(self, callback: Callable[[TrackedOpportunity, str], Any]) -> None:
         """
@@ -206,41 +210,42 @@ class OpportunityTracker:
         current_ts = int(time.time() * 1000)
         key = self._make_key(opportunity)
         
-        if key in self._active:
-            # Update existing opportunity
-            tracked = self._update_existing(key, opportunity, current_ts)
-            event = "updated"
-            
-            # Check for persistence upgrade
-            old_class = tracked.persistence_class
-            self._classify_persistence(tracked)
-            if tracked.persistence_class != old_class:
-                event = "upgraded"
-                if tracked.persistence_class == PersistenceClass.PERSISTENT:
-                    self._total_persistent += 1
-                    logger.info(f"[OpportunityTracker] PERSISTENT: {key} "
-                              f"({tracked.cumulative_duration_ms}ms, "
-                              f"{tracked.detection_count} detections)")
-        else:
-            # Check if it was recently archived
-            if key in self._archived:
-                # Reactivate from archive
-                tracked = self._archived.pop(key)
-                tracked.is_active = True
-                tracked.last_seen_ts = current_ts
-                tracked._last_detection_ts = current_ts
-                tracked.detection_count += 1
-                tracked.gap_count += 1
-                self._active[key] = tracked
-                event = "reactivated"
+        with self._lock:
+            if key in self._active:
+                # Update existing opportunity
+                tracked = self._update_existing(key, opportunity, current_ts)
+                event = "updated"
+                
+                # Check for persistence upgrade
+                old_class = tracked.persistence_class
+                self._classify_persistence(tracked)
+                if tracked.persistence_class != old_class:
+                    event = "upgraded"
+                    if tracked.persistence_class == PersistenceClass.PERSISTENT:
+                        self._total_persistent += 1
+                        logger.info(f"[OpportunityTracker] PERSISTENT: {key} "
+                                  f"({tracked.cumulative_duration_ms}ms, "
+                                  f"{tracked.detection_count} detections)")
             else:
-                # Create new tracking entity
-                tracked = self._create_new(opportunity, current_ts)
-                self._active[key] = tracked
-                self._total_tracked += 1
-                event = "new"
+                # Check if it was recently archived
+                if key in self._archived:
+                    # Reactivate from archive
+                    tracked = self._archived.pop(key)
+                    tracked.is_active = True
+                    tracked.last_seen_ts = current_ts
+                    tracked._last_detection_ts = current_ts
+                    tracked.detection_count += 1
+                    tracked.gap_count += 1
+                    self._active[key] = tracked
+                    event = "reactivated"
+                else:
+                    # Create new tracking entity
+                    tracked = self._create_new(opportunity, current_ts)
+                    self._active[key] = tracked
+                    self._total_tracked += 1
+                    event = "new"
         
-        # Emit state change
+        # Emit state change (outside lock to avoid callback deadlocks)
         self._emit_state_change(tracked, event)
         
         return tracked

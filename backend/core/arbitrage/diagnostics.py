@@ -525,5 +525,6 @@ class ArbitrageDiagnosticsEngine:
         }
 
 
-# Global diagnostics instance
-diagnostics_engine = ArbitrageDiagnosticsEngine()
+# NOTE: Do not instantiate a global singleton here.
+# Create instances explicitly in main.py and inject where needed.
+# This follows the dependency injection pattern for testability.
