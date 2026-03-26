@@ -574,10 +574,10 @@ function renderOppList(){
         const time=o.time.toLocaleTimeString();
 
         const p=o.persistence||{};
-        const pClass=(p.class||'EPHEMERAL');
+        const pClass=(p.class||'EPHEMERAL').toUpperCase();
         const pBadge=pClass==='PERSISTENT'?'🧱':pClass==='FLICKERING'?'🔄':'⚡';
         const ex=o.execution||{};
-        const exV=(ex.verdict||'RISKY');
+        const exV=(ex.verdict||'RISKY').toUpperCase();
         const exBadge=exV==='VIABLE'?'✅':exV==='UNLIKELY'?'❌':'⚠️';
         
         let ttlHtml = '';

@@ -519,7 +519,7 @@ class ArbitrageEngine:
                         estimated_profit_pips=spread_variance_pips * 0.5,  # Conservative
                         estimated_profit_pct=spread_variance / sample_tick.mid,
                         latency_risk_ms=(window.window_end_ms - window.window_start_ms) * 2,
-                        confidence_score=min(0.8, widening_pips / 5.0),  # Higher widening = higher confidence
+                        confidence_score=min(0.8, widening_pips / 2.0),  # Higher widening = higher confidence
                         session=session,
                         timestamp_ms=int(time.time() * 1000),
                         window_size_ms=window.window_end_ms - window.window_start_ms,
@@ -678,8 +678,8 @@ class ArbitrageEngine:
         Returns:
             Confidence score between 0.0 and 1.0
         """
-        # Base confidence from profit (0-5 pips maps to 0.2-0.9)
-        profit_conf = min(0.9, 0.2 + (profit_pips / 5.0) * 0.7)
+        # Base confidence from profit (0-2 pips maps to 0.2-0.9)
+        profit_conf = min(0.9, 0.2 + (profit_pips / 2.0) * 0.7)
         
         # Latency penalty (higher latency = lower confidence)
         latency_penalty = min(0.3, latency_ms / 300.0)

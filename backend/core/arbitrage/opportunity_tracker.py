@@ -336,7 +336,8 @@ class OpportunityTracker:
     def _make_key(self, opp: ArbitrageOpportunity) -> str:
         """Create unique key for opportunity."""
         symbols = "|".join(sorted(opp.symbols))
-        sources = "|".join(sorted(opp.sources))
+        if opp.type == ArbitrageType.SESSION_INEFFICIENCY:
+            return f"{symbols}|{opp.session}|SESSION_INEFFICIENCY"
         return f"{symbols}|{opp.buy_source}|{opp.sell_source}|{opp.type.value}"
     
     def _create_new(self, opp: ArbitrageOpportunity, ts: int) -> TrackedOpportunity:

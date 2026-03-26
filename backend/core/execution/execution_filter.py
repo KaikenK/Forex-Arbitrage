@@ -95,9 +95,9 @@ class ExecutionFilterConfig:
         risky_threshold: Minimum score for RISKY verdict (below = UNLIKELY)
         persistence_bonus: Score bonus per persistence class
     """
-    base_slippage_pips: float = 0.3
-    latency_slippage_factor: float = 0.01  # 0.01 pips per ms
-    spread_cost_factor: float = 0.5  # Half the spread is cost
+    base_slippage_pips: float = 0.1
+    latency_slippage_factor: float = 0.002  # 0.002 pips per ms
+    spread_cost_factor: float = 0.1  # Fraction of spread to cost
     session_liquidity: Dict[str, float] = field(default_factory=lambda: {
         "TOKYO": 0.7,
         "LONDON": 1.0,
@@ -106,12 +106,12 @@ class ExecutionFilterConfig:
         "TOKYO_LONDON_OVERLAP": 0.85,
         "UNKNOWN": 0.5,
     })
-    viable_threshold: float = 70.0
-    risky_threshold: float = 40.0
+    viable_threshold: float = 60.0
+    risky_threshold: float = 30.0
     persistence_bonus: Dict[str, float] = field(default_factory=lambda: {
         PersistenceClass.EPHEMERAL.value: 0.0,
-        PersistenceClass.FLICKERING.value: 10.0,
-        PersistenceClass.PERSISTENT.value: 25.0,
+        PersistenceClass.FLICKERING.value: 15.0,
+        PersistenceClass.PERSISTENT.value: 35.0,
     })
 
 

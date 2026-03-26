@@ -98,27 +98,27 @@ SESSION_CONFIGS: Dict[TradingSession, SessionConfig] = {
         session=TradingSession.TOKYO,
         volatility_multiplier=0.7,  # Lower volatility
         spread_pips=3.0,  # Wider spreads due to lower liquidity
-        drift_pips_per_tick=0.0,  # Primary price discovery - no systematic drift
-        drift_std=0.5,  # Low drift variance
-        noise_amplitude=0.3,
+        drift_pips_per_tick=0.1,  # Intentional drift for demonstration
+        drift_std=0.8,  # Increased variance
+        noise_amplitude=0.8,
         description="Primary USD/INR price discovery session with lower volatility"
     ),
     TradingSession.LONDON: SessionConfig(
         session=TradingSession.LONDON,
         volatility_multiplier=1.0,  # Moderate volatility
         spread_pips=2.0,  # Tighter spreads, better liquidity
-        drift_pips_per_tick=0.05,  # Slight drift from Tokyo reference
-        drift_std=0.8,  # Moderate drift variance
-        noise_amplitude=0.5,
+        drift_pips_per_tick=-0.15,  # Negative drift for divergence
+        drift_std=1.2,  # Moderate drift variance
+        noise_amplitude=1.2,
         description="Cross-border activity session with moderate volatility"
     ),
     TradingSession.NEW_YORK: SessionConfig(
         session=TradingSession.NEW_YORK,
         volatility_multiplier=1.5,  # Higher volatility
         spread_pips=2.5,  # Moderate spreads
-        drift_pips_per_tick=0.08,  # USD-driven re-pricing drift
-        drift_std=1.2,  # Higher drift variance - noisier
-        noise_amplitude=0.8,
+        drift_pips_per_tick=0.2,  # Strong positive drift
+        drift_std=1.8,  # Higher drift variance - noisier
+        noise_amplitude=1.8,
         description="USD-driven re-pricing with higher volatility and noise"
     ),
 }
@@ -253,10 +253,10 @@ class ArbitrageResearchConfig:
     Tuned for detecting both cross-provider and cross-session opportunities.
     """
     # Minimum profit thresholds (in pips) - higher = fewer opportunities
-    min_profit_pips: float = 1.5  # Realistic: need at least 1.5 pips profit
+    min_profit_pips: float = 0.5  # Realistic: need at least 0.5 pips profit
     
     # Confidence thresholds - higher = more selective
-    min_confidence: float = 0.5  # Require 50% confidence minimum
+    min_confidence: float = 0.3  # Require 30% confidence minimum
     
     # Time alignment
     alignment_window_ms: int = 50  # Wider window for synthetic data
@@ -294,7 +294,7 @@ class SyntheticGenerationConfig:
     reference_update_interval_ms: int = 250  # Drift every 250ms
     
     # Maximum divergence from reference (in pips) - keep prices realistic
-    max_divergence_pips: float = 2.0  # Tighter bound for realistic prices
+    max_divergence_pips: float = 10.0  # Increased for wider spread demo
     
     # Arbitrage opportunity injection rate (probability per tick)
     # Lower = more realistic, opportunities are rare in real markets

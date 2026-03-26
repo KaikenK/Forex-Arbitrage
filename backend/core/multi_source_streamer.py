@@ -30,6 +30,7 @@ from backend.core.arbitrage.tick_aligner import TickAligner, AlignedTickWindow
 from backend.core.arbitrage.arbitrage_engine import (
     ArbitrageEngine, 
     ArbitrageOpportunity,
+    ArbitrageType,
     ArbitrageConfig,
 )
 from backend.core.arbitrage.opportunity_ranker import (
@@ -570,7 +571,10 @@ class MultiSourceStreamer:
             
             # Get tracked opportunity by reconstructing key (matches tracker's _make_key)
             symbols = "|".join(sorted(opp.symbols))
-            key = f"{symbols}|{opp.buy_source}|{opp.sell_source}|{opp.type.value}"
+            if opp.type == ArbitrageType.SESSION_INEFFICIENCY:
+                key = f"{symbols}|{opp.session}|SESSION_INEFFICIENCY"
+            else:
+                key = f"{symbols}|{opp.buy_source}|{opp.sell_source}|{opp.type.value}"
             tracked = tracked_by_key.get(key)
             assessment = execution_assessments.get(key)
             

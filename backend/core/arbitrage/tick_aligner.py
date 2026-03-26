@@ -309,7 +309,7 @@ class TickAligner:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                logger.error(f"[TickAligner] Error in callback: {e}")
+                logger.exception(f"[TickAligner] Error in callback: {e}")
     
     async def flush(self) -> List[AlignedTickWindow]:
         """

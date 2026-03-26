@@ -1657,21 +1657,8 @@ async def websocket_semantic(websocket: WebSocket, symbol: str):
 
                 await websocket.send_json(analysis)
 
-                # Wait 2 seconds or handle client message
-                try:
-                    message = await asyncio.wait_for(
-                        websocket.receive_text(),
-                        timeout=2.0,
-                    )
-                    import json
-                    try:
-                        data = json.loads(message)
-                        if data.get("type") == "ping":
-                            await websocket.send_json({"type": "pong"})
-                    except json.JSONDecodeError:
-                        pass
-                except asyncio.TimeoutError:
-                    pass
+                # Wait 2 seconds before the next evaluation
+                await asyncio.sleep(2.0)
 
             except WebSocketDisconnect:
                 break
