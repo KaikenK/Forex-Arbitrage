@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo MT5 Market Data Engine - Server
+echo FX Arbitrage Research Engine
 echo ========================================
 echo.
 
@@ -15,12 +15,17 @@ echo Installing dependencies if needed...
 pip install -q -r requirements.txt
 
 echo.
-echo Starting FastAPI server...
+echo Starting FX Arbitrage Research Engine...
 echo Server will be available at: http://localhost:8000
+echo.
+echo Arbitrage Research Terminal: http://localhost:8000
+echo.
 echo WebSocket endpoints:
+echo   - ws://localhost:8000/ws/arbitrage
+echo   - ws://localhost:8000/ws/sources/{symbol}
+echo   - ws://localhost:8000/ws/semantic/{symbol}
 echo   - ws://localhost:8000/ws/ticks/{symbol}
 echo   - ws://localhost:8000/ws/candles/{symbol}/{interval}
-echo   - ws://localhost:8000/ws/market/{symbol}
 echo.
 echo Press Ctrl+C to stop
 echo.

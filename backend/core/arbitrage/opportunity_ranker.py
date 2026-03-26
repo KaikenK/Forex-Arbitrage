@@ -415,7 +415,7 @@ class OpportunityRanker:
         
         # 1. Profitability (0-100)
         profit_pips = max(0, opp.estimated_profit_pips)
-        profit_score = min(100, profit_pips * 20)  # 5 pips = 100
+        profit_score = min(100, profit_pips * 0.33)  # ~300 pips = 100
         scores[RankingDimension.PROFITABILITY] = profit_score
         breakdown.append(f"Profit: {profit_pips:.2f} pips → {profit_score:.0f}/100")
         
@@ -524,9 +524,9 @@ class OpportunityRanker:
         """
         scores = {}
         
-        # Profitability: 0-10 pips maps to 0-100
+        # Profitability: 0-300 pips maps to 0-100
         profit_pips = max(0, opp.estimated_profit_pips)
-        scores[RankingDimension.PROFITABILITY] = min(100, profit_pips * 10)
+        scores[RankingDimension.PROFITABILITY] = min(100, profit_pips * 0.33)
         
         # Latency Risk: Lower is better (0-200ms maps to 100-0)
         latency = opp.latency_risk_ms

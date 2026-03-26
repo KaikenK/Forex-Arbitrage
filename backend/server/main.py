@@ -573,16 +573,11 @@ if FRONTEND_DIR.exists():
 
 @app.get("/")
 async def root():
-    """Serve the main frontend dashboard."""
-    # In research mode, prefer research dashboard
-    if is_synthetic_mode():
-        research_file = FRONTEND_DIR / "research_dashboard.html"
-        if research_file.exists():
-            return FileResponse(str(research_file))
-    
-    index_file = FRONTEND_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
+    """Serve the Arbitrage Research terminal."""
+    # Serve the Arbitrage Research dashboard
+    research_file = FRONTEND_DIR / "arbitrage_research.html"
+    if research_file.exists():
+        return FileResponse(str(research_file))
     
     # Fallback to API info
     endpoints = {
@@ -1678,6 +1673,8 @@ async def websocket_semantic(websocket: WebSocket, symbol: str):
                 except asyncio.TimeoutError:
                     pass
 
+            except WebSocketDisconnect:
+                break
             except Exception as e:
                 logger.warning(f"Semantic WS error for {symbol}: {e}")
                 break

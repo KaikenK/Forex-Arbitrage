@@ -502,16 +502,20 @@ class MultiSourceStreamer:
         Callback for when a tick alignment window is complete.
         
         Full institutional pipeline:
-        1. Detect arbitrage opportunities
-        2. Track persistence for each opportunity
-        3. Assess execution feasibility
-        4. Rank with institutional scoring
-        5. Broadcast best opportunity
+        1. Update tracker state
+        2. Detect arbitrage opportunities
+        3. Track persistence for each opportunity
+        4. Assess execution feasibility
+        5. Rank with institutional scoring
+        6. Broadcast best opportunity
         
         Args:
             window: The aligned window
         """
-        # Step 1: Detect arbitrage opportunities
+        # Step 1: Update tracker state (prevents TTL freezing)
+        self._opportunity_tracker.tick()
+        
+        # Step 2: Detect arbitrage opportunities
         opportunities = self._arbitrage_engine.detect(window)
         
         if not opportunities:

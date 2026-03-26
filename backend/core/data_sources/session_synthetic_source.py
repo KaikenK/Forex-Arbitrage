@@ -74,8 +74,20 @@ class SharedReferencePrice:
         if self._initialized:
             return
             
-        self._price = USDINR_BASE_PRICE
-        self._base_price = USDINR_BASE_PRICE
+        # Fetch live USD/INR rate from Frankfurter API
+        live_rate = USDINR_BASE_PRICE
+        try:
+            import urllib.request, json
+            req = urllib.request.Request("https://api.frankfurter.dev/v1/latest?base=USD&symbols=INR", headers={'User-Agent': 'Mozilla/5.0'})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read())
+            live_rate = data.get("rates", {}).get("INR", USDINR_BASE_PRICE)
+            logger.info(f"Live USD/INR rate fetched from api.frankfurter.dev: {live_rate}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch live USD/INR rate, falling back to config base price {USDINR_BASE_PRICE}: {e}")
+
+        self._price = live_rate
+        self._base_price = live_rate
         self._last_update_ms = 0
         self._price_lock = threading.Lock()
         self._rng = random.Random(SYNTHETIC_GENERATION_CONFIG.random_seed)

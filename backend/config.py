@@ -285,23 +285,23 @@ class SyntheticGenerationConfig:
     """
     # Tick generation rate (milliseconds between ticks)
     # Bloomberg/Reuters FX terminals typically update 2-4 times per second
-    tick_interval_ms: int = 250  # 4 ticks per second (realistic)
+    tick_interval_ms: int = 50  # Much faster for demo/research feeling (20 ticks/sec)
     
     # Random seed for reproducibility (None for random behavior)
     random_seed: Optional[int] = 42
     
     # Reference price update frequency (how often base price drifts)
-    reference_update_interval_ms: int = 1000  # Drift every second
+    reference_update_interval_ms: int = 250  # Drift every 250ms
     
     # Maximum divergence from reference (in pips) - keep prices realistic
     max_divergence_pips: float = 2.0  # Tighter bound for realistic prices
     
     # Arbitrage opportunity injection rate (probability per tick)
     # Lower = more realistic, opportunities are rare in real markets
-    arbitrage_injection_rate: float = 0.05  # 5% chance - realistic rarity
+    arbitrage_injection_rate: float = 0.20  # 20% chance for much faster demo
     
     # Spread anomaly rate (probability of wider spread)
-    spread_anomaly_rate: float = 0.08
+    spread_anomaly_rate: float = 0.15
 
 
 SYNTHETIC_GENERATION_CONFIG = SyntheticGenerationConfig()

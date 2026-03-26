@@ -312,7 +312,7 @@ class ArbitrageEngine:
                     mid_diff = abs(tick_a.mid - tick_b.mid)
                     
                     # If mid prices differ significantly, there might be latency arb
-                    pip_value = 0.01 if "JPY" in window.symbol else 0.0001
+                    pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
                     mid_diff_pips = mid_diff / pip_value
                     
                     if mid_diff_pips >= 0.5:  # At least 0.5 pip difference
@@ -339,7 +339,7 @@ class ArbitrageEngine:
         """Create a cross-source arbitrage opportunity."""
         # Calculate profit
         profit = sell_tick.bid - buy_tick.ask
-        pip_value = 0.01 if "JPY" in window.symbol else 0.0001
+        pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
         profit_pips = profit / pip_value
         profit_pct = profit / buy_tick.ask
         
@@ -401,7 +401,7 @@ class ArbitrageEngine:
             buy_source, sell_source = source_a, source_b
             buy_tick, sell_tick = tick_a, tick_b
         
-        pip_value = 0.01 if "JPY" in window.symbol else 0.0001
+        pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
         
         # Estimated profit is the mid difference minus likely spread costs
         avg_spread = (tick_a.spread + tick_b.spread) / 2
@@ -478,7 +478,7 @@ class ArbitrageEngine:
         min_spread = min(spreads)
         spread_variance = max_spread - min_spread
         
-        pip_value = 0.01 if "JPY" in symbol else 0.0001
+        pip_value = 0.01 if "JPY" in symbol or "INR" in symbol else 0.0001
         spread_variance_pips = spread_variance / pip_value
         
         # Track spreads for this session

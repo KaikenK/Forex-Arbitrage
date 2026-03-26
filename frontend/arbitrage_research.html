@@ -235,10 +235,10 @@ body{font-family:var(--font-ui);background:var(--bg-base);color:var(--text-prima
                 <span class="panel-title">Confidence & Arbitrage Detection</span>
             </div>
             <div class="panel-body">
-                <!-- Confidence Score -->
+                <!-- Top Rank Score -->
                 <div class="confidence-section" id="confSection">
                     <div class="confidence-row">
-                        <span style="font-size:11px;font-weight:600;color:var(--text-secondary);">Composite Confidence</span>
+                        <span style="font-size:11px;font-weight:600;color:var(--text-secondary);">Top Rank Score</span>
                         <span id="confValue" style="font-family:var(--font-data);font-size:14px;font-weight:700;color:var(--accent-blue);">--</span>
                     </div>
                     <div class="confidence-bar-wrap"><div class="confidence-bar" id="confBar" style="width:0%;background:var(--accent-blue);"></div></div>
@@ -329,10 +329,10 @@ const S = {
     totalProfit:0,
     totalCount:0,
     metrics:{ticks:0,opportunities:0,spreads:[]},
-    // Per-session candlestick data
-    candles:{tokyo:[],london:[],newyork:[]},
+    // Per-session candlestick data (dual series)
+    candles:{tokyo:{bg:[],rt:[]},london:{bg:[],rt:[]},newyork:{bg:[],rt:[]}},
     charts:{tokyo:null,london:null,newyork:null},
-    series:{tokyo:null,london:null,newyork:null},
+    series:{tokyo:{bg:null,rt:null},london:{bg:null,rt:null},newyork:{bg:null,rt:null}},
     lastCandleTime:{tokyo:0,london:0,newyork:0},
 };
 
@@ -343,7 +343,7 @@ function initCharts(){
     ['tokyo','london','newyork'].forEach(sess=>{
         const el=document.getElementById('chart-'+sess);
         if(!el||S.charts[sess])return;
-        const colors={tokyo:'#f87171',london:'#60a5fa',newyork:'#34d399'};
+        const colors={tokyo:'#f87171',london:'#60a5fa',newyork:'#34d399',bg:'#fb923c',rt:'#22d3ee'};
         const chart=LightweightCharts.createChart(el,{
             layout:{background:{type:'solid',color:'#0e1018'},textColor:'#505872',fontSize:9},
             grid:{vertLines:{visible:false},horzLines:{color:'#1e2235'}},
@@ -352,23 +352,29 @@ function initCharts(){
             crosshair:{mode:LightweightCharts.CrosshairMode.Magnet,vertLine:{color:'#505872',width:1,style:2},horzLine:{color:'#505872',width:1,style:2}},
             width:el.clientWidth,height:el.clientHeight||110,
         });
-        const series=chart.addCandlestickSeries({
-            upColor:colors[sess],downColor:'#ef4444',
-            wickUpColor:colors[sess],wickDownColor:'#ef4444',
+        const sBG=chart.addCandlestickSeries({
+            upColor:colors.bg,downColor:colors.bg,
+            wickUpColor:colors.bg,wickDownColor:colors.bg,
+            borderVisible:false,
+            priceFormat:{type:'price',precision:4,minMove:0.0001},
+        });
+        const sRT=chart.addCandlestickSeries({
+            upColor:colors.rt,downColor:colors.rt,
+            wickUpColor:colors.rt,wickDownColor:colors.rt,
             borderVisible:false,
             priceFormat:{type:'price',precision:4,minMove:0.0001},
         });
         S.charts[sess]=chart;
-        S.series[sess]=series;
+        S.series[sess]={bg:sBG, rt:sRT};
         if(typeof ResizeObserver!=='undefined'){
             new ResizeObserver(()=>{if(el.clientWidth>0)chart.applyOptions({width:el.clientWidth,height:el.clientHeight||110});}).observe(el);
         }
     });
 }
 
-function pushCandle(sess,mid){
+function pushCandle(sess,prv,mid){
     const nowSec=Math.floor(Date.now()/1000);
-    const candles=S.candles[sess];
+    const candles=S.candles[sess][prv];
     const last=candles.length?candles[candles.length-1]:null;
     if(last&&last.time===nowSec){
         last.high=Math.max(last.high,mid);
@@ -378,10 +384,10 @@ function pushCandle(sess,mid){
         candles.push({time:nowSec,open:mid,high:mid,low:mid,close:mid});
         if(candles.length>300)candles.shift();
     }
-    if(S.series[sess]){
+    if(S.series[sess]&&S.series[sess][prv]){
         try{
             const c=candles[candles.length-1];
-            S.series[sess].update({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
+            S.series[sess][prv].update({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
         }catch(e){}
     }
 }
@@ -445,8 +451,9 @@ function handleOpp(data){
     S.history.unshift(entry);
     if(S.history.length>50)S.history.pop();
 
-    // Update confidence
-    const raw=data.composite_score||0;
+    // Update confidence to align with the highest ranked opportunity in history
+    const highestScore = S.history.length > 0 ? Math.max(...S.history.map(h => h.score || 0)) : (data.composite_score || 0);
+    const raw = highestScore;
     const sem=S.lastSemanticAdj||0;
     const final_=raw*(1+sem/100);
     document.getElementById('rawScore').textContent='Raw: '+raw.toFixed(1);
@@ -532,8 +539,11 @@ function renderSessions(data){
             driftEl.style.color=drift>0?'var(--accent-green)':drift<0?'var(--accent-red)':'var(--text-secondary)';
         }
 
-        // Push candlestick data
-        pushCandle(sess,sessMid);
+        // Push candlestick data for both providers
+        list.forEach(s => {
+            if(s.source_id.includes('bloomberg')) pushCandle(sess, 'bg', s.mid);
+            if(s.source_id.includes('reuters')) pushCandle(sess, 'rt', s.mid);
+        });
     }
 
     // Update spread metric
@@ -569,12 +579,20 @@ function renderOppList(){
         const ex=o.execution||{};
         const exV=(ex.verdict||'RISKY');
         const exBadge=exV==='VIABLE'?'✅':exV==='UNLIKELY'?'❌':'⚠️';
+        
+        let ttlHtml = '';
+        if (p.duration_ms !== undefined) {
+            const duration = p.duration_ms || 0;
+            const ttlColor = duration > 300 ? 'var(--accent-green)' : (duration >= 50 ? 'var(--accent-amber)' : 'var(--accent-red)');
+            ttlHtml = `<span style="font-size:10px;font-family:var(--font-data);color:${ttlColor};margin-left:8px;padding:2px 4px;border-radius:3px;background:rgba(255,255,255,0.05);">TTL: ${duration}ms</span>`;
+        }
 
         return `<div class="opp-card ${i===0?'active':''}">
             <div class="opp-header">
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div style="display:flex;align-items:center;">
                     <span class="opp-type ${type}">${type.replace('_',' ')}</span>
-                    <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);">${time}</span>
+                    <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);margin-left:8px;">${time}</span>
+                    ${ttlHtml}
                 </div>
                 <div class="status-icons">
                     <span class="status-icon">${pBadge}<span class="tip">${pClass}${p.duration_ms?' ('+p.duration_ms+'ms)':''}</span></span>
@@ -605,24 +623,34 @@ function renderExecList(){
         const sellSession=extractSession(o.sell_source||'');
         const buyProvider=extractProvider(o.buy_source||'');
         const sellProvider=extractProvider(o.sell_source||'');
+        const buyProviderBadge = buyProvider==='Bloomberg'?'background:rgba(251,146,60,0.15);color:var(--provider-bloomberg);':'background:rgba(34,211,238,0.15);color:var(--provider-reuters);';
+        const sellProviderBadge = sellProvider==='Bloomberg'?'background:rgba(251,146,60,0.15);color:var(--provider-bloomberg);':'background:rgba(34,211,238,0.15);color:var(--provider-reuters);';
+
+        const p = o.persistence || {};
+        let ttlHtml = '';
+        if (p.duration_ms !== undefined) {
+            const duration = p.duration_ms || 0;
+            const ttlColor = duration > 300 ? 'var(--accent-green)' : (duration >= 50 ? 'var(--accent-amber)' : 'var(--accent-red)');
+            ttlHtml = `<span style="color:${ttlColor};margin-left:6px;font-weight:600;">TTL: ${duration}ms</span>`;
+        }
 
         return `<div class="exec-card ${i===0?'':'neutral'}">
             <div class="exec-header">
                 <span class="exec-rank" style="${i>0?'background:var(--accent-blue);':''}">RANK #${i+1}</span>
                 <span class="exec-profit">+${profit} pips</span>
             </div>
-            <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);margin-bottom:4px;">Score: ${score} | ${(o.type||'cross_source').replace('_',' ').toUpperCase()}</div>
+            <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);margin-bottom:4px;">Score: ${score} | ${(o.type||'cross_source').replace('_',' ').toUpperCase()} ${ttlHtml}</div>
             <div class="exec-route">
                 <div class="exec-side buy">
                     <div class="side-label">BUY FROM</div>
                     <div class="side-value">${buySession}</div>
-                    <div style="font-size:9px;color:var(--text-muted);">${buyProvider}</div>
+                    <div style="font-size:9px;padding:1px 4px;border-radius:3px;display:inline-block;margin-top:2px;${buyProviderBadge}">${buyProvider}</div>
                 </div>
                 <div class="arrow">→</div>
                 <div class="exec-side sell">
                     <div class="side-label">SELL TO</div>
                     <div class="side-value">${sellSession}</div>
-                    <div style="font-size:9px;color:var(--text-muted);">${sellProvider}</div>
+                    <div style="font-size:9px;padding:1px 4px;border-radius:3px;display:inline-block;margin-top:2px;${sellProviderBadge}">${sellProvider}</div>
                 </div>
             </div>
         </div>`;
