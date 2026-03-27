@@ -394,6 +394,8 @@ class OpportunityRanker:
     def _make_opportunity_key(self, opp: ArbitrageOpportunity) -> str:
         """Create unique key for opportunity."""
         symbols = "|".join(sorted(opp.symbols))
+        if opp.type.value == "session_inefficiency":
+            return f"{symbols}|{opp.session}|SESSION_INEFFICIENCY"
         return f"{symbols}|{opp.buy_source}|{opp.sell_source}|{opp.type.value}"
     
     def _calculate_institutional_scores(
