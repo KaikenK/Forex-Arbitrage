@@ -125,10 +125,10 @@ class RankingConfig:
         session_weights: Institutional session importance (London/NY > Tokyo)
     """
     weights: Dict[RankingDimension, float] = field(default_factory=lambda: {
-        RankingDimension.PROFITABILITY: 0.25,
-        RankingDimension.PERSISTENCE: 0.25,
+        RankingDimension.PROFITABILITY: 0.40,
+        RankingDimension.PERSISTENCE: 0.20,
         RankingDimension.EXECUTION_FEASIBILITY: 0.20,
-        RankingDimension.SESSION_WEIGHT: 0.15,
+        RankingDimension.SESSION_WEIGHT: 0.05,
         RankingDimension.CONFIDENCE: 0.10,
         RankingDimension.LATENCY_RISK: 0.05,
     })
@@ -417,7 +417,7 @@ class OpportunityRanker:
         
         # 1. Profitability (0-100)
         profit_pips = max(0, opp.estimated_profit_pips)
-        profit_score = min(100, profit_pips * 0.33)  # ~300 pips = 100
+        profit_score = min(100, profit_pips * 20.0)  # ~5 pips = 100
         scores[RankingDimension.PROFITABILITY] = profit_score
         breakdown.append(f"Profit: {profit_pips:.2f} pips → {profit_score:.0f}/100")
         
