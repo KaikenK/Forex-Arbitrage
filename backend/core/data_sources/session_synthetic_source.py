@@ -435,7 +435,8 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         arbitrage_bonus = 0.0
         if self._rng.random() < SYNTHETIC_GENERATION_CONFIG.arbitrage_injection_rate:
             # Create a temporary price divergence
-            arbitrage_bonus = self._rng.choice([-1, 1]) * self._rng.uniform(0.5, 2.0) * pip_value
+            # INCREASED from 0.5-2.0 to 3.0-5.0 to guarantee cross-source opportunities
+            arbitrage_bonus = self._rng.choice([-1, 1]) * self._rng.uniform(3.0, 5.0) * pip_value
         
         final_mid = smoothed_price + arbitrage_bonus
         

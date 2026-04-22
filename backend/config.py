@@ -253,13 +253,13 @@ class ArbitrageResearchConfig:
     Tuned for detecting both cross-provider and cross-session opportunities.
     """
     # Minimum profit thresholds (in pips) - higher = fewer opportunities
-    min_profit_pips: float = 0.5  # Realistic: need at least 0.5 pips profit
+    min_profit_pips: float = 0.0  # Debugging: was 0.5
     
     # Confidence thresholds - higher = more selective
-    min_confidence: float = 0.3  # Require 30% confidence minimum
+    min_confidence: float = 0.0  # Debugging: was 0.3
     
     # Time alignment
-    alignment_window_ms: int = 50  # Wider window for synthetic data
+    alignment_window_ms: int = 200  # Wider window for synthetic data
     
     # Cross-provider detection
     enable_cross_provider: bool = True

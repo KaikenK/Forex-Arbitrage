@@ -441,6 +441,7 @@ class WebSocketManager:
         from backend.core.redis_client import redis_client
         
         async def handle_scored_opp(msg: Dict[str, Any]):
+            print(f"WS Manager received scored opp!", flush=True)
             await self.broadcast_arbitrage(msg)
             
         async def handle_orderbook(msg: Dict[str, Any]):

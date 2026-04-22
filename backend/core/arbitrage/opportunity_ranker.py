@@ -132,7 +132,7 @@ class RankingConfig:
         RankingDimension.CONFIDENCE: 0.10,
         RankingDimension.LATENCY_RISK: 0.05,
     })
-    min_composite_score: float = 30.0
+    min_composite_score: float = 0.0
     max_results: int = 50
     persistence_window_ms: int = 5000  # 5 seconds
     

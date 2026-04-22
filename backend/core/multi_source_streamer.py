@@ -523,8 +523,10 @@ class MultiSourceStreamer:
         opportunities = self._arbitrage_engine.detect(window)
         
         if not opportunities:
+            # logger.debug("No opportunities detected in window.")
             return
             
+        logger.info(f"Detected {len(opportunities)} arbitrage opportunities!")
         self._arbitrage_opportunities_detected += len(opportunities)
         
         # Step 3: Publish raw opportunities to Redis for SemanticEngine to score

@@ -22,23 +22,25 @@ class RedisClient:
             cls._instance._is_connected = False
             cls._instance._host = os.environ.get("REDIS_HOST", "localhost")
             cls._instance._port = int(os.environ.get("REDIS_PORT", 6379))
+            cls._instance._connect_lock = asyncio.Lock()
         return cls._instance
 
     async def connect(self):
-        if not self._is_connected:
-            try:
-                self._client = redis.Redis(
-                    host=self._host, 
-                    port=self._port, 
-                    decode_responses=True
-                )
-                await self._client.ping()
-                self._pubsub = self._client.pubsub()
-                self._is_connected = True
-                logger.info(f"Connected to Redis at {self._host}:{self._port}")
-            except Exception as e:
-                logger.error(f"Failed to connect to Redis: {e}")
-                raise
+        async with self._connect_lock:
+            if not self._is_connected:
+                try:
+                    self._client = redis.Redis(
+                        host=self._host, 
+                        port=self._port, 
+                        decode_responses=True
+                    )
+                    await self._client.ping()
+                    self._pubsub = self._client.pubsub()
+                    self._is_connected = True
+                    logger.info(f"Connected to Redis at {self._host}:{self._port}")
+                except Exception as e:
+                    logger.error(f"Failed to connect to Redis: {e}")
+                    raise
 
     async def close(self):
         if self._is_connected:
@@ -78,6 +80,7 @@ class RedisClient:
                     if channel in channel_callbacks:
                         try:
                             data = json.loads(message["data"])
+                            print(f"redis_client received message for {channel}!", flush=True)
                             cb = channel_callbacks[channel]
                             if asyncio.iscoroutinefunction(cb):
                                 await cb(data)
