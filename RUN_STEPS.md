@@ -216,27 +216,29 @@ marketWs.onmessage = (event) => {
 
 ---
 
-## Step 7: Use with Frontend
+## Step 7: Launch the Next.js Dashboard
 
-### Option 1: Open the Arbitrage Research Terminal
+The system features a modern, real-time React/Next.js dashboard (`arbex-web`) for monitoring the arbitrage engine.
 
-Open in your browser:
+1. Open a new terminal window
+2. Navigate to the `arbex-web` directory
+3. Install dependencies and start the development server:
+
+```bash
+cd arbex-web
+npm install
+npm run dev
 ```
-http://localhost:8000/research
+
+4. Open in your browser:
+```
+http://localhost:3000
 ```
 
-This opens the Bloomberg-style 3-column Arbitrage Research terminal with:
-- Per-session candlestick charts (Tokyo/London/New York)
-- Real-time confidence scoring and arbitrage detection
-- Execution integration with ranked opportunities
-
-### Option 2: Custom Integration
-
-The `arbitrage_research.html` source code provides a reference implementation for:
-- WebSocket connection management (auto-reconnect)
-- Lightweight Charts candlestick rendering
-- Real-time opportunity card rendering
-- Status icon tooltips
+This opens the modern Bloomberg-style 3-column Arbitrage Research terminal with:
+- **Column 1**: Per-session candlestick charts (Tokyo/London/New York)
+- **Column 2**: Live Arbitrage Feed with animated reordering and persistence tracking
+- **Column 3**: Real-time Level 2 Market Depth and Top-5 Global Opportunity Leaderboard
 
 ---
 

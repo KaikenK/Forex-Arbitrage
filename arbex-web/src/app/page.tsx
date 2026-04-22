@@ -8,6 +8,7 @@ import { SessionChartGrid } from '@/components/dashboard/SessionChartGrid';
 import { ArbitrageFeed } from '@/components/dashboard/ArbitrageFeed';
 import { OrderbookFeed } from '@/components/dashboard/OrderbookFeed';
 import { GlobalRanking } from '@/components/dashboard/GlobalRanking';
+import { ExecutionPanel } from '@/components/dashboard/ExecutionPanel';
 
 export default function ArbexDashboard() {
   // Initialize the Buffered WebSocket Connection
@@ -85,6 +86,11 @@ export default function ArbexDashboard() {
                <OrderbookFeed />
             </div>
             <GlobalRanking />
+            <div className="border-t border-[#1e2235] my-2" />
+            <div className="shrink-0">
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-[#505872] mt-1 mb-2 pl-1">Target Semantic Execution</h3>
+              <ExecutionPanel />
+            </div>
           </div>
         </section>
       </main>

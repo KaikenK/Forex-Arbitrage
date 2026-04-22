@@ -538,13 +538,13 @@ The system automatically detects and tracks FX trading sessions:
 
 ## Dashboard
 
-### Arbitrage Research Terminal (`/research`)
-Bloomberg-style 3-column trading terminal for USD/INR cross-session arbitrage research:
+### Next.js Arbitrage Dashboard (`arbex-web`)
+A modern, Bloomberg-style 3-column trading terminal built with Next.js, React, Tailwind CSS, and Framer Motion for USD/INR cross-session arbitrage research:
 - **Column 1 — Market Sessions**: Per-session candlestick charts (Lightweight Charts), real-time Bid/Ask/Drift per provider (Bloomberg/Reuters × Tokyo/London/New York)
-- **Column 2 — Confidence & Detection**: Composite confidence scoring (Raw → Semantic Adj → Final), arbitrage opportunity cards with hoverable status icons, Semantic News Engine (WIP)
-- **Column 3 — Execution Integration**: Aggregated profit display, top-ranked opportunities by confidence, buy/sell routing with session/provider, risk decomposition
+- **Column 2 — Arbitrage Feed**: Live streaming feed of arbitrage opportunities with animated reordering, persistence tracking (flickering vs persistent), and composite confidence scoring.
+- **Column 3 — Market Depth & Execution**: Real-time Level 2 orderbook aggregated across all sources, a Global Opportunity Leaderboard highlighting the top 5 most profitable execution targets, and a Target Semantic Execution panel with latency and routing hypothesis.
 
-**Technologies**: Lightweight Charts v4.1.3, Motion One (animations), Inter + JetBrains Mono fonts
+**Technologies**: Next.js 14, React, Tailwind CSS, Framer Motion, Zustand (state management), Lightweight Charts, Lucide React.
 
 ## Adding Custom Data Sources
 
