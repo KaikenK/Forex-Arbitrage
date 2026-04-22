@@ -62,14 +62,17 @@ This installs:
 ### Option 1: Quick Start (Windows) - Easiest
 
 ```bash
-# Just double-click or run:
+# 1. Start the main trading server:
 run_server.bat
+
+# 2. Start the Semantic NLP Engine (Required for context risk/ranking):
+run_semantic.bat
 ```
 
-This script will:
-- ✅ Activate virtual environment automatically
+These scripts will automatically:
+- ✅ Activate the virtual environment
 - ✅ Install dependencies if needed
-- ✅ Start the server
+- ✅ Start the respective server/engine
 
 ### Option 2: Manual Start (Windows)
 
@@ -232,7 +235,7 @@ npm run dev
 
 4. Open in your browser:
 ```
-http://localhost:3000
+http://localhost:3001
 ```
 
 This opens the modern Bloomberg-style 3-column Arbitrage Research terminal with:
@@ -295,11 +298,18 @@ Edit `backend/server/main.py`:
 DEFAULT_INTERVALS = ["100ms", "500ms", "1s", "5s", "15s", "1m", "5m"]  # Add more
 ```
 
-### Use MT5 Login Credentials (Optional)
+### Configure MT5 & Supabase Authentication
 
-If you want to login programmatically instead of using existing session:
+The system uses Supabase to securely fetch your MetaTrader 5 credentials from a database.
 
-Edit `backend/server/main.py`:
+1. Create a `.env` file in the root directory (or `backend/` folder):
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_USER_ID=your_user_id
+```
+
+2. Alternatively, hardcode in `backend/server/main.py` (not recommended):
 ```python
 MT5_LOGIN = 12345678
 MT5_PASSWORD = "your_password"

@@ -5,15 +5,19 @@ Production-ready real-time market data streaming engine using MetaTrader 5, Fast
 ## 🚀 Quick Start
 
 ```bash
-# 1. Activate virtual environment
-.\venv\Scripts\Activate.ps1   # Windows PowerShell
-# or: source venv/bin/activate  # Mac/Linux
+# 1. Start the Core Trading Server & WebSockets
+.\run_server.bat
 
-# 2. Start the server
-uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
+# 2. Start the Semantic NLP Engine (Required for Context Risk/Ranking)
+.\run_semantic.bat
 
-# 3. Open the Arbitrage Research terminal
-# http://localhost:8000/research
+# 3. Start the Next.js Dashboard
+cd arbex-web
+npm install
+npm run dev
+
+# 4. Open the Arbitrage Research Terminal
+# http://localhost:3001 (or 3000 depending on terminal output)
 ```
 
 **Prerequisites:** MetaTrader 5 must be running and logged in.
@@ -30,7 +34,8 @@ uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### Arbitrage Detection Engine
 - ✅ **Multi-Source Streaming** - MT5, Synthetic, REST API, and Playback data sources
-- ✅ **Cross-Source Arbitrage** - Detect price discrepancies across data feeds
+- ✅ **Cross-Source Latency Arbitrage** - Detect price discrepancies across data feeds
+- ✅ **Triangular Arbitrage** - Native support for cyclic mispricings (e.g. USD/JPY → EUR/USD → EUR/JPY)
 - ✅ **Time-Aligned Windows** - 20ms micro-batching for fair comparison
 - ✅ **Opportunity Ranking** - Composite scoring with confidence levels
 - ✅ **Arbitrage Diagnostics** - Explains WHY opportunities exist or don't
@@ -80,11 +85,43 @@ uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
 │   └── server/
 │       ├── main.py                    # FastAPI app & startup
 │       └── websocket_routes.py        # WebSocket endpoints
-├── frontend/
-│   └── arbitrage_research.html        # Bloomberg-style Arbitrage Research terminal
-├── frontend_example/
-│   └── candle_dashboard.html          # Reference candlestick dashboard
-└── requirements.txt
+├── arbex-web/                   # v2.0 Next.js Dashboard (Frontend)
+│   ├── src/app/               # React pages and Next.js router
+│   ├── src/components/        # Dashboard UI components (Framer Motion, Tailwind)
+│   ├── src/hooks/             # useWebSocket.ts and other React hooks
+│   └── src/lib/               # Zustand state management (store.ts)
+├── backend/                   # FastAPI Backend Engine
+│   ├── core/
+│   │   ├── mt5_client.py              # MT5 connection & data access
+│   │   ├── tick_streamer.py           # Infinite tick streaming
+│   │   ├── bar_aggregator.py          # Tick-to-candle aggregation
+│   │   ├── multi_source_streamer.py   # Multi-source arbitrage streaming
+│   │   ├── interfaces/
+│   │   │   ├── data_source.py         # Abstract data source interface
+│   │   │   └── normalized_tick.py     # Normalized tick format
+│   │   ├── data_sources/
+│   │   │   ├── mt5_data_source.py     # MT5 data source plugin
+│   │   │   └── synthetic_data_source.py # Synthetic/simulated feed
+│   │   ├── arbitrage/
+│   │   │   ├── arbitrage_engine.py    # Core latency & triangular arbitrage detection
+│   │   │   ├── tick_aligner.py        # Time-aligned micro-batching
+│   │   │   └── opportunity_ranker.py  # Opportunity scoring
+│   │   ├── state/                     # v2.0 State Management
+│   │   │   ├── state_store.py         # Centralized state store
+│   │   │   ├── arbitrage_state_machine.py # State machine
+│   │   │   └── metrics.py             # EMA & stability metrics
+│   │   ├── execution/                 # v2.0 Execution Engine
+│   │   │   ├── execution_engine.py    # Central execution coordinator
+│   │   │   └── brokers.py             # Paper, MT5, REST brokers
+│   │   └── semantic/                  # v2.0 Semantic Context Engine
+│   │       ├── context_engine.py      # NLP-based risk scoring
+│   │       └── LLM integrations       # Real-time news/sentiment parsing
+│   ├── server/
+│   │   ├── main.py                    # FastAPI app & startup
+│   │   └── websocket_routes.py        # WebSocket endpoints
+│   └── supabase_client.py             # Supabase Auth for MT5 Credentials
+├── run_server.bat               # Start FastAPI Backend
+└── run_semantic.bat             # Start Semantic Context Engine
 ```
 
 ## Installation
@@ -110,9 +147,17 @@ uvicorn backend.server.main:app --host 0.0.0.0 --port 8000 --reload
    pip install -r requirements.txt
    ```
 
-3. **Configure MT5 (optional):**
+3. **Configure MT5 & Supabase:**
    
-   Edit `backend/server/main.py` to set MT5 connection details:
+   The system uses Supabase to securely manage MetaTrader 5 broker credentials so you don't have to hardcode them.
+   Create a `.env` file in the root `backend` directory (or the root folder) and add your Supabase credentials:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_USER_ID=your_user_id
+   ```
+   
+   Alternatively, edit `backend/server/main.py` to hardcode MT5 connection details (not recommended):
    ```python
    MT5_PATH = None  # Auto-detect, or set path like "C:/Program Files/MetaTrader 5/terminal64.exe"
    MT5_LOGIN = None  # Your account number
@@ -312,115 +357,41 @@ IDLE ──(profit detected)──► CANDIDATE ──(confirmed 100ms)──►
 
 ## Frontend Integration (Next.js)
 
-### JavaScript/TypeScript Example
+### React Hook Integration (`useWebSocket.ts`)
 
-```javascript
-// Connect to tick stream
-const ws = new WebSocket('ws://localhost:8000/ws/ticks/EURUSD');
-
-ws.onmessage = (event) => {
-  // Parse line-delimited JSON
-  const lines = event.data.split('\n').filter(line => line.trim());
-  
-  for (const line of lines) {
-    const tick = JSON.parse(line);
-    console.log('Tick:', tick);
-    // Update your chart/UI
-  }
-};
-
-ws.onerror = (error) => {
-  console.error('WebSocket error:', error);
-};
-
-ws.onclose = () => {
-  console.log('WebSocket closed');
-};
-```
-
-### React Hook Example
+The dashboard connects to the unified `ws://localhost:8000/ws/dashboard` endpoint and updates the global `Zustand` state.
 
 ```typescript
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { useArbexStore } from '@/lib/store';
 
-function useMT5Ticks(symbol: string) {
-  const [tick, setTick] = useState(null);
-  
+export function useWebSocket() {
+  const setConnected = useArbexStore((state) => state.setConnected);
+  const processDashboardMessage = useArbexStore((state) => state.processDashboardMessage);
+  const wsRef = useRef<WebSocket | null>(null);
+
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/ticks/${symbol}`);
+    const ws = new WebSocket('ws://localhost:8000/ws/dashboard');
+    wsRef.current = ws;
+
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
     
     ws.onmessage = (event) => {
-      const lines = event.data.split('\n').filter(line => line.trim());
-      if (lines.length > 0) {
-        const latestTick = JSON.parse(lines[lines.length - 1]);
-        setTick(latestTick);
+      const messages = event.data.split('\n').filter((line: string) => line.trim());
+      for (const line of messages) {
+        processDashboardMessage(JSON.parse(line));
       }
     };
-    
+
     return () => ws.close();
-  }, [symbol]);
-  
-  return tick;
+  }, [setConnected, processDashboardMessage]);
+
+  return wsRef;
 }
 ```
 
-### Candle Stream Example
 
-```javascript
-// Connect to candle stream
-const ws = new WebSocket('ws://localhost:8000/ws/candles/EURUSD/1s');
-
-ws.onmessage = (event) => {
-  const lines = event.data.split('\n').filter(line => line.trim());
-  
-  for (const line of lines) {
-    const candle = JSON.parse(line);
-    console.log('Candle:', candle);
-    // Update your chart
-    // candle.time, candle.open, candle.high, candle.low, candle.close
-  }
-};
-```
-
-## Comparing MT5 vs TradingView
-
-To compare MT5 data with TradingView:
-
-1. **Connect to MT5 stream:**
-   ```javascript
-   const mt5Ws = new WebSocket('ws://localhost:8000/ws/ticks/EURUSD');
-   ```
-
-2. **Connect to TradingView** (using your TradingView integration)
-
-3. **Compare in real-time:**
-   ```javascript
-   let mt5Price = null;
-   let tvPrice = null;
-   
-   mt5Ws.onmessage = (event) => {
-     const tick = JSON.parse(event.data);
-     mt5Price = (tick.bid + tick.ask) / 2;
-     comparePrices();
-   };
-   
-   // Your TradingView price handler
-   function onTradingViewPrice(price) {
-     tvPrice = price;
-     comparePrices();
-   }
-   
-   function comparePrices() {
-     if (mt5Price && tvPrice) {
-       const diff = Math.abs(mt5Price - tvPrice);
-       console.log(`MT5: ${mt5Price}, TV: ${tvPrice}, Diff: ${diff}`);
-       
-       if (diff > 0.00005) {
-         console.warn('Price discrepancy detected!');
-       }
-     }
-   }
-   ```
 
 ## Configuration
 
