@@ -80,6 +80,7 @@ interface ArbexState {
   updateMarketData: (data: any) => void;
   updateOrderbook: (data: OrderbookUpdate) => void;
   flushOpportunities: (opportunities: RankedOpportunity[], totalTicks: number, detectionRate: number) => void;
+  setMetrics: (totalTicks: number, detectionRate: number) => void;
 }
 
 export const useArbexStore = create<ArbexState>()(
@@ -121,6 +122,11 @@ export const useArbexStore = create<ArbexState>()(
     flushOpportunities: (opportunities, totalTicks, detectionRate) => set((state) => ({
       rankedOpportunities: opportunities,
       topCompositeScore: opportunities.length > 0 ? opportunities[0].composite_score : 0,
+      totalTicksLogged: totalTicks,
+      detectedRate: detectionRate
+    })),
+    
+    setMetrics: (totalTicks, detectionRate) => set((state) => ({
       totalTicksLogged: totalTicks,
       detectedRate: detectionRate
     }))

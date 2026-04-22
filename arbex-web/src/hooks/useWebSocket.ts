@@ -51,6 +51,11 @@ export function useWebSocket() {
           if (payload.type === 'orderbook' && payload.data) {
              // console.log("[Arbex] Received Orderbook Data:", payload.data.source);
              if (updateOrderbook) updateOrderbook(payload.data);
+          } else if (payload.type === 'stats' && payload.data) {
+             // Update ticks scanned
+             if (payload.data.ticks_processed) {
+               useArbexStore.getState().setMetrics(payload.data.ticks_processed, payload.data.detection_rate_pct || 0);
+             }
           }
         } catch (e) {}
       };

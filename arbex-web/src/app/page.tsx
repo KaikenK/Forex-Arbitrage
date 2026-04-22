@@ -6,8 +6,8 @@ import { useArbexStore } from '@/lib/store';
 import { TickerStrip } from '@/components/dashboard/TickerStrip';
 import { SessionChartGrid } from '@/components/dashboard/SessionChartGrid';
 import { ArbitrageFeed } from '@/components/dashboard/ArbitrageFeed';
-import { ExecutionPanel } from '@/components/dashboard/ExecutionPanel';
 import { OrderbookFeed } from '@/components/dashboard/OrderbookFeed';
+import { GlobalRanking } from '@/components/dashboard/GlobalRanking';
 
 export default function ArbexDashboard() {
   // Initialize the Buffered WebSocket Connection
@@ -75,7 +75,7 @@ export default function ArbexDashboard() {
           </div>
         </section>
 
-        {/* COL 3: Orderbook & Execution */}
+        {/* COL 3: Orderbook & Global Ranking */}
         <section className="bg-[#0e1018] flex flex-col overflow-hidden">
           <header className="bg-[#141620] px-3.5 py-2 border-b border-[#1e2235] flex justify-between items-center shrink-0">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[#505872]">Market Depth & Execution</span>
@@ -84,7 +84,7 @@ export default function ArbexDashboard() {
             <div className="shrink-0">
                <OrderbookFeed />
             </div>
-            <ExecutionPanel />
+            <GlobalRanking />
           </div>
         </section>
       </main>

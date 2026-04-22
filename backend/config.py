@@ -253,10 +253,10 @@ class ArbitrageResearchConfig:
     Tuned for detecting both cross-provider and cross-session opportunities.
     """
     # Minimum profit thresholds (in pips) - higher = fewer opportunities
-    min_profit_pips: float = 0.0  # Debugging: was 0.5
+    min_profit_pips: float = 3.0  # Increased to filter out ALL background noise!
     
     # Confidence thresholds - higher = more selective
-    min_confidence: float = 0.0  # Debugging: was 0.3
+    min_confidence: float = 0.3  # Restored to 0.3
     
     # Time alignment
     alignment_window_ms: int = 200  # Wider window for synthetic data
@@ -298,7 +298,7 @@ class SyntheticGenerationConfig:
     
     # Arbitrage opportunity injection rate (probability per tick)
     # Lower = more realistic, opportunities are rare in real markets
-    arbitrage_injection_rate: float = 0.20  # 20% chance for much faster demo
+    arbitrage_injection_rate: float = 0.0025  # ~1.5 opps/sec total
     
     # Spread anomaly rate (probability of wider spread)
     spread_anomaly_rate: float = 0.15

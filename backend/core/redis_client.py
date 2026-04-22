@@ -80,7 +80,6 @@ class RedisClient:
                     if channel in channel_callbacks:
                         try:
                             data = json.loads(message["data"])
-                            print(f"redis_client received message for {channel}!", flush=True)
                             cb = channel_callbacks[channel]
                             if asyncio.iscoroutinefunction(cb):
                                 await cb(data)

@@ -16,8 +16,9 @@ const getConfidenceColor = (score: number) => {
 const OpportunityCard = ({ rankObj }: { rankObj: RankedOpportunity }) => {
   const { opportunity, composite_score, rank, persistence_class, execution_verdict } = rankObj;
   
-  // Generating a deterministic key for framer motion re-ordering
-  const uniqueKey = `${opportunity.buy_source}-${opportunity.sell_source}-${opportunity.type}-${composite_score.toFixed(1)}`;
+  // Generating a deterministic, stable key for framer motion re-ordering.
+  // We MUST NOT include the score or profit in the key, otherwise it unmounts/remounts and causes UI glitches.
+  const uniqueKey = rankObj.id || `${opportunity.buy_source}-${opportunity.sell_source}-${opportunity.type}`;
 
   return (
     <motion.div
