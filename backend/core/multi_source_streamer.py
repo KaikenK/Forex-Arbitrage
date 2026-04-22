@@ -39,6 +39,9 @@ from backend.core.arbitrage.opportunity_ranker import (
     RankedOpportunity,
 )
 
+from backend.core.redis_client import redis_client
+import uuid
+import time
 # NEW: Import institutional components
 from backend.core.arbitrage.opportunity_tracker import (
     OpportunityTracker,
@@ -521,99 +524,22 @@ class MultiSourceStreamer:
         
         if not opportunities:
             return
+            
+        self._arbitrage_opportunities_detected += len(opportunities)
         
-        # Step 2: Track persistence for each opportunity
-        # Build a mapping from opportunity key to tracked data
-        tracked_by_key: Dict[str, TrackedOpportunity] = {}
-        persistence_data: Dict[str, Dict[str, Any]] = {}
-        
+        # Step 3: Publish raw opportunities to Redis for SemanticEngine to score
         for opp in opportunities:
-            tracked = self._opportunity_tracker.update(opp)
-            key = tracked.key
-            tracked_by_key[key] = tracked
-            
-            # Build persistence data dict for ranking
-            persistence_data[key] = {
-                "persistence_class": tracked.persistence_class.value,
-                "stability_score": tracked.stability_score,
-                "detection_count": tracked.detection_count,
-                "first_seen_ts": tracked.first_seen_ts,
-                "cumulative_duration_ms": tracked.cumulative_duration_ms,
+            event_id = str(uuid.uuid4())
+            raw_msg = {
+                "event_id": event_id,
+                "timestamp": time.time(),
+                "opportunity": opp.to_dict(),
+                "raw_score": opp.estimated_profit_pips
             }
-        
-        # Step 3: Assess execution feasibility for each
-        execution_assessments: Dict[str, ExecutionAssessment] = {}
-        execution_data: Dict[str, Dict[str, Any]] = {}
-        
-        for key, tracked in tracked_by_key.items():
-            assessment = self._execution_filter.assess(tracked)
-            execution_assessments[key] = assessment
+            # Fire and forget publish
+            asyncio.create_task(redis_client.publish("arbex.raw_opps", raw_msg))
             
-            # Build execution data dict for ranking
-            execution_data[key] = {
-                "verdict": assessment.execution_verdict.value,
-                "feasibility_score": assessment.execution_feasibility_score,
-                "expected_slippage_pips": assessment.expected_slippage_pips,
-                "verdict_reasons": assessment.verdict_reasons,
-            }
-        
-        # Step 4: Rank with institutional scoring (full context)
-        ranked = self._opportunity_ranker.rank_with_context(
-            opportunities=opportunities,
-            persistence_data=persistence_data,
-            execution_assessments=execution_data,
-        )
-        
-        # Only emit the BEST opportunity (rank #1)
-        if ranked:
-            best = ranked[0]  # Highest ranked opportunity
-            opp = best.opportunity
-            
-            # Get tracked opportunity by reconstructing key (matches tracker's _make_key)
-            symbols = "|".join(sorted(opp.symbols))
-            if opp.type == ArbitrageType.SESSION_INEFFICIENCY:
-                key = f"{symbols}|{opp.session}|SESSION_INEFFICIENCY"
-            else:
-                key = f"{symbols}|{opp.buy_source}|{opp.sell_source}|{opp.type.value}"
-            tracked = tracked_by_key.get(key)
-            assessment = execution_assessments.get(key)
-            
-            self._arbitrage_opportunities_detected += 1
-            
-            # Build persistence badge
-            persistence_badge = "⚡"  # Default ephemeral
-            persistence_class_value = "ephemeral"
-            persistence_ms = 0
-            if tracked:
-                persistence_class_value = tracked.persistence_class.value
-                persistence_ms = tracked.cumulative_duration_ms
-                if tracked.persistence_class == PersistenceClass.PERSISTENT:
-                    persistence_badge = "🧱"
-                elif tracked.persistence_class == PersistenceClass.FLICKERING:
-                    persistence_badge = "🔄"
-            
-            # Build execution badge
-            execution_badge = "⚠️"  # Default risky
-            execution_verdict = "risky"
-            if assessment:
-                execution_verdict = assessment.execution_verdict.value
-                if assessment.execution_verdict == ExecutionVerdict.VIABLE:
-                    execution_badge = "✅"
-                elif assessment.execution_verdict == ExecutionVerdict.UNLIKELY:
-                    execution_badge = "❌"
-            
-            # Enhanced log with institutional context
-            logger.info(
-                f"[ARBITRAGE BEST] {persistence_badge}{execution_badge} {opp.type.value}: {opp.symbols} | "
-                f"Profit: {opp.estimated_profit_pips:.2f} pips | "
-                f"Confidence: {opp.confidence_score:.2f} | "
-                f"Score: {best.composite_score:.1f} | "
-                f"Persistence: {persistence_class_value} ({persistence_ms}ms) | "
-                f"Execution: {execution_verdict} | "
-                f"(1 of {len(ranked)} opportunities)"
-            )
-            
-            # Call registered callbacks with best opportunity only
+            # Call registered callbacks with raw opportunity (for backend plugins)
             for callback in self._arbitrage_callbacks:
                 try:
                     result = callback(opp)
@@ -621,40 +547,6 @@ class MultiSourceStreamer:
                         await result
                 except Exception as e:
                     logger.error(f"Error in arbitrage callback: {e}")
-            
-            # Broadcast best opportunity via WebSocket with full institutional context
-            if hasattr(self.ws_manager, 'broadcast_arbitrage'):
-                broadcast_data = best.to_dict()
-                broadcast_data['total_opportunities'] = len(ranked)
-                broadcast_data['is_best'] = True
-                
-                # Add persistence tracking data
-                if tracked:
-                    broadcast_data['persistence'] = {
-                        'class': tracked.persistence_class.value,
-                        'duration_ms': tracked.cumulative_duration_ms,
-                        'detection_count': tracked.detection_count,
-                        'stability_score': tracked.stability_score,
-                        'first_seen_ts': tracked.first_seen_ts,
-                        'badge': persistence_badge,
-                    }
-                
-                # Add execution assessment data
-                if assessment:
-                    broadcast_data['execution'] = {
-                        'verdict': assessment.execution_verdict.value,
-                        'feasibility_score': assessment.execution_feasibility_score,
-                        'expected_slippage_pips': assessment.expected_slippage_pips,
-                        'verdict_reasons': assessment.verdict_reasons,
-                        'net_expected_profit_pips': assessment.net_expected_profit_pips,
-                        'badge': execution_badge,
-                    }
-                
-                # Add ranking reason if available
-                if hasattr(best, 'ranking_reason') and best.ranking_reason:
-                    broadcast_data['ranking_reason'] = best.ranking_reason
-                
-                await self.ws_manager.broadcast_arbitrage(broadcast_data)
     
     def get_sources(self) -> Dict[str, Dict[str, Any]]:
         """Get info about all registered sources."""

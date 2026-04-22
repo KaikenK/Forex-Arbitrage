@@ -436,6 +436,33 @@ class WebSocketManager:
             "last_opportunity_time": self.arbitrage_stats["last_opportunity_time"],
             "buffer_size": len(self.recent_arbitrage),
         }
+    async def _redis_listener(self):
+        """Background task to listen to Redis channels and broadcast."""
+        from backend.core.redis_client import redis_client
+        
+        async def handle_scored_opp(msg: Dict[str, Any]):
+            await self.broadcast_arbitrage(msg)
+            
+        async def handle_orderbook(msg: Dict[str, Any]):
+            # Broadcast to unified dashboard directly
+            if "dashboard:unified" in self.connections:
+                message = json.dumps({"type": "orderbook", "data": msg}) + "\n"
+                await self._broadcast_to_channel("dashboard:unified", message)
+            
+        try:
+            await redis_client.subscribe_many({
+                "arbex.scored_opps": handle_scored_opp,
+                "arbex.orderbooks": handle_orderbook
+            })
+            # Keep listener alive
+            while True:
+                await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"Redis listener failed: {e}")
+
+    def start_background_tasks(self):
+        """Start all background tasks for WebSocketManager."""
+        asyncio.create_task(self._redis_listener())
 
 
 # Global WebSocket manager instance

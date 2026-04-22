@@ -94,6 +94,13 @@ from backend.core.state.control_state import (
     ControlStateManager,
 )
 
+# NEW: Orderbook Streaming Service
+from backend.core.streaming.service import OrderbookService
+from backend.core.streaming.adapters.synthetic import SyntheticStreamAdapter
+from backend.core.streaming.adapters.tradingview import TradingViewStreamAdapter
+from backend.core.streaming.adapters.mt5 import MT5StreamAdapter
+from backend.core.redis_client import redis_client
+
 # NEW: Experimental metrics collection for research output
 from backend.core.analytics.metrics_collector import MetricsCollector
 
@@ -135,10 +142,26 @@ DEFAULT_INTERVALS = ["100ms", "500ms", "1s", "5s", "15s", "1m"]
 # ============================================================================
 # MT5 CONFIGURATION (Only used in LIVE_MT5 mode)
 # ============================================================================
+# Default fallback credentials
 MT5_LOGIN = 102447207
 MT5_PASSWORD = "6q*aOaQj"
 MT5_SERVER = "MetaQuotes-Demo"
 MT5_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
+# Try to load securely from Supabase
+SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+SUPABASE_USER_ID = os.environ.get("SUPABASE_USER_ID") # Set this when running locally
+
+if SUPABASE_URL and SUPABASE_KEY and SUPABASE_USER_ID:
+    from backend.core.supabase_client import supabase_db
+    supabase_db.initialize(SUPABASE_URL, SUPABASE_KEY)
+    creds = supabase_db.get_mt5_credentials(SUPABASE_USER_ID)
+    if creds:
+        MT5_LOGIN = int(creds.get("mt5_login", MT5_LOGIN))
+        MT5_PASSWORD = creds.get("mt5_password", MT5_PASSWORD)
+        MT5_SERVER = creds.get("mt5_server", MT5_SERVER)
+        logger.info(f"Loaded secure MT5 credentials from Supabase for user {SUPABASE_USER_ID}")
 
 # ============================================================================
 # ARBITRAGE ENGINE CONFIGURATION
@@ -177,6 +200,9 @@ semantic_context_engine: Optional[SemanticContextEngine] = None
 
 # v3.0: Experimental metrics collection
 metrics_collector: Optional[MetricsCollector] = None
+
+# v4.0: Orderbook Streaming Service
+orderbook_service: Optional[OrderbookService] = None
 
 
 
@@ -438,6 +464,15 @@ async def lifespan(app: FastAPI):
     metrics_collector = MetricsCollector()
     logger.info("Initialized MetricsCollector for experimental output")
     
+    # Initialize OrderbookService
+    global orderbook_service
+    orderbook_service = OrderbookService(redis_client=redis_client)
+    orderbook_service.register_adapter(SyntheticStreamAdapter())
+    orderbook_service.register_adapter(TradingViewStreamAdapter())
+    orderbook_service.register_adapter(MT5StreamAdapter())
+    await orderbook_service.start()
+    logger.info("Initialized OrderbookService with modular adapters")
+    
     logger.info("=" * 60)
     logger.info("Server startup complete")
     if is_synthetic_mode():
@@ -455,6 +490,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"  - ws://localhost:8000/ws/sources/{{symbol}}")
     logger.info(f"  - ws://localhost:8000/ws/dashboard (unified dashboard)")
     logger.info("-" * 60)
+    
+    # Start WebSocketManager background tasks (Redis listeners)
+    ws_manager.start_background_tasks()
     
     # Start background task for periodic state updates
     state_broadcast_task = None
@@ -492,6 +530,11 @@ async def lifespan(app: FastAPI):
     if execution_engine:
         await execution_engine.stop()
         logger.info("Stopped ExecutionEngine")
+        
+    # Stop orderbook service
+    if orderbook_service:
+        await orderbook_service.stop()
+        logger.info("Stopped OrderbookService")
     
     # Stop multi-source streamer
     if multi_source_streamer:
