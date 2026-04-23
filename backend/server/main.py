@@ -26,7 +26,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -774,9 +774,9 @@ async def get_sentiment_bias(
     horizon_minutes: int = 60,
 ):
     """Return historical sentiment-bias bins from the local Arbex sentiment dataset copy."""
-    now = datetime.now(UTC)
-    resolved_to = to_timestamp.astimezone(UTC) if to_timestamp is not None else now
-    resolved_from = from_timestamp.astimezone(UTC) if from_timestamp is not None else (resolved_to - timedelta(hours=24))
+    now = datetime.now(timezone.utc)
+    resolved_to = to_timestamp.astimezone(timezone.utc) if to_timestamp is not None else now
+    resolved_from = from_timestamp.astimezone(timezone.utc) if from_timestamp is not None else (resolved_to - timedelta(hours=24))
     return await asyncio.to_thread(
         sentiment_bridge.get_historical_bias,
         pair=pair,
