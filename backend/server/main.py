@@ -26,6 +26,7 @@ import asyncio
 import logging
 import os
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -103,6 +104,7 @@ from backend.core.redis_client import redis_client
 
 # NEW: Experimental metrics collection for research output
 from backend.core.analytics.metrics_collector import MetricsCollector
+from backend.core.sentiment_bridge import SentimentBridge
 
 # WebSocket routes (extended with arbitrage endpoints)
 from backend.server.websocket_routes import (
@@ -200,6 +202,9 @@ semantic_context_engine: Optional[SemanticContextEngine] = None
 
 # v3.0: Experimental metrics collection
 metrics_collector: Optional[MetricsCollector] = None
+
+# v3.1: Sentiment bridge for live article evidence and historical bias
+sentiment_bridge = SentimentBridge()
 
 # v4.0: Orderbook Streaming Service
 orderbook_service: Optional[OrderbookService] = None
@@ -472,6 +477,9 @@ async def lifespan(app: FastAPI):
     orderbook_service.register_adapter(MT5StreamAdapter())
     await orderbook_service.start()
     logger.info("Initialized OrderbookService with modular adapters")
+
+    sentiment_bridge.start_live_ingest()
+    logger.info("Started SentimentBridge live feed ingest")
     
     logger.info("=" * 60)
     logger.info("Server startup complete")
@@ -535,6 +543,9 @@ async def lifespan(app: FastAPI):
     if orderbook_service:
         await orderbook_service.stop()
         logger.info("Stopped OrderbookService")
+
+    sentiment_bridge.stop_live_ingest()
+    logger.info("Stopped SentimentBridge live feed ingest")
     
     # Stop multi-source streamer
     if multi_source_streamer:
@@ -695,6 +706,85 @@ async def health():
         health_data["arbitrage_opportunities"] = stats.get("arbitrage_opportunities_detected", 0)
     
     return health_data
+
+
+@app.get("/sentiment/status")
+async def get_sentiment_status(pair: str = "USD/INR"):
+    """Sentiment service status plus local dataset metadata for a pair."""
+    return await asyncio.to_thread(sentiment_bridge.get_status, pair)
+
+
+@app.get("/sentiment/live")
+async def get_sentiment_live(pair: str = "USD/INR", window_minutes: int = 30):
+    """Return the live rolling news sentiment window used by the Arbex sentiment UI."""
+    return await asyncio.to_thread(sentiment_bridge.get_live_sentiment, pair, window_minutes)
+
+
+@app.get("/sentiment/articles/live")
+async def get_sentiment_articles(pair: str = "USD/INR", window_minutes: int = 30, limit: int = 12):
+    """Return the live article impact tape derived from the current sentiment window."""
+    return await asyncio.to_thread(sentiment_bridge.get_live_articles, pair, window_minutes, limit)
+
+
+@app.get("/sentiment/feed/live")
+async def get_sentiment_feed(pair: str = "USD/INR", limit: int = 20):
+    """Return the raw live news feed mirrored into Arbex with provenance and source drill-down."""
+    return await asyncio.to_thread(sentiment_bridge.get_feed_snapshot, pair, limit)
+
+
+@app.get("/sentiment/history/live")
+async def get_sentiment_history(
+    pair: str = "USD/INR",
+    limit: int = 20,
+    q: str | None = None,
+    min_confidence: float | None = None,
+    has_evidence: bool | None = None,
+    source: str | None = None,
+    event_category: str | None = None,
+    from_timestamp: datetime | None = None,
+    to_timestamp: datetime | None = None,
+):
+    """Return evidence-rich analyzed live article history mirrored into Arbex."""
+    return await asyncio.to_thread(
+        sentiment_bridge.get_analysis_history,
+        pair,
+        limit,
+        q=q,
+        min_confidence=min_confidence,
+        has_evidence=has_evidence,
+        source=source,
+        event_category=event_category,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+    )
+
+
+@app.get("/sentiment/explanation/{event_id}")
+async def get_sentiment_explanation(event_id: str, pair: str = "USD/INR"):
+    """Return the full RAG-backed semantic explanation for one live or recent article."""
+    return await asyncio.to_thread(sentiment_bridge.get_explanation, pair, event_id)
+
+
+@app.get("/sentiment/bias")
+async def get_sentiment_bias(
+    pair: str = "USD/INR",
+    from_timestamp: datetime | None = None,
+    to_timestamp: datetime | None = None,
+    aggregate_interval_minutes: int = 60,
+    horizon_minutes: int = 60,
+):
+    """Return historical sentiment-bias bins from the local Arbex sentiment dataset copy."""
+    now = datetime.now(UTC)
+    resolved_to = to_timestamp.astimezone(UTC) if to_timestamp is not None else now
+    resolved_from = from_timestamp.astimezone(UTC) if from_timestamp is not None else (resolved_to - timedelta(hours=24))
+    return await asyncio.to_thread(
+        sentiment_bridge.get_historical_bias,
+        pair=pair,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        aggregate_interval_minutes=aggregate_interval_minutes,
+        horizon_minutes=horizon_minutes,
+    )
 
 
 @app.get("/symbols")
@@ -1863,5 +1953,21 @@ async def websocket_dashboard(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    import os
+    import sys
+
+    os.execv(
+        sys.executable,
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "backend.server.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
+            "--log-level",
+            "info",
+        ],
+    )

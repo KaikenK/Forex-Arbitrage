@@ -12,7 +12,10 @@ Available Sources:
 - PlaybackDataSource: Recorded data replay for backtesting
 """
 
-from backend.core.data_sources.mt5_data_source import MT5DataSource
+try:
+    from backend.core.data_sources.mt5_data_source import MT5DataSource
+except ModuleNotFoundError:
+    MT5DataSource = None
 from backend.core.data_sources.synthetic_data_source import SyntheticDataSource, SyntheticConfig
 from backend.core.data_sources.rest_data_source import RESTDataSource, RESTSourceConfig
 from backend.core.data_sources.playback_data_source import PlaybackDataSource, PlaybackConfig
@@ -24,7 +27,6 @@ from backend.core.data_sources.session_synthetic_source import (
 )
 
 __all__ = [
-    "MT5DataSource",
     "SyntheticDataSource",
     "SyntheticConfig",
     "SessionAwareSyntheticSource",
@@ -36,3 +38,6 @@ __all__ = [
     "PlaybackDataSource",
     "PlaybackConfig",
 ]
+
+if MT5DataSource is not None:
+    __all__.insert(0, "MT5DataSource")

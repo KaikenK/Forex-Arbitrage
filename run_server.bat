@@ -30,7 +30,7 @@ echo.
 echo Press Ctrl+C to stop
 echo.
 
-python -m backend.server.main
+python -m backend.server.run
 
 pause
 

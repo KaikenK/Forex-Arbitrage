@@ -20,6 +20,7 @@ const formatTime = (timestampMs: number) => {
 const RankingRow = ({ opp, index }: { opp: RankedOpportunity; index: number }) => {
   const confidencePercent = (Number(opp.opportunity.confidence_score) * 100).toFixed(1);
   const profit = opp.opportunity.estimated_profit_pips.toFixed(1);
+  const displayTimestamp = opp.opportunity.timestamp_ms ?? opp.last_seen_ms;
 
   return (
     <motion.div
@@ -39,7 +40,7 @@ const RankingRow = ({ opp, index }: { opp: RankedOpportunity; index: number }) =
             {opp.opportunity.symbols[0]}
           </span>
           <span className="text-[9px] text-slate-500 font-mono">
-            {formatTime(opp.opportunity.timestamp_ms || Date.now())}
+            {formatTime(displayTimestamp)}
           </span>
         </div>
       </div>
@@ -96,13 +97,13 @@ export function GlobalRanking() {
               {[...rankedOpportunities]
                 .sort((a, b) => b.opportunity.estimated_profit_pips - a.opportunity.estimated_profit_pips)
                 .slice(0, 5)
-                .map((opp, index) => {
-                // Ensure unique key for animations without using fluctuating scores
-                const uniqueKey = opp.id || `${opp.opportunity.buy_source}-${opp.opportunity.sell_source}-${opp.opportunity.type}`;
-                return (
-                  <RankingRow key={uniqueKey} opp={opp} index={index} />
-                );
-              })}
+                .map((opp, index) => (
+                  <RankingRow
+                    key={opp.id || `${opp.opportunity.buy_source}-${opp.opportunity.sell_source}-${opp.opportunity.type}`}
+                    opp={opp}
+                    index={index}
+                  />
+                ))}
             </AnimatePresence>
           </div>
         )}

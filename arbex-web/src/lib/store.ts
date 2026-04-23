@@ -11,12 +11,49 @@ export interface ArbitrageOpportunity {
   sell_source: string;
   buy_price: number;
   sell_price: number;
-  spread_pips: number;
+  spread_pips?: number;
   estimated_profit_pips: number;
   latency_risk_ms: number;
   confidence_score: number;
   type: string;
   session?: string;
+  timestamp_ms?: number;
+  window_size_ms?: number;
+}
+
+export interface MarketSourceUpdate {
+  source_id: string;
+  session?: string;
+  bid: number;
+  ask: number;
+  drift?: number;
+}
+
+export interface NewsBiasDriver {
+  headline?: string;
+  sentiment?: string;
+  source?: string;
+  category?: string;
+}
+
+export interface NewsBias {
+  pair: string;
+  status: 'live' | 'stale_cache' | 'neutral' | 'neutral_fallback' | 'disabled';
+  window_minutes: number;
+  overall_sentiment: number;
+  semantic_score: number;
+  confidence: number;
+  confidence_adjustment: number;
+  direction: 'risk_on' | 'risk_off' | 'neutral' | string;
+  regime: 'high_conviction' | 'directional' | 'conflicted' | 'neutral' | string;
+  item_count: number;
+  bullish_count: number;
+  bearish_count: number;
+  neutral_count: number;
+  freshness_seconds: number;
+  service_updated_at: string | null;
+  top_drivers: NewsBiasDriver[];
+  reason: string;
 }
 
 export interface RankedOpportunity {
@@ -29,6 +66,7 @@ export interface RankedOpportunity {
   persistence_class: 'ephemeral' | 'flickering' | 'persistent';
   execution_verdict: 'viable' | 'risky' | 'unknown';
   execution_reasons: string[];
+  news_bias?: NewsBias;
   first_seen_ms: number;
   last_seen_ms: number;
   duration_ms: number;
@@ -77,14 +115,14 @@ interface ArbexState {
   
   // Actions
   setConnectionStatus: (status: boolean) => void;
-  updateMarketData: (data: any) => void;
+  updateMarketData: (data: MarketSourceUpdate) => void;
   updateOrderbook: (data: OrderbookUpdate) => void;
   flushOpportunities: (opportunities: RankedOpportunity[], totalTicks: number, detectionRate: number) => void;
   setMetrics: (totalTicks: number, detectionRate: number) => void;
 }
 
 export const useArbexStore = create<ArbexState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set) => ({
     // Initial State
     isConnected: false,
     activeSession: 'UNKNOWN',
@@ -119,14 +157,14 @@ export const useArbexStore = create<ArbexState>()(
       }
     })),
     
-    flushOpportunities: (opportunities, totalTicks, detectionRate) => set((state) => ({
+    flushOpportunities: (opportunities, totalTicks, detectionRate) => set(() => ({
       rankedOpportunities: opportunities,
       topCompositeScore: opportunities.length > 0 ? opportunities[0].composite_score : 0,
       totalTicksLogged: totalTicks,
       detectedRate: detectionRate
     })),
     
-    setMetrics: (totalTicks, detectionRate) => set((state) => ({
+    setMetrics: (totalTicks, detectionRate) => set(() => ({
       totalTicksLogged: totalTicks,
       detectedRate: detectionRate
     }))

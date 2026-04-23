@@ -31,7 +31,7 @@ echo ""
 echo "Press Ctrl+C to stop"
 echo ""
 
-python3 -m backend.server.main
+python3 -m backend.server.run
 
 
 

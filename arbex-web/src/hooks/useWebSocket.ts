@@ -1,11 +1,53 @@
 "use client";
 
 import { useEffect, useRef } from 'react';
-import { useArbexStore, RankedOpportunity } from '@/lib/store';
+import { MarketSourceUpdate, NewsBias, RankedOpportunity, useArbexStore } from '@/lib/store';
 
-const ARBITRAGE_WS_URL = 'ws://127.0.0.1:8000/ws/arbitrage';
-const SOURCES_WS_URL = 'ws://127.0.0.1:8000/ws/sources/USDINR';
-const DASHBOARD_WS_URL = 'ws://127.0.0.1:8000/ws/dashboard';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_ARBEX_WS_BASE_URL || 'ws://127.0.0.1:8000';
+const ARBITRAGE_WS_URL = `${WS_BASE_URL}/ws/arbitrage`;
+const SOURCES_WS_URL = `${WS_BASE_URL}/ws/sources/USDINR`;
+const DASHBOARD_WS_URL = `${WS_BASE_URL}/ws/dashboard`;
+
+interface SourceComparisonPayload {
+  sources?: MarketSourceUpdate[];
+  source_id?: string;
+  session?: string;
+  bid?: number;
+  ask?: number;
+  drift?: number;
+}
+
+interface DashboardStatsPayload {
+  type?: string;
+  data?: {
+    source?: string;
+    symbol?: string;
+    timestamp?: number;
+    bids?: { price: number; volume: number }[];
+    asks?: { price: number; volume: number }[];
+    ticks_processed?: number;
+    detection_rate_pct?: number;
+  };
+}
+
+interface ArbitrageWsPayload {
+  opportunity?: RankedOpportunity['opportunity'];
+  composite_score?: number;
+  dimension_scores?: Record<string, number>;
+  ranking_reason?: string;
+  rank?: number;
+  persistence?: {
+    class?: RankedOpportunity['persistence_class'];
+    detection_count?: number;
+    duration_ms?: number;
+    first_seen_ts?: number;
+  };
+  execution?: {
+    verdict?: RankedOpportunity['execution_verdict'];
+    verdict_reasons?: string[];
+  };
+  news_bias?: NewsBias;
+}
 
 export function useWebSocket() {
   const setConnectionStatus = useArbexStore((state) => state.setConnectionStatus);
@@ -47,17 +89,33 @@ export function useWebSocket() {
       dashWs.onmessage = (event) => {
         if (event.data === 'ping') return;
         try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === 'orderbook' && payload.data) {
+          const payload = JSON.parse(event.data) as DashboardStatsPayload;
+          if (
+            payload.type === 'orderbook' &&
+            payload.data &&
+            typeof payload.data.symbol === 'string' &&
+            typeof payload.data.source === 'string' &&
+            typeof payload.data.timestamp === 'number' &&
+            Array.isArray(payload.data.bids) &&
+            Array.isArray(payload.data.asks)
+          ) {
              // console.log("[Arbex] Received Orderbook Data:", payload.data.source);
-             if (updateOrderbook) updateOrderbook(payload.data);
+             if (updateOrderbook) {
+               updateOrderbook({
+                 symbol: payload.data.symbol,
+                 source: payload.data.source,
+                 timestamp: payload.data.timestamp,
+                 bids: payload.data.bids,
+                 asks: payload.data.asks,
+               });
+             }
           } else if (payload.type === 'stats' && payload.data) {
              // Update ticks scanned
              if (payload.data.ticks_processed) {
                useArbexStore.getState().setMetrics(payload.data.ticks_processed, payload.data.detection_rate_pct || 0);
              }
           }
-        } catch (e) {}
+        } catch {}
       };
 
       // ------------------------------------------------------
@@ -66,19 +124,29 @@ export function useWebSocket() {
       srcWs.onmessage = (event) => {
         if (event.data === 'ping') return;
         try {
-          const data = JSON.parse(event.data);
+          const data = JSON.parse(event.data) as SourceComparisonPayload;
           
           // The python backend's `broadcast_source_comparison` payload wraps sources in an array
           if (data.sources && Array.isArray(data.sources)) {
-            data.sources.forEach((src: any) => {
+            data.sources.forEach((src) => {
               // Map session from the source_id (e.g. 'bloomberg_tokyo_usdinr' -> 'TOKYO')
               if (!src.session && src.source_id) {
                 src.session = src.source_id.split('_')[1].toUpperCase();
               }
               updateMarketData(src);
             });
-          } else if (data.source_id) {
-            updateMarketData(data);
+          } else if (
+            data.source_id &&
+            typeof data.bid === 'number' &&
+            typeof data.ask === 'number'
+          ) {
+            updateMarketData({
+              source_id: data.source_id,
+              session: data.session,
+              bid: data.bid,
+              ask: data.ask,
+              drift: data.drift,
+            });
           }
         } catch (e) {
           console.error('[Arbex] Source Parse Error:', e);
@@ -91,7 +159,7 @@ export function useWebSocket() {
       arbWs.onmessage = (event) => {
         if (event.data === 'ping') return;
         try {
-          const data = JSON.parse(event.data);
+          const data = JSON.parse(event.data) as ArbitrageWsPayload;
           
             // The backend now broadcasts a single 'best' opportunity with nested context dicts
           if (data && data.opportunity) {
@@ -110,6 +178,7 @@ export function useWebSocket() {
               // Flatten execution
               execution_verdict: data.execution?.verdict || 'unknown',
               execution_reasons: data.execution?.verdict_reasons || [],
+              news_bias: data.news_bias || undefined,
               // Temporary placeholder for TypeScript strict typing, will be assigned below
               id: '',
             };
@@ -173,5 +242,5 @@ export function useWebSocket() {
       if (srcWs) srcWs.close();
       if (dashWs) dashWs.close();
     };
-  }, [setConnectionStatus, updateMarketData, flushOpportunities]);
+  }, [setConnectionStatus, updateMarketData, flushOpportunities, updateOrderbook]);
 }
