@@ -1,0 +1,16 @@
+{
+  "run_id": "main",
+  "generated_at_utc": "2026-08-29T10:59:26.932606+00:00",
+  "git_sha": "be0bc3f",
+  "wall_seconds": 17.96,
+  "config": {
+    "minutes": 30.0,
+    "seed": 42,
+    "step_ms": 20,
+    "window_ms": 200,
+    "tracker_tick_ms": 100,
+    "grace_ms": 120
+  },
+  "python": "3.10.11",
+  "determinism": "fake monotonic clock; live-rate fetch disabled; seeded RNG"
+}

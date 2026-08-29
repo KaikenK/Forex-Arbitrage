@@ -108,12 +108,13 @@ from backend.core.sentiment_bridge import SentimentBridge
 
 # WebSocket routes (extended with arbitrage endpoints)
 from backend.server.websocket_routes import (
-    ws_manager, 
-    websocket_tick_endpoint, 
+    ws_manager,
+    websocket_tick_endpoint,
     websocket_candle_endpoint,
     websocket_market_state_endpoint,
     websocket_arbitrage_endpoint,
     websocket_sources_endpoint,
+    websocket_basis_endpoint,
 )
 
 # Configure logging
@@ -128,12 +129,20 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # Determine symbols based on mode
+from backend.config import is_basis_mode  # noqa: E402
+
 if is_synthetic_mode():
     DEFAULT_SYMBOLS = [RESEARCH_SYMBOL]  # USD/INR only
     logger.info("=" * 60)
     logger.info("RESEARCH MODE: SYNTHETIC_USDINR_ONLY")
     logger.info(f"Symbol: {RESEARCH_SYMBOL}")
     logger.info("MT5 and live data sources are DISABLED")
+    logger.info("=" * 60)
+elif is_basis_mode():
+    DEFAULT_SYMBOLS = [RESEARCH_SYMBOL]  # USD/INR only
+    logger.info("=" * 60)
+    logger.info("PHASE 3 MODE: LIVE_USDINR_BASIS (onshore-offshore)")
+    logger.info("Comparison basis: Option A (futures <-> futures)")
     logger.info("=" * 60)
 else:
     DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
@@ -208,6 +217,9 @@ sentiment_bridge = SentimentBridge()
 
 # v4.0: Orderbook Streaming Service
 orderbook_service: Optional[OrderbookService] = None
+
+# Phase 3: onshore/offshore USD/INR basis recorder task
+basis_recorder_task: Optional[asyncio.Task] = None
 
 
 
@@ -306,7 +318,35 @@ async def lifespan(app: FastAPI):
         logger.info(f"Synthetic research pipeline initialized with "
                    f"{len(synthetic_sources)} data sources")
         logger.info(f"Arbitrage detection enabled for cross-provider and cross-session analysis")
-        
+
+    elif is_basis_mode():
+        # =====================================================================
+        # PHASE 3 — LIVE ONSHORE/OFFSHORE USD/INR BASIS (Option A)
+        # =====================================================================
+        global basis_recorder_task
+
+        _have_dhan = bool(os.environ.get("DHAN_CLIENT_ID") and os.environ.get("DHAN_ACCESS_TOKEN"))
+        _replay = os.environ.get("BASIS_REPLAY") == "1" or not _have_dhan
+
+        if _replay:
+            from backend.core.basis.basis_replay import BasisReplayer
+            replayer = BasisReplayer(ws_manager)
+            app.state.basis_ctx = replayer
+            basis_recorder_task = asyncio.create_task(replayer.run())
+            logger.info("Basis dashboard REPLAY mode (no Dhan creds / BASIS_REPLAY=1) "
+                        "— streaming the EOD run over /ws/basis. Dashboard: /basis")
+        else:
+            from backend.core.data_sources.basis_pipeline import build_basis_pipeline
+            basis_ctx = build_basis_pipeline()
+            basis_ctx.ws_manager = ws_manager
+            app.state.basis_ctx = basis_ctx
+            basis_recorder_task = asyncio.create_task(basis_ctx.run())
+            logger.info(
+                f"Basis pipeline LIVE: legs={[s.source_id for s in basis_ctx.sources]} "
+                f"T*={basis_ctx.normalizer.target_expiry} "
+                f"carry={basis_ctx.normalizer.carry_rate_annual}. Dashboard: /basis"
+            )
+
     else:
         # =====================================================================
         # LIVE MT5 MODE (Original behavior)
@@ -533,7 +573,16 @@ async def lifespan(app: FastAPI):
             await state_broadcast_task
         except asyncio.CancelledError:
             pass
-    
+
+    # Stop the Phase-3 basis recorder
+    if basis_recorder_task:
+        basis_recorder_task.cancel()
+        try:
+            await basis_recorder_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Stopped basis pipeline")
+
     # Stop execution engine
     if execution_engine:
         await execution_engine.stop()
@@ -1270,6 +1319,21 @@ async def market_overview_dashboard():
     if overview_file.exists():
         return FileResponse(str(overview_file))
     return {"error": "Market overview dashboard not found"}
+
+
+@app.get("/basis")
+async def basis_dashboard():
+    """Serve the Phase-3 onshore/offshore USD/INR basis dashboard."""
+    f = FRONTEND_DIR / "basis_dashboard.html"
+    if f.exists():
+        return FileResponse(str(f))
+    return {"error": "basis_dashboard.html not found"}
+
+
+@app.websocket("/ws/basis")
+async def websocket_basis(websocket: WebSocket):
+    """Live onshore/offshore USD/INR basis stream (snapshots + dislocation events)."""
+    await websocket_basis_endpoint(websocket)
 
 
 @app.get("/sources/{symbol}/comparison")

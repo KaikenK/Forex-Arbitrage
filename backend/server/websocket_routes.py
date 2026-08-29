@@ -47,6 +47,10 @@ class WebSocketManager:
         self.last_ticks_by_source: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(dict)
         # Recent arbitrage opportunities (rolling buffer)
         self.recent_arbitrage: deque = deque(maxlen=100)
+        # Phase-3 basis dashboard state
+        self.last_basis_snapshot: Optional[Dict[str, Any]] = None
+        self.last_basis_meta: Optional[Dict[str, Any]] = None
+        self.recent_basis_events: deque = deque(maxlen=100)
         # Arbitrage stats
         self.arbitrage_stats: Dict[str, Any] = {
             "total_opportunities": 0,
@@ -105,6 +109,31 @@ class WebSocketManager:
         for ws in disconnected:
             self.disconnect(ws, channel)
     
+    async def broadcast_basis(self, msg_type: str, data: Dict[str, Any]):
+        """
+        Broadcast a Phase-3 onshore/offshore USD/INR basis message to /ws/basis
+        clients. msg_type: "basis_snapshot" | "basis_event" | "basis_meta".
+        """
+        if msg_type == "basis_snapshot":
+            self.last_basis_snapshot = data
+        elif msg_type == "basis_event":
+            self.recent_basis_events.append(data)
+        elif msg_type == "basis_meta":
+            self.last_basis_meta = data
+
+        channel = "basis:live"
+        if channel not in self.connections:
+            return
+        message = json.dumps({"type": msg_type, **data})
+        disconnected = set()
+        for websocket in list(self.connections[channel]):
+            try:
+                await websocket.send_text(message)
+            except Exception:
+                disconnected.add(websocket)
+        for ws in disconnected:
+            self.disconnect(ws, channel)
+
     async def broadcast_state_update(self, states: Dict[str, Any]):
         """
         Broadcast state machine states to dashboard clients.
@@ -662,6 +691,37 @@ async def websocket_arbitrage_endpoint(websocket: WebSocket, symbol: Optional[st
         logger.info(f"Client disconnected from arbitrage stream: {symbol or 'all'}")
     except Exception as e:
         logger.error(f"Error in arbitrage WebSocket endpoint: {e}")
+    finally:
+        ws_manager.disconnect(websocket, channel)
+
+
+async def websocket_basis_endpoint(websocket: WebSocket):
+    """WebSocket for the Phase-3 onshore/offshore USD/INR basis dashboard."""
+    channel = "basis:live"
+    try:
+        await ws_manager.connect(websocket, channel)
+        # catch-up: meta + last snapshot + recent events
+        if getattr(ws_manager, "last_basis_meta", None):
+            await websocket.send_text(json.dumps(
+                {"type": "basis_meta", **ws_manager.last_basis_meta}))
+        if getattr(ws_manager, "last_basis_snapshot", None):
+            await websocket.send_text(json.dumps(
+                {"type": "basis_snapshot", **ws_manager.last_basis_snapshot}))
+        for ev in list(getattr(ws_manager, "recent_basis_events", []))[-25:]:
+            await websocket.send_text(json.dumps({"type": "basis_event", **ev}))
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                await websocket.send_text("ping")
+            except WebSocketDisconnect:
+                break
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Error in basis WebSocket endpoint: {e}")
     finally:
         ws_manager.disconnect(websocket, channel)
 

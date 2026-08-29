@@ -525,10 +525,10 @@ class OpportunityRanker:
             Dict of dimension scores
         """
         scores = {}
-        
-        # Profitability: 0-300 pips maps to 0-100
+
+        # Profitability: ~5 pips maps to 100 (matches _calculate_institutional_scores)
         profit_pips = max(0, opp.estimated_profit_pips)
-        scores[RankingDimension.PROFITABILITY] = min(100, profit_pips * 0.33)
+        scores[RankingDimension.PROFITABILITY] = min(100, profit_pips * 20.0)
         
         # Latency Risk: Lower is better (0-200ms maps to 100-0)
         latency = opp.latency_risk_ms
@@ -545,10 +545,10 @@ class OpportunityRanker:
         avg_reliability = sum(reliabilities) / len(reliabilities) if reliabilities else 0.7
         scores[RankingDimension.SOURCE_RELIABILITY] = avg_reliability * 100
         
-        # Session Liquidity: Based on current session
+        # Session weight: Based on current session's FX liquidity
         session = opp.session
-        liquidity = self.config.session_liquidity_scores.get(session, 0.5)
-        scores[RankingDimension.SESSION_LIQUIDITY] = liquidity * 100
+        session_weight = self.config.session_weights.get(session, 0.5)
+        scores[RankingDimension.SESSION_WEIGHT] = session_weight * 100
         
         # Persistence: Starts at 50, increases with consecutive detections
         # (Updated later based on persistence tracker)

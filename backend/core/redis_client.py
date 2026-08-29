@@ -60,6 +60,30 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error publishing to {channel}: {e}")
 
+    async def xadd(
+        self,
+        stream: str,
+        fields: Dict[str, str],
+        maxlen: int = 50_000,
+    ) -> Optional[str]:
+        """
+        Append an entry to a Redis Stream (capped, approximate trim). Used for
+        arbex.raw_opps so a slow consumer cannot silently drop events. Best-effort
+        — returns None and logs on failure rather than raising.
+        """
+        if not self._is_connected:
+            try:
+                await self.connect()
+            except Exception:
+                return None
+        try:
+            return await self._client.xadd(
+                stream, fields, maxlen=maxlen, approximate=True
+            )
+        except Exception as e:
+            logger.error(f"Error xadd to {stream}: {e}")
+            return None
+
     async def subscribe(self, channel: str, callback: Callable[[Dict[str, Any]], None]):
         """Subscribe to a channel and handle messages with the provided callback."""
         await self.subscribe_many({channel: callback})

@@ -16,6 +16,13 @@ __pycache__/
 *.csv
 *.log
 tradingview_price.txt
+data/cache/
+research/results/raw/
+research/results/eod/*/events.jsonl
+research/results/eod/*/basis_eod.jsonl
+
+# Office lock files
+~$*
 
 # IDE
 .vscode/

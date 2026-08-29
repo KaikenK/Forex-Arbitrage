@@ -1,0 +1,328 @@
+{
+  "run": {
+    "seed": 42,
+    "sim_minutes": 30.0,
+    "step_ms": 20,
+    "window_ms": 20,
+    "sources": 6,
+    "base_price": 86.5,
+    "arbitrage_injection_rate": 0.0025,
+    "min_profit_pips": 3.0,
+    "min_confidence": 0.3
+  },
+  "throughput": {
+    "ticks_processed": 540000,
+    "ticks_per_sim_second": 300.0,
+    "ticks_per_sim_minute": 18000.0,
+    "windows_scored": 16881
+  },
+  "detection": {
+    "raw_detections": 16881,
+    "opportunity_episodes": 7987,
+    "detections_per_sim_minute": 562.7,
+    "episodes_per_sim_minute": 266.23
+  },
+  "persistence_distribution_per_detection": {
+    "ephemeral": 4253,
+    "flickering": 2740,
+    "persistent": 9888
+  },
+  "persistence_distribution_per_episode": {
+    "ephemeral": 2383,
+    "flickering": 1315,
+    "persistent": 4289
+  },
+  "execution_verdicts_per_detection": {
+    "viable": 12628,
+    "risky": 4253,
+    "unlikely": 0
+  },
+  "actionability_funnel": {
+    "opportunity_episodes": 7987,
+    "flickering_or_persistent_episodes": 5604,
+    "persistent_episodes": 4289,
+    "detections_with_viable_verdict": 12628
+  },
+  "cost_filter_effect": {
+    "profitable_on_paper": 16881,
+    "still_viable_after_L2_and_latency": 12628,
+    "pct_filtered_out": 25.2
+  },
+  "profit_pips": {
+    "mean_gross": 4.804,
+    "median_gross": 3.675,
+    "max_gross": 17.048,
+    "mean_net_after_costs": 3.98
+  },
+  "by_session": {
+    "LONDON": {
+      "detections": 968,
+      "avg_profit_pips": 5.731
+    },
+    "NEW_YORK": {
+      "detections": 5222,
+      "avg_profit_pips": 4.841
+    },
+    "TOKYO": {
+      "detections": 10691,
+      "avg_profit_pips": 4.702
+    }
+  },
+  "session_spread_pips": {
+    "TOKYO": 3.449,
+    "LONDON": 2.298,
+    "NEW_YORK": 2.876
+  },
+  "tracker_stats": {
+    "active_count": 0,
+    "archived_count": 9,
+    "total_tracked": 2285,
+    "total_persistent": 753,
+    "total_ephemeral": 2383,
+    "active_by_class": {},
+    "config": {
+      "ephemeral_threshold_ms": 50,
+      "persistent_threshold_ms": 300,
+      "gap_tolerance_ms": 500
+    }
+  },
+  "execution_filter_stats": {
+    "assessments_made": 16881,
+    "verdict_distribution": {
+      "viable": 12853,
+      "risky": 4028,
+      "unlikely": 0
+    },
+    "verdict_percentages": {
+      "viable": "76.1%",
+      "risky": "23.9%",
+      "unlikely": "0.0%"
+    },
+    "config": {
+      "viable_threshold": 60.0,
+      "risky_threshold": 30.0
+    }
+  },
+  "leaderboard_top10": [
+    {
+      "sim_ts_ms": 1700001140818,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_newyork_usdinr",
+      "sell_source": "reuters_newyork_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "NEW_YORK",
+      "session": "NEW_YORK",
+      "profit_pips": 6.725,
+      "profit_pct": 0.000777,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 6,
+      "cumulative_duration_ms": 900,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 2.56,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700000499819,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_newyork_usdinr",
+      "sell_source": "reuters_tokyo_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 8.193,
+      "profit_pct": 0.000949,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 10,
+      "cumulative_duration_ms": 1160,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 7.503,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700001383318,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_london_usdinr",
+      "sell_source": "reuters_tokyo_usdinr",
+      "buy_session": "LONDON",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 5.075,
+      "profit_pct": 0.00059,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 3,
+      "cumulative_duration_ms": 500,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 4.385,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700000622379,
+      "type": "latency_arbitrage",
+      "buy_source": "reuters_newyork_usdinr",
+      "sell_source": "bloomberg_tokyo_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 12.777,
+      "profit_pct": 0.001477,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 4,
+      "cumulative_duration_ms": 560,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 12.087,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700001163978,
+      "type": "latency_arbitrage",
+      "buy_source": "reuters_newyork_usdinr",
+      "sell_source": "bloomberg_newyork_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "NEW_YORK",
+      "session": "NEW_YORK",
+      "profit_pips": 8.713,
+      "profit_pct": 0.001007,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 4,
+      "cumulative_duration_ms": 840,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 2.93,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700001417738,
+      "type": "latency_arbitrage",
+      "buy_source": "reuters_london_usdinr",
+      "sell_source": "bloomberg_tokyo_usdinr",
+      "buy_session": "LONDON",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 10.264,
+      "profit_pct": 0.001191,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 4,
+      "cumulative_duration_ms": 700,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 9.574,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700001161938,
+      "type": "latency_arbitrage",
+      "buy_source": "reuters_newyork_usdinr",
+      "sell_source": "reuters_tokyo_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 9.645,
+      "profit_pct": 0.001114,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 4,
+      "cumulative_duration_ms": 960,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.26,
+      "net_profit_pips": 8.865,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700000287899,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_tokyo_usdinr",
+      "sell_source": "reuters_tokyo_usdinr",
+      "buy_session": "TOKYO",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 10.395,
+      "profit_pct": 0.001207,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 9,
+      "cumulative_duration_ms": 960,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.23,
+      "net_profit_pips": 9.705,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700000087159,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_tokyo_usdinr",
+      "sell_source": "bloomberg_newyork_usdinr",
+      "buy_session": "TOKYO",
+      "sell_session": "NEW_YORK",
+      "session": "NEW_YORK",
+      "profit_pips": 12.862,
+      "profit_pct": 0.001479,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 3,
+      "cumulative_duration_ms": 640,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.2,
+      "net_profit_pips": 12.262,
+      "composite_score": 95.66
+    },
+    {
+      "sim_ts_ms": 1700000116599,
+      "type": "latency_arbitrage",
+      "buy_source": "bloomberg_newyork_usdinr",
+      "sell_source": "bloomberg_tokyo_usdinr",
+      "buy_session": "NEW_YORK",
+      "sell_session": "TOKYO",
+      "session": "TOKYO",
+      "profit_pips": 9.352,
+      "profit_pct": 0.001076,
+      "confidence": 0.941,
+      "latency_risk_ms": 50.0,
+      "persistence_class": "persistent",
+      "stability": 1.0,
+      "detection_count": 8,
+      "cumulative_duration_ms": 340,
+      "verdict": "viable",
+      "feasibility_score": 100,
+      "expected_slippage_pips": 0.2,
+      "net_profit_pips": 2.7,
+      "composite_score": 95.66
+    }
+  ]
+}

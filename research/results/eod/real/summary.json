@@ -1,0 +1,31 @@
+{
+  "rows": 241,
+  "date_range": [
+    "2025-08-29",
+    "2026-08-28"
+  ],
+  "carry_rate_annual": 0.019,
+  "min_basis_threshold_pips": 2.0,
+  "basis_stats_pips": {
+    "onshore_spot": {
+      "n": 241,
+      "mean_pips": 2.51,
+      "abs_mean_pips": 22.31,
+      "min_pips": -195.47,
+      "max_pips": 182.38,
+      "p90_abs_pips": 49.53
+    }
+  },
+  "dislocation_events": {
+    "total": 208,
+    "days_with_an_event": 208,
+    "by_leg_pair": {
+      "onshore_otc": 208
+    },
+    "persistence": {
+      "ephemeral": 2,
+      "flickering": 4,
+      "persistent": 202
+    }
+  }
+}

@@ -26,6 +26,7 @@ class DataMode(str, Enum):
     """
     LIVE_MT5 = "LIVE_MT5"
     SYNTHETIC_USDINR_ONLY = "SYNTHETIC_USDINR_ONLY"
+    LIVE_USDINR_BASIS = "LIVE_USDINR_BASIS"  # Phase 3: real onshore-offshore USD/INR basis
 
 
 class TradingSession(str, Enum):
@@ -55,9 +56,14 @@ class DataProvider(str, Enum):
 # MASTER CONFIGURATION FLAG
 # ============================================================================
 
-# Set this to DataMode.SYNTHETIC_USDINR_ONLY for research mode
-# Set to DataMode.LIVE_MT5 for live trading mode (requires MetaTrader 5)
-DATA_MODE = DataMode.SYNTHETIC_USDINR_ONLY
+# Default: synthetic research mode. Override without editing code via the
+# ARBEX_DATA_MODE env var, e.g. ARBEX_DATA_MODE=LIVE_USDINR_BASIS
+import os as _os
+
+try:
+    DATA_MODE = DataMode(_os.environ.get("ARBEX_DATA_MODE", DataMode.SYNTHETIC_USDINR_ONLY.value))
+except ValueError:
+    DATA_MODE = DataMode.SYNTHETIC_USDINR_ONLY
 
 # ============================================================================
 # SYMBOL CONFIGURATION
@@ -307,12 +313,104 @@ class SyntheticGenerationConfig:
 SYNTHETIC_GENERATION_CONFIG = SyntheticGenerationConfig()
 
 # ============================================================================
+# PHASE 3 — ONSHORE / OFFSHORE USD/INR BASIS (DataMode.LIVE_USDINR_BASIS)
+# ============================================================================
+#
+# Comparison basis: Option A (futures <-> futures). Every leg is converted to a
+# normalised forward price at one common target expiry T* (the NSE near-month
+# contract's expiry), then compared. See docs/SPEC.md section 3.
+
+# Annualised USD/INR forward premium (~ CIP-implied INR-USD rate differential),
+# used for the carry adjustment. v1: held constant and flagged in every output.
+# v2: inferred from the NSE forward curve. ~1.9% is the recent USD/INR premium.
+# STATED ASSUMPTION — calibrate against real data (docs/SPEC.md section 3.3).
+CARRY_RATE_ANNUAL: float = 0.019
+
+
+@dataclass
+class BasisLegConfig:
+    """One leg of the onshore/offshore/OTC USD/INR comparison."""
+    leg: str                       # "onshore" | "offshore" | "otc" | "reference"
+    source_id: str
+    display_name: str
+    instrument_kind: str           # "future" | "spot" | "fix"
+    latency_estimate_ms: float
+    reliability_score: float
+    provides_depth: bool = False
+
+
+BASIS_LEGS: List[BasisLegConfig] = [
+    BasisLegConfig(
+        leg="onshore", source_id="dhan_usdinr_fut",
+        display_name="NSE USD/INR near-month future (Dhan)",
+        instrument_kind="future", latency_estimate_ms=400.0,
+        reliability_score=0.97, provides_depth=True,
+    ),
+    BasisLegConfig(
+        leg="offshore", source_id="cme_usdinr_fut",
+        display_name="CME USD/INR future (delayed)",
+        instrument_kind="future", latency_estimate_ms=600_000.0,
+        reliability_score=0.9, provides_depth=False,
+    ),
+    BasisLegConfig(
+        leg="otc", source_id="otc_usdinr_spot",
+        display_name="OTC USD/INR spot (aggregated)",
+        instrument_kind="spot", latency_estimate_ms=2_000.0,
+        reliability_score=0.85, provides_depth=False,
+    ),
+    BasisLegConfig(
+        leg="reference", source_id="rbi_usdinr_ref",
+        display_name="RBI / FBIL USD/INR reference",
+        instrument_kind="fix", latency_estimate_ms=0.0,
+        reliability_score=1.0, provides_depth=False,
+    ),
+]
+
+
+@dataclass
+class BasisDetectionConfig:
+    """Detection parameters for the onshore-offshore USD/INR basis regime."""
+    comparison_basis: str = "futures"          # Option A. "implied_spot" = dashboard only
+    carry_rate_annual: float = CARRY_RATE_ANNUAL
+    basis_window_ms: int = 2000                # minute-scale regime, not 20ms
+    min_basis_threshold_pips: float = 2.0
+    enabled_leg_pairs: tuple = (
+        "onshore_offshore", "onshore_otc", "offshore_otc",
+    )
+    reference_band_pips: float = 25.0          # |F* - RBI ref @ T*| sanity bound
+    # persistence re-tuned for the minute-scale regime
+    persistence_ephemeral_max_s: float = 5.0
+    persistence_flickering_max_s: float = 60.0
+
+
+BASIS_DETECTION_CONFIG = BasisDetectionConfig()
+
+
+@dataclass
+class OffshoreFeasibilityConfig:
+    """Assumed-depth profile for the offshore leg (no real L2 available)."""
+    # (price_offset_pips_from_touch, size_millions_usd)
+    assumed_depth_levels: tuple = (
+        (0.0, 2.0), (1.0, 3.0), (2.0, 5.0), (4.0, 8.0), (8.0, 15.0),
+    )
+
+
+OFFSHORE_FEASIBILITY_CONFIG = OffshoreFeasibilityConfig()
+
+USDINR_PIP = 0.01
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
 def is_synthetic_mode() -> bool:
     """Check if system is in synthetic USD/INR only mode."""
     return DATA_MODE == DataMode.SYNTHETIC_USDINR_ONLY
+
+
+def is_basis_mode() -> bool:
+    """Check if system is in the Phase-3 onshore/offshore USD/INR basis mode."""
+    return DATA_MODE == DataMode.LIVE_USDINR_BASIS
 
 
 def get_active_symbol() -> str:

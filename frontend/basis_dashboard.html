@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbex | USD/INR Onshore–Offshore Basis</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230f6b5c'><path d='M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg:#0d1013; --panel:#141a1d; --card:#1a2225; --border:#26312f;
+    --ink:#e8ece9; --ink-dim:#8b9a94; --teal:#3fbfa8; --amber:#d8a748;
+    --slate:#7e9aa0; --clay:#e5766b; --ok:#5cc07f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;height:100vh;overflow:hidden}
+  .mono{font-family:"IBM Plex Mono",monospace}
+  header{display:flex;align-items:center;gap:22px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+  header h1{font-size:15px;font-weight:600;letter-spacing:.02em}
+  header .sub{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-dim)}
+  header .sub b{color:var(--ink)}
+  .badge{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+  .badge.replay{background:#3a2c16;color:var(--amber)}
+  .badge.live{background:#16302c;color:var(--teal)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--clay);display:inline-block;margin-right:6px;vertical-align:1px}
+  .dot.on{background:var(--ok)}
+  .grid{display:grid;grid-template-columns:1fr 420px;grid-template-rows:1fr 1fr;gap:1px;background:var(--border);height:calc(100vh - 49px)}
+  .cell{background:var(--panel);padding:14px 16px;overflow:hidden;display:flex;flex-direction:column}
+  .cell.chart{grid-row:1 / span 2}
+  .cell h2{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:10px;font-weight:500}
+  #fwdchart{flex:1;min-height:0}
+  .legend{display:flex;gap:16px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-dim);margin-top:8px}
+  .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:0}
+  .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+  .bcard{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px}
+  .bcard .lbl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
+  .bcard .val{font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:500;margin-top:3px}
+  #spark{height:90px;margin-top:2px}
+  .feed{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+  .ev{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--slate);border-radius:5px;padding:8px 10px;font-family:"IBM Plex Mono",monospace;font-size:11.5px}
+  .ev.hi{border-left-color:var(--clay)}
+  .ev .top{display:flex;justify-content:space-between;color:var(--ink-dim)}
+  .ev .mid{margin-top:3px;color:var(--ink)}
+  .ev .pips{color:var(--teal);font-weight:500}
+  .pill{font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border-radius:3px;margin-left:6px}
+  .pill.persistent{background:#16302c;color:var(--teal)}
+  .pill.flickering{background:#3a2c16;color:var(--amber)}
+  .pill.ephemeral{background:#2a2320;color:var(--ink-dim)}
+  table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;font-size:11px}
+  th{text-align:left;color:var(--ink-dim);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--border);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
+  td{padding:4px 6px;border-bottom:1px solid var(--border)}
+  .lb-wrap{flex:1;overflow-y:auto}
+  .muted{color:var(--ink-dim)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Arbex · USD/INR Onshore–Offshore Basis</h1>
+  <span class="badge replay" id="mode">…</span>
+  <span class="sub">contract expiry <b id="tstar">—</b></span>
+  <span class="sub">carry <b id="carry">—</b></span>
+  <span class="sub" id="range"></span>
+  <span class="sub" style="margin-left:auto"><span class="dot" id="wsdot"></span><span id="wsstate">connecting…</span></span>
+  <span class="sub">date <b id="curdate">—</b></span>
+</header>
+
+<div class="grid">
+  <div class="cell chart">
+    <h2>Normalised forward at T*  ·  Option A</h2>
+    <div id="fwdchart"></div>
+    <div class="legend">
+      <span><i style="background:#3fbfa8"></i>onshore (NSE)</span>
+      <span><i style="background:#d8a748"></i>offshore (CME)</span>
+      <span><i style="background:#7e9aa0"></i>OTC spot</span>
+    </div>
+  </div>
+
+  <div class="cell">
+    <h2>Pairwise basis (pips)</h2>
+    <div class="cards">
+      <div class="bcard"><div class="lbl">onshore − offshore</div><div class="val" id="b_oo">—</div></div>
+      <div class="bcard"><div class="lbl">onshore − OTC</div><div class="val" id="b_ot">—</div></div>
+      <div class="bcard"><div class="lbl">offshore − OTC</div><div class="val" id="b_ft">—</div></div>
+    </div>
+    <h2 id="sparkttl">primary basis, recent</h2>
+    <div id="spark"></div>
+  </div>
+
+  <div class="cell">
+    <h2>Dislocation events  <span class="muted" id="evcount"></span></h2>
+    <div class="feed" id="feed"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtPips = v => (v==null?'—':(v>0?'+':'')+v.toFixed(1));
+
+const chartOpts = {
+  layout:{background:{color:'#141a1d'},textColor:'#8b9a94',fontFamily:'IBM Plex Mono'},
+  grid:{vertLines:{color:'#20292b'},horzLines:{color:'#20292b'}},
+  rightPriceScale:{borderColor:'#26312f'},
+  timeScale:{borderColor:'#26312f',timeVisible:false},
+  crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+};
+const chart = LightweightCharts.createChart($('fwdchart'), chartOpts);
+const sOn  = chart.addLineSeries({color:'#3fbfa8',lineWidth:2});
+const sOff = chart.addLineSeries({color:'#d8a748',lineWidth:2});
+const sOtc = chart.addLineSeries({color:'#7e9aa0',lineWidth:2});
+new ResizeObserver(()=>chart.applyOptions({width:$('fwdchart').clientWidth,height:$('fwdchart').clientHeight})).observe($('fwdchart'));
+
+const spark = LightweightCharts.createChart($('spark'), {...chartOpts,
+  layout:{...chartOpts.layout,background:{color:'#141a1d'}}, timeScale:{visible:false,borderColor:'#26312f'}});
+const sBasis = spark.addAreaSeries({lineColor:'#3fbfa8',topColor:'rgba(63,191,168,.25)',bottomColor:'rgba(63,191,168,0)',lineWidth:2});
+new ResizeObserver(()=>spark.applyOptions({width:$('spark').clientWidth,height:$('spark').clientHeight})).observe($('spark'));
+
+const onD={}, offD={}, otcD={}, basisD={};
+let evTotal=0;
+const leaders=[];
+
+function upsert(store, series, t, v){ if(v==null) return; store[t]=v;
+  series.setData(Object.keys(store).sort().map(k=>({time:k,value:store[k]}))); }
+
+function onSnapshot(m){
+  const t = m.trade_date || (m.ts? new Date(m.ts*1000).toISOString().slice(0,10):null);
+  if(!t) return;
+  $('curdate').textContent = t;
+  const f = m.forwards||{};
+  if(f.onshore) upsert(onD,sOn,t,f.onshore.mid);
+  if(f.offshore) upsert(offD,sOff,t,f.offshore.mid);
+  if(f.spot||f.otc) upsert(otcD,sOtc,t,(f.spot||f.otc).mid);
+  const b = m.basis_pips||{};
+  setCard('b_oo', b.onshore_offshore);
+  setCard('b_ot', b.onshore_spot ?? b.onshore_otc);
+  setCard('b_ft', b.offshore_spot ?? b.offshore_otc);
+  let bv, bl;
+  if(b.onshore_offshore!=null){ bv=b.onshore_offshore; bl='onshore − offshore'; }
+  else if(b.onshore_spot!=null){ bv=b.onshore_spot; bl='onshore − OTC spot'; }
+  else if(b.onshore_otc!=null){ bv=b.onshore_otc; bl='onshore − OTC'; }
+  if(bv!=null){ $('sparkttl').textContent=bl+', recent';
+    basisD[t]=bv; sBasis.setData(Object.keys(basisD).sort().slice(-60).map(k=>({time:k,value:basisD[k]}))); }
+}
+function setCard(id,v){ const el=$(id); if(v==null){el.textContent='—';return;}
+  el.textContent=fmtPips(v);
+  el.style.color = Math.abs(v)>=8 ? '#e5766b' : (Math.abs(v)>=2 ? '#d8a748' : '#5cc07f'); }
+
+function onEvent(e){
+  evTotal++; $('evcount').textContent='('+evTotal+')';
+  const hi = (e.composite_score||0) > 60 || Math.abs(e.basis_pips)>=8;
+  const d = e.trade_date || new Date((e.ts||0)*1000).toISOString().slice(0,10);
+  const div=document.createElement('div');
+  div.className='ev'+(hi?' hi':'');
+  div.innerHTML =
+    `<div class="top"><span>${d} · ${e.leg_pair}</span><span>score ${(e.composite_score||0).toFixed(0)}</span></div>`+
+    `<div class="mid">buy <b>${e.buy_leg}</b> / sell <b>${e.sell_leg}</b> · `+
+    `<span class="pips">${fmtPips(e.basis_pips)} pips</span>`+
+    `<span class="pill ${e.persistence_class}">${e.persistence_class}</span></div>`;
+  const feed=$('feed'); feed.insertBefore(div, feed.firstChild);
+  while(feed.children.length>60) feed.removeChild(feed.lastChild);
+}
+
+function onMeta(m){
+  $('mode').textContent = m.mode||'—';
+  $('mode').className = 'badge '+((m.mode==='live')?'live':'replay');
+  if(m.target_expiry) $('tstar').textContent = m.target_expiry;
+  if(m.carry_rate_annual!=null) $('carry').textContent = (m.carry_rate_annual*100).toFixed(1)+'%';
+  if(m.date_range) $('range').textContent = m.date_range.join('  →  ');
+}
+
+let ws;
+function connect(){
+  ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/basis');
+  ws.onopen = ()=>{ $('wsdot').classList.add('on'); $('wsstate').textContent='connected'; };
+  ws.onclose = ()=>{ $('wsdot').classList.remove('on'); $('wsstate').textContent='reconnecting…'; setTimeout(connect,2000); };
+  ws.onmessage = ev=>{
+    if(ev.data==='ping'){ ws.send('pong'); return; }
+    let m; try{ m=JSON.parse(ev.data); }catch{ return; }
+    if(m.type==='basis_snapshot') onSnapshot(m);
+    else if(m.type==='basis_event') onEvent(m);
+    else if(m.type==='basis_meta') onMeta(m);
+  };
+}
+connect();
+</script>
+</body>
+</html>
