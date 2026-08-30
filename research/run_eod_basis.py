@@ -38,6 +38,9 @@ def main() -> None:
     ap.add_argument("--start", default=None)
     ap.add_argument("--end", default=None)
     ap.add_argument("--carry", type=float, default=CARRY_RATE_ANNUAL)
+    ap.add_argument("--offshore-convention", default="auto",
+                    choices=["auto", "USDINR", "INRUSD", "USDINR_x100", "INRUSD_x10000"],
+                    help="CME/SGX rupee futures quote USD-per-INR — 'auto' inverts them")
     ap.add_argument("--run-id", default="sample")
     args = ap.parse_args()
 
@@ -49,7 +52,8 @@ def main() -> None:
         spot = load_leg("spot", csv_path=args.spot_csv or str(DATA / "SAMPLE_usdinr_spot.csv"))
 
     if args.offshore_csv:
-        offshore = load_leg("offshore", csv_path=args.offshore_csv)
+        offshore = load_leg("offshore", csv_path=args.offshore_csv,
+                            convention=args.offshore_convention)
     elif not args.use_yfinance:
         offshore = load_leg("offshore", csv_path=str(DATA / "SAMPLE_cme_inr_fut.csv"))
     else:

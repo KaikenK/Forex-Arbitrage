@@ -50,13 +50,46 @@ Save it as `data/eod/nse_usdinr_fut.csv` — no editing needed.
 
 Do **not** use investing.com's "USD/INR" page — that is spot, not the future.
 
-## Offshore — CME Indian Rupee future (proxy for NDF)
+## Offshore — CME Indian Rupee future (proxy for NDF)  ← the robust basis
+
+This is the leg that makes `onshore_offshore` the trustworthy number (the carry
+adjustment cancels, unlike the spot pair). Get daily **settlement** prices for the
+CME Indian Rupee/USD future (contract 6R, or E-micro MIR):
+
+**There is no scriptable free source** — every automated endpoint (Nasdaq Data Link
+`CHRIS/*` is discontinued; investing.com / barchart / CME are Cloudflare/Incapsula
+bot-blocked). Download by hand in a browser:
 
 | Source | How | Cost |
 |---|---|---|
-| `yfinance` ticker **`INR=F`** | `run_eod_basis.py --use-yfinance` | free, no account |
-| CME "INR settlements" page | daily CSV | free |
-| investing.com "USD/INR" (offshore) | export CSV | free |
+| **investing.com → "INR Futures" → Historical Data** | pick a date range, **Download Data** (needs a free login). This is the CME SIR/6R contract. | free |
+| Barchart.com → "Indian Rupee Futures" → front-month contract → Historical Data → Download | free login | free |
+| TradingView chart `CME:SIR1!` → export | needs a paid plan for CSV export | — |
+| Dukascopy historical-data export, instrument `USD/INR` | no login; browser export tool. This is an OTC/CFD quote — use it as the **offshore proxy** if the CME contract is unavailable. | free |
+
+Save whatever you get as `data/eod/cme_inr_fut.csv`. The loader now rejects an HTML
+error page with a clear message instead of a stack trace.
+
+**Quote convention.** CME/SGX rupee futures are quoted **USD per INR** (≈ 0.0117),
+not USD/INR. The loader auto-detects the common cases (median < 1 → reciprocal;
+median > 1000 → ÷100). Override with
+`--offshore-convention {USDINR,INRUSD,USDINR_x100,INRUSD_x10000}`.
+
+- **investing.com "Indian Rupee Futures"** exports quote `1/USDINR × 10000` (≈ 104–117).
+  This range overlaps a genuine USD/INR near 100, so `auto` will **not** catch it —
+  pass `--offshore-convention INRUSD_x10000` explicitly (USD/INR = 10000 / quote).
+  A real run with this file gives an `onshore_offshore` basis of mean ≈ −7 pips,
+  |mean| ≈ 15, p90 ≈ 32 over 2025-08 → 2026-08.
+
+Save as `data/eod/cme_inr_fut.csv` and run:
+
+```bash
+python research/run_eod_basis.py --use-yfinance \
+    --start 2025-06-01 --end 2026-08-29 \
+    --onshore-csv data/eod/nse_usdinr_fut.csv \
+    --offshore-csv data/eod/cme_inr_fut.csv \
+    --run-id real
+```
 
 ## Spot / reference
 

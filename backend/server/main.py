@@ -676,7 +676,11 @@ if FRONTEND_DIR.exists():
 
 @app.get("/")
 async def root():
-    """Serve the Arbitrage Research terminal."""
+    """Serve the Arbitrage Research terminal (or the basis dashboard in basis mode)."""
+    if is_basis_mode():
+        basis_file = FRONTEND_DIR / "basis_dashboard.html"
+        if basis_file.exists():
+            return FileResponse(str(basis_file))
     # Serve the Arbitrage Research dashboard
     research_file = FRONTEND_DIR / "arbitrage_research.html"
     if research_file.exists():

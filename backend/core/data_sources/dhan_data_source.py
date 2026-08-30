@@ -41,6 +41,13 @@ logger = logging.getLogger(__name__)
 _UNDERLYING = "USDINR"
 
 
+def _as_float(v: Any) -> Optional[float]:
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 class DhanDataSource(DataSourceInterface):
     """Onshore NSE USD/INR near-month future via DhanHQ (ticks + market depth)."""
 
@@ -78,18 +85,16 @@ class DhanDataSource(DataSourceInterface):
             return False
 
         try:
-            from dhanhq import marketfeed  # type: ignore
+            from dhanhq import DhanContext, MarketFeed  # type: ignore
         except ImportError:
             logger.error(f"[{self.source_id}] pip install dhanhq")
             return False
 
         try:
-            seg = getattr(marketfeed, self._contract.exchange_segment,
-                          self._contract.exchange_segment)
-            instruments = [(seg, self._contract.security_id, marketfeed.Depth)]
-            self._feed = marketfeed.DhanFeed(
-                self._client_id, self._access_token, instruments,
-            )
+            seg = MarketFeed.BSE_CURR if self._exchange == "BSE" else MarketFeed.NSE_CURR
+            instruments = [(seg, str(self._contract.security_id), MarketFeed.Full)]
+            ctx = DhanContext(self._client_id, self._access_token)
+            self._feed = MarketFeed(ctx, instruments, version="v2")
             self._feed_thread = threading.Thread(
                 target=self._run_feed, name=f"{self.source_id}-feed", daemon=True)
             self._feed_thread.start()
@@ -103,12 +108,15 @@ class DhanDataSource(DataSourceInterface):
             return False
 
     def disconnect(self) -> None:
+        self._is_connected = False
         try:
             if self._feed is not None:
-                self._feed.disconnect()
+                closer = getattr(self._feed, "close_connection", None) or \
+                         getattr(self._feed, "disconnect", None)
+                if closer:
+                    closer()
         except Exception:
             pass
-        self._is_connected = False
         logger.info(f"[{self.source_id}] disconnected")
 
     def _resolve_contract(self) -> DhanContract:
@@ -123,7 +131,7 @@ class DhanDataSource(DataSourceInterface):
                 expiry=date.today(), lot_size=1.0, exchange=self._exchange,
                 exchange_segment="NSE_CURRENCY" if self._exchange == "NSE" else "BSE_CURRENCY",
             )
-        return resolve_near_month(self._exchange, force=True)
+        return resolve_near_month(self._exchange, force=True, allow_stale=True)
 
     def _run_feed(self) -> None:
         try:
@@ -133,33 +141,48 @@ class DhanDataSource(DataSourceInterface):
                 if data:
                     self._ingest(data)
         except Exception as e:
-            logger.error(f"[{self.source_id}] feed loop error: {e}")
+            hint = ""
+            if "Data API" in str(e) or "806" in str(e):
+                hint = " (enable 'Data APIs' in the Dhan profile — free activation)"
+            elif "close frame" in str(e):
+                hint = " (idle disconnect — normal outside NSE currency hours 09:00-17:00 IST)"
+            logger.error(f"[{self.source_id}] feed loop error: {e}{hint}")
             self._record_error()
 
     def _ingest(self, data: Dict[str, Any]) -> None:
         """
-        Normalise a DhanFeed packet into our state. The exact packet shape
-        depends on the dhanhq version and subscription type; adjust the keys
-        here once real packets are seen (run research/check_dhan.py).
+        Normalise a dhanhq (>=2.x) MarketFeed packet into our state.
+
+        Depth subscription -> {"type": "Market Depth", "LTP", "depth": [
+            {"bid_price","ask_price","bid_quantity","ask_quantity", ...} x5 ]}
+        Ticker / Quote / Full packets carry "LTP" and are used as a fallback.
         """
+        if not isinstance(data, dict):
+            return
+        ptype = data.get("type", "")
         with self._lock:
-            d = data.get("depth")
-            if isinstance(d, dict) and d.get("buy") and d.get("sell"):
-                self._depth = {
-                    "bids": [{"price": float(x["price"]), "qty": float(x["quantity"])}
-                             for x in d["buy"]],
-                    "asks": [{"price": float(x["price"]), "qty": float(x["quantity"])}
-                             for x in d["sell"]],
-                }
-                self._last = {
-                    "bid": self._depth["bids"][0]["price"],
-                    "ask": self._depth["asks"][0]["price"],
-                    "last": data.get("LTP") or data.get("last_price"),
-                }
-            elif data.get("LTP") or data.get("last_price"):
-                ltp = float(data.get("LTP") or data.get("last_price"))
+            levels = data.get("depth")
+            if ptype in ("Market Depth", "Full Data") and isinstance(levels, list) and levels:
+                bids, asks = [], []
+                for lv in levels:
+                    try:
+                        bp, ap = float(lv["bid_price"]), float(lv["ask_price"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if bp > 0:
+                        bids.append({"price": bp, "qty": float(lv.get("bid_quantity", 0))})
+                    if ap > 0:
+                        asks.append({"price": ap, "qty": float(lv.get("ask_quantity", 0))})
+                if bids and asks:
+                    self._depth = {"bids": bids, "asks": asks}
+                    self._last = {"bid": bids[0]["price"], "ask": asks[0]["price"],
+                                  "last": _as_float(data.get("LTP"))}
+                    self._last_ts_ms = int(time.time() * 1000)
+                return
+            ltp = _as_float(data.get("LTP")) or _as_float(data.get("last_price"))
+            if ltp:
                 self._last = {"bid": ltp, "ask": ltp, "last": ltp}
-            self._last_ts_ms = int(time.time() * 1000)
+                self._last_ts_ms = int(time.time() * 1000)
 
     # -- DataSourceInterface -----------------------------------------
     def get_tick(self, symbol: str) -> Optional[RawTick]:

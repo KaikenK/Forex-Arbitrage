@@ -173,6 +173,64 @@ def _parse_contract_expiry(code: str) -> Optional[date]:
     return None
 
 
+def _rescale(bars: List["EODBar"], factor: float) -> List["EODBar"]:
+    if factor == 1.0:
+        return bars
+    out = []
+    for b in bars:
+        inv = factor < 0                    # factor < 0 flags "invert then scale by |factor|"
+        num = abs(factor)
+        f = (lambda x: (num / x) if x else x) if inv else (lambda x: x * factor)
+        out.append(EODBar(
+            trade_date=b.trade_date, leg=b.leg, source=b.source, symbol="USDINR",
+            close=f(b.close) if b.close is not None else None,
+            settle=f(b.settle) if b.settle is not None else None,
+            open=f(b.open) if b.open is not None else None,
+            high=f(b.high) if b.high is not None else None,
+            low=f(b.low) if b.low is not None else None,
+            volume=b.volume, open_interest=b.open_interest, expiry=b.expiry,
+        ))
+    return out
+
+
+def normalise_convention(
+    bars: List["EODBar"], convention: str = "auto"
+) -> List["EODBar"]:
+    """
+    Bring an offshore/OTC series to the USD/INR convention (~80-100).
+      - "USDINR"  : leave as-is
+      - "INRUSD"  : reciprocal (CME 6R / E-micro quote USD-per-INR, ~0.012)
+      - "USDINR_x100" : divide by 100 (paise)
+      - "INRUSD_x10000" : 10000 / price  (investing.com "Indian Rupee Futures"
+        quotes 1/USD-INR x 10000, ~104-117; USD/INR = 10000 / quote)
+      - "auto"    : infer from the median mark (does NOT pick INRUSD_x10000 -
+        its range overlaps a legitimate USD/INR near 100, so pass it explicitly)
+    """
+    if not bars:
+        return bars
+    marks = sorted(b.mark for b in bars if b.mark)
+    med = marks[len(marks) // 2] if marks else 0.0
+    if convention == "auto":
+        if 0 < med < 1.0:
+            convention = "INRUSD"
+        elif med > 1000:
+            convention = "USDINR_x100"
+        else:
+            convention = "USDINR"
+    if convention == "USDINR":
+        return bars
+    if convention == "INRUSD":
+        logger.info("[eod_loader] converting INR/USD (med %.5f) -> USD/INR", med)
+        return _rescale(bars, -1.0)
+    if convention == "USDINR_x100":
+        logger.info("[eod_loader] rescaling x100 series (med %.1f) -> USD/INR", med)
+        return _rescale(bars, 0.01)
+    if convention == "INRUSD_x10000":
+        logger.info("[eod_loader] converting 1/USDINR x 10000 (med %.1f) -> USD/INR", med)
+        return _rescale(bars, -10000.0)
+    raise ValueError(f"unknown convention {convention!r}")
+
+
 def front_month(bars: List["EODBar"]) -> List["EODBar"]:
     """
     Collapse a multi-contract series to one bar per trade date: the nearest
@@ -222,6 +280,7 @@ def load_eod_csv(
     symbol: str = "USDINR",
     source: Optional[str] = None,
     near_month: bool = False,
+    convention: str = "auto",
 ) -> List[EODBar]:
     """
     Load daily bars from a column-tolerant CSV. Rows without a date/mark are
@@ -233,6 +292,14 @@ def load_eod_csv(
     if not path.exists():
         raise FileNotFoundError(f"EOD CSV not found: {path}")
     source = source or path.name
+
+    _head = path.read_text(encoding="utf-8-sig", errors="replace").lstrip()[:200].lower()
+    if _head.startswith(("<html", "<!doctype", "<?xml")) or "incapsula" in _head:
+        raise ValueError(
+            f"{path.name}: this is an HTML page, not a CSV — the download was "
+            f"bot-blocked or returned an error page. Open the source in a browser "
+            f"and export the CSV by hand (see data/eod/README.md)."
+        )
 
     with path.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
@@ -283,6 +350,7 @@ def load_eod_csv(
         logger.info("[eod_loader] %s: front-month filter %d -> %d bars",
                     path.name, n_before, len(bars))
 
+    bars = normalise_convention(bars, convention)
     bars.sort(key=lambda b: b.trade_date)
     logger.info("[eod_loader] %s: %d bars %s..%s",
                 path.name, len(bars),
@@ -346,14 +414,16 @@ def load_leg(
     yf_ticker: Optional[str] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    convention: str = "auto",
 ) -> List[EODBar]:
     """Resolve one leg's daily bars: CSV first, then optional yfinance."""
     if leg not in LEGS:
         raise ValueError(f"unknown leg {leg!r}")
     if csv_path:
-        return load_eod_csv(csv_path, leg=leg)
+        return load_eod_csv(csv_path, leg=leg, convention=convention)
     if yf_ticker and start and end:
-        return fetch_yfinance(yf_ticker, start, end, leg=leg)
+        bars = fetch_yfinance(yf_ticker, start, end, leg=leg)
+        return normalise_convention(bars, convention)
     raise ValueError(
         f"leg {leg!r}: give csv_path, or (yf_ticker + start + end). "
         f"See data/eod/README.md for where to get the files."

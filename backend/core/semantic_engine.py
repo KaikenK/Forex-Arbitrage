@@ -257,9 +257,17 @@ class SemanticEngine:
         self._is_running = True
         logger.info("Starting SemanticEngine microservice...")
         
-        # Subscribe to raw opportunities from Redis
-        await redis_client.subscribe("arbex.raw_opps", self.process_raw_opp)
-        
+        # Consume raw opportunities from Redis. Synthetic mode publishes
+        # ArbitrageOpportunity envelopes over Pub/Sub; Phase-3 basis mode
+        # publishes BasisEvents to the arbex.raw_opps Stream (FR-6). The adapter
+        # keeps every scoring/persistence/execution/news-bias stage unchanged.
+        from backend.config import is_basis_mode
+        if is_basis_mode():
+            from backend.core.basis.semantic_adapter import consume_basis_stream
+            await consume_basis_stream(self)
+        else:
+            await redis_client.subscribe("arbex.raw_opps", self.process_raw_opp)
+
         # Keep alive loop
         while self._is_running:
             await asyncio.sleep(1)

@@ -4,4 +4,6 @@ MetaTrader5>=5.0.45
 pydantic>=2.5.0
 python-dotenv>=1.0.0
 redis>=5.0.0
+fakeredis>=2.20.0        # tests only — in-process Redis Streams for the FR-6.2 replay test
 supabase>=2.3.0
+dhanhq>=2.2.0

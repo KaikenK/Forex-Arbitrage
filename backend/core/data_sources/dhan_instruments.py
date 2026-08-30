@@ -114,6 +114,10 @@ def usdinr_futures(
     return sorted(out, key=lambda c: c.expiry)
 
 
+class StaleMasterError(RuntimeError):
+    """Raised when the scrip master has no unexpired USD/INR future."""
+
+
 def resolve_near_month(
     exchange: str = "NSE",
     *,
@@ -121,18 +125,30 @@ def resolve_near_month(
     min_days_to_expiry: int = 2,
     force: bool = False,
     master_text: Optional[str] = None,
+    allow_stale: bool = False,
 ) -> DhanContract:
     """
     The nearest USD/INR future that still has ``>= min_days_to_expiry`` days left.
-    Raises if the master has nothing suitable (e.g. a stale snapshot).
+
+    Dhan's public scrip master is periodically stale for currency derivatives
+    (it has lagged the live NSE board by ~2 months). When nothing is unexpired:
+    ``allow_stale=True`` returns the latest listed contract with a warning (so the
+    feed can still be attempted / pinned); otherwise raises ``StaleMasterError``.
+    Set ``DHAN_USDINR_SECURITY_ID`` to bypass this entirely.
     """
     as_of = as_of or date.today()
     futs = usdinr_futures(exchange, force=force, master_text=master_text)
     live = [c for c in futs if (c.expiry - as_of).days >= min_days_to_expiry]
-    if not live:
-        raise RuntimeError(
-            f"no upcoming {exchange} USDINR FUTCUR in the scrip master as of {as_of} "
-            f"(found {len(futs)} total, latest expiry "
-            f"{futs[-1].expiry if futs else 'none'}). Try force=True to refresh."
-        )
-    return live[0]
+    if live:
+        return live[0]
+    msg = (
+        f"no unexpired {exchange} USDINR FUTCUR in Dhan's scrip master as of {as_of} "
+        f"(found {len(futs)} total, latest expiry "
+        f"{futs[-1].expiry if futs else 'none'}) - the public master is stale. "
+        f"Set DHAN_USDINR_SECURITY_ID in .env from the Dhan web F&O page."
+    )
+    if allow_stale and futs:
+        logger.warning("[dhan_instruments] %s  Falling back to %s (%s).",
+                       msg, futs[-1].trading_symbol, futs[-1].expiry)
+        return futs[-1]
+    raise StaleMasterError(msg)

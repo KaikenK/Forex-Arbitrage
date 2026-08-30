@@ -106,6 +106,34 @@ def test_parse_contract_expiry():
     assert _parse_contract_expiry("nonsense") is None
 
 
+def test_convention_inversion_for_cme_style_series():
+    from backend.core.data_sources.eod_loader import normalise_convention
+    # CME 6R quotes USD-per-INR (~0.0117)
+    cme = [EODBar(date(2026, 1, d), "offshore", "cme", "INRUSD", c)
+           for d, c in ((1, 0.011760), (2, 0.011800), (3, 0.011720))]
+    out = normalise_convention(cme, "auto")
+    assert 84 < out[0].mark < 86            # inverted to USD/INR
+    assert out[0].mark == pytest.approx(1 / 0.011760, rel=1e-9)
+
+    usdinr = [EODBar(date(2026, 1, 1), "offshore", "x", "x", 86.5)]
+    assert normalise_convention(usdinr, "auto")[0].mark == 86.5   # left alone
+
+    paise = [EODBar(date(2026, 1, 1), "otc", "x", "x", 8650.0)]
+    assert normalise_convention(paise, "auto")[0].mark == 86.5    # /100
+
+
+def test_convention_inrusd_x10000_for_investing_com_series():
+    from backend.core.data_sources.eod_loader import normalise_convention
+    # investing.com "Indian Rupee Futures" quotes 1/USDINR * 10000 (~104-117)
+    series = [EODBar(date(2026, 8, d), "offshore", "inv", "x", q)
+             for d, q in ((26, 104.86), (27, 104.70), (28, 104.39))]
+    out = normalise_convention(series, "INRUSD_x10000")
+    assert out[0].mark == pytest.approx(10000 / 104.86)
+    assert 94 < out[0].mark < 96                       # -> real USD/INR level
+    # not picked by auto (range overlaps a genuine USD/INR near 100)
+    assert normalise_convention(series, "auto")[0].mark == 104.86
+
+
 def test_bars_are_sorted_by_date(tmp_path):
     csv = _write(tmp_path, "unsorted.csv", """
 Date,Close
