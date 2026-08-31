@@ -256,43 +256,88 @@ def build_basis_pipeline() -> BasisPipeline:
     return BasisPipeline(sources=sources, normalizer=normalizer)
 
 
-def _build_otc_source() -> RESTDataSource:
+def _build_otc_source() -> DataSourceInterface:
+    """
+    OTC USD/INR spot. Default: `OtcSpotSource` (free, key-less — Yahoo intraday
+    with a Frankfurter daily fallback). `OTC_USDINR_BASE_URL` set -> fall back to
+    the generic `RESTDataSource` against that endpoint.
+    """
     cfg = _leg_cfg("otc")
-    rest_cfg = RESTSourceConfig(
-        base_url=os.environ.get("OTC_USDINR_BASE_URL", ""),
-        endpoint_template=os.environ.get(
-            "OTC_USDINR_ENDPOINT", "/latest?base=USD&symbols=INR"
-        ),
-        api_key=os.environ.get("OTC_USDINR_API_KEY"),
-        response_parser=os.environ.get("OTC_USDINR_PARSER", "exchangerate"),
-        poll_interval_ms=2000,
-    )
-    return RESTDataSource(cfg, rest_cfg)
+    if os.environ.get("OTC_USDINR_BASE_URL"):
+        rest_cfg = RESTSourceConfig(
+            base_url=os.environ["OTC_USDINR_BASE_URL"],
+            endpoint_template=os.environ.get(
+                "OTC_USDINR_ENDPOINT", "/latest?base=USD&symbols=INR"),
+            api_key=os.environ.get("OTC_USDINR_API_KEY"),
+            response_parser=os.environ.get("OTC_USDINR_PARSER", "exchangerate"),
+            poll_interval_ms=2000,
+        )
+        return RESTDataSource(cfg, rest_cfg)
+    from backend.core.data_sources.otc_spot_source import OtcSpotSource
+    return OtcSpotSource(cfg)
+
+
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+_YF_SIR = "https://query1.finance.yahoo.com/v8/finance/chart/SIR=F?interval=1m&range=1d"
+
+
+def _yahoo_offshore_fetcher(spread_pips: float = 3.0):
+    """
+    Free offshore leg: CME Indian Rupee/USD future via Yahoo (`SIR=F`), quoted
+    `1/USDINR x 10000` (~104.9) and ~10 min delayed. No key. Converted to USD/INR
+    on the fly; a synthetic bid/ask (`spread_pips`) is applied since Yahoo gives
+    no book. `quote_time` from the feed -> `CMEDelayedSource` computes staleness.
+    """
+    import urllib.request
+
+    def _fetch():
+        try:
+            req = urllib.request.Request(_YF_SIR, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                d = json.loads(resp.read() or b"{}")
+            m = d["chart"]["result"][0]["meta"]
+            raw = m.get("regularMarketPrice")
+        except Exception as e:
+            logger.debug("[offshore] yahoo SIR=F fetch failed: %s", e)
+            return None
+        if not raw:
+            return None
+        mid = 10000.0 / float(raw)                     # -> USD/INR
+        half = (spread_pips * _PIP) / 2.0
+        qt = datetime.fromtimestamp(m.get("regularMarketTime", 0) or time.time(),
+                                    tz=timezone.utc)
+        return {
+            "bid": round(mid - half, 5), "ask": round(mid + half, 5),
+            "last": round(mid, 5),
+            "expiry": _default_target_expiry().isoformat(),  # CME near-month ~ NSE T*
+            "quote_time": qt,
+        }
+
+    return _fetch
 
 
 def _env_offshore_fetcher():
     """
-    Returns None unless CME_USDINR_URL is set. A real fetcher for the delayed CME
-    quote is wired in T1.3; until then the offshore leg is inert and the pipeline
-    records onshore + OTC.
+    `CME_USDINR_URL` set -> a generic delayed-JSON fetcher against it.
+    Otherwise -> the free Yahoo `SIR=F` fetcher (unless ARBEX_OFFSHORE=off).
     """
     url = os.environ.get("CME_USDINR_URL")
-    if not url:
+    if url:
+        import urllib.request
+
+        def _fetch():
+            req = urllib.request.Request(url, headers={"User-Agent": _UA})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+            return {
+                "bid": float(data["bid"]), "ask": float(data["ask"]),
+                "last": data.get("last"), "expiry": data.get("expiry"),
+                "quote_time": datetime.fromisoformat(data["quote_time"])
+                if data.get("quote_time") else datetime.now(timezone.utc),
+            }
+        return _fetch
+
+    if os.environ.get("ARBEX_OFFSHORE", "yahoo").lower() in ("off", "none", ""):
         return None
-
-    import urllib.request
-
-    def _fetch():
-        req = urllib.request.Request(url, headers={"User-Agent": "arbex/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        return {
-            "bid": float(data["bid"]),
-            "ask": float(data["ask"]),
-            "last": data.get("last"),
-            "expiry": data.get("expiry"),
-            "quote_time": datetime.fromisoformat(data["quote_time"])
-            if data.get("quote_time") else datetime.now(timezone.utc),
-        }
-
-    return _fetch
+    return _yahoo_offshore_fetcher()

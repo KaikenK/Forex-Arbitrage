@@ -8,7 +8,10 @@ master) + `DhanDataSource` (kept, needs paid Dhan Data API), semantic adapter + 
 chain, `/basis` dashboard + `BasisReplayer`.
 Onshore feed **verified live** (Upstox analytics token, `NCD_FO|1769`, 5×5 depth).
 `BasisExecutionFilter` (real onshore book -> slippage + verdict) built and wired.
-**Remaining:** live 3-leg basis (offshore + OTC live sources); carry calibration.
+**Live 3-leg basis works** — onshore (Upstox), offshore (Yahoo `SIR=F`, free,
+~10 min delayed), OTC spot (Yahoo `USDINR=X` intraday / Frankfurter fallback, free).
+Verified live: `onshore_offshore` −7.7 pips (matches the EOD mean).
+**Remaining:** carry calibration; multi-week collection + event study.
 **Owners:** arbitrage / feeds / measurement team (semantic engine excluded — separate owner)
 **Companion docs:** `CLAUDE.md`, "Arbex Build Plan" artifact, "Arbex Literature & Novelty" dossier
 
@@ -214,8 +217,8 @@ chart built from it "implied spot, carry assumption stated".
 |---|---|---|---|---|---|---|---|
 | Onshore | **Upstox** (`UpstoxDataSource`, default) | REST poll `/v2/market-quote/quote` @ 1 s | NSE USD/INR `NCD_FO` monthly future | 5×5 | ~1 s | `UPSTOX_ACCESS_TOKEN` (analytics token) | **free** — no data subscription |
 | Onshore (alt) | Dhan (`DhanDataSource`) | WebSocket (`dhanhq` `MarketFeed`, `Full`) | NSE USD/INR `FUTCUR` near-month | 5×5 | sub-second | `DHAN_CLIENT_ID` + `DHAN_ACCESS_TOKEN` | data API **paid** (₹~500/mo) |
-| Offshore | CME / SGX settlements, Barchart, Nasdaq Data Link | CSV (EOD) / REST poll (live) | Rupee future 6R / MIR — **USD-per-INR, reciprocated on load** | top-of-book | EOD or ~10 min delayed | none / free tier | free tier |
-| OTC spot | yfinance `USDINR=X` / Dukascopy demo / Twelve Data | WS / REST / CSV | USD/INR spot | none (synthesised) | seconds–EOD | none / demo | free |
+| Offshore | **Yahoo `SIR=F`** (CME Indian Rupee/USD future) via `CMEDelayedSource` + `_yahoo_offshore_fetcher` | REST poll (chart API) | CME SIR future — quoted `1/USDINR × 10000` (~104.9), converted on the fly | top-of-book (synth spread) | ~10 min delayed → staleness haircut | **none — key-less** | **free** |
+| OTC spot | **`OtcSpotSource`** — Yahoo `USDINR=X` intraday, Frankfurter (`api.frankfurter.dev`) daily fallback | REST poll @ 2 s | USD/INR spot | none (synth spread, `OTC_SPOT_SPREAD_PIPS`) | ~1 min | **none — key-less** | **free** |
 | Reference | RBI / FBIL | REST / CSV | USD/INR fix | n/a | daily | none | free |
 
 **Onshore broker note.** Only **Upstox** gives free market data for NSE currency
