@@ -388,14 +388,37 @@ BASIS_DETECTION_CONFIG = BasisDetectionConfig()
 
 @dataclass
 class OffshoreFeasibilityConfig:
-    """Assumed-depth profile for the offshore leg (no real L2 available)."""
-    # (price_offset_pips_from_touch, size_millions_usd)
+    """Assumed-depth profile for a leg with no real L2 (offshore future, OTC spot).
+
+    Each tuple is (price_offset_pips_from_touch, cumulative_notional_millions_usd):
+    "within X pips of the touch you can fill up to Y million USD".
+    """
     assumed_depth_levels: tuple = (
         (0.0, 2.0), (1.0, 3.0), (2.0, 5.0), (4.0, 8.0), (8.0, 15.0),
     )
 
 
 OFFSHORE_FEASIBILITY_CONFIG = OffshoreFeasibilityConfig()
+
+
+@dataclass
+class BasisExecutionConfig:
+    """
+    Execution-feasibility parameters for a basis trade (buy one leg, sell the other).
+    Retail-scale by default — the point is a realistic pre-trade verdict, not size.
+    """
+    target_notional_usd: float = 100_000.0       # size to price the fill for
+    contract_size_usd: float = 1_000.0           # NSE USD/INR future = $1000 / lot
+    min_leg_cost_pips: float = 0.5              # floor per leg: the spread you cross
+                                                # even for tiny size (2 legs -> ~1 pip)
+    min_viable_net_pips: float = 2.0             # net basis >= this -> "viable";
+                                                # 0..2 -> "risky"; <= 0 -> "unlikely"
+    thin_book_penalty: float = 2.0              # multiplier on the gap when a book
+                                                # cannot fill the target notional
+    offshore_staleness_haircut_pips_per_min: float = 0.5  # widen cost as offshore ages
+
+
+BASIS_EXECUTION_CONFIG = BasisExecutionConfig()
 
 USDINR_PIP = 0.01
 

@@ -10,6 +10,10 @@ from backend.core.basis.basis_engine import (
     score_basis_event,
 )
 from backend.core.basis.eod_basis import EODBasisRunner, EODBasisRow
+from backend.core.basis.basis_execution import (
+    BasisExecutionAssessment,
+    BasisExecutionFilter,
+)
 from backend.core.basis.stream_consumer import BasisStreamConsumer, DEFAULT_GROUP
 from backend.core.basis.semantic_adapter import (
     basis_event_to_raw_msg,
@@ -30,4 +34,6 @@ __all__ = [
     "DEFAULT_GROUP",
     "basis_event_to_raw_msg",
     "consume_basis_stream",
+    "BasisExecutionFilter",
+    "BasisExecutionAssessment",
 ]

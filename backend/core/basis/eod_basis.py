@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from backend.config import BASIS_DETECTION_CONFIG, CARRY_RATE_ANNUAL
+from backend.core.basis.basis_execution import BasisExecutionFilter
 from backend.core.basis.basis_engine import (
     BasisArbitrageEngine,
     BasisPersistenceTracker,
@@ -64,6 +65,7 @@ class EODBasisRunner:
     carry_rate_annual: float = CARRY_RATE_ANNUAL
     rows: List[EODBasisRow] = field(default_factory=list)
     events: List[BasisEvent] = field(default_factory=list)
+    _exec_filter: BasisExecutionFilter = field(default_factory=BasisExecutionFilter, repr=False)
 
     def run(
         self,
@@ -139,6 +141,8 @@ class EODBasisRunner:
             for ev in engine.detect(fwd_objs, now_ts=_epoch(d),
                                     target_expiry=t_star, cadence="eod"):
                 ev.persistence_class = tracker.observe(ev)
+                # EOD has no order book -> assumed-depth verdict (both legs assumed)
+                self._exec_filter.stamp(ev, {})
                 ev.composite_score = score_basis_event(ev)
                 self.events.append(ev)
         logger.info("[eod_basis] %d dated rows", len(self.rows))

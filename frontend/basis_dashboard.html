@@ -120,17 +120,29 @@ const onD={}, offD={}, otcD={}, basisD={};
 let evTotal=0;
 const leaders=[];
 
+function tkey(k){ return (typeof k==='number' || /^\d+$/.test(k)) ? Number(k) : k; }
 function upsert(store, series, t, v){ if(v==null) return; store[t]=v;
-  series.setData(Object.keys(store).sort().map(k=>({time:k,value:store[k]}))); }
+  const ks = Object.keys(store).sort((a,b)=>{ const na=tkey(a),nb=tkey(b);
+    return (typeof na==='number'&&typeof nb==='number') ? na-nb : (na<nb?-1:na>nb?1:0); });
+  series.setData(ks.map(k=>({time:tkey(k),value:store[k]}))); }
 
+let liveScale=false;
+const IST = 5.5*3600;   // Lightweight Charts renders time as UTC; shift so the axis reads IST
 function onSnapshot(m){
-  const t = m.trade_date || (m.ts? new Date(m.ts*1000).toISOString().slice(0,10):null);
-  if(!t) return;
-  $('curdate').textContent = t;
+  // live tick -> key the chart by epoch seconds (intraday); replay -> by trade_date
+  const live = m.partial!=null || (typeof m.ts==='number' && !m.trade_date);
+  const t = m.trade_date || (live ? Math.floor(m.ts)+IST
+                                  : (m.ts? new Date(m.ts*1000).toISOString().slice(0,10):null));
+  if(t==null) return;
+  if(live && !liveScale){ liveScale=true;
+    chart.applyOptions({timeScale:{timeVisible:true,secondsVisible:true}}); }
+  $('curdate').textContent = live ? new Date(m.ts*1000).toLocaleTimeString() : t;
   const f = m.forwards||{};
   if(f.onshore) upsert(onD,sOn,t,f.onshore.mid);
   if(f.offshore) upsert(offD,sOff,t,f.offshore.mid);
   if(f.spot||f.otc) upsert(otcD,sOtc,t,(f.spot||f.otc).mid);
+  if(m.partial){ $('sparkttl').textContent =
+      'live: '+Object.keys(f).join(' + ')+'  —  need offshore + OTC for a basis'; return; }
   const b = m.basis_pips||{};
   setCard('b_oo', b.onshore_offshore);
   setCard('b_ot', b.onshore_spot ?? b.onshore_otc);
@@ -140,7 +152,10 @@ function onSnapshot(m){
   else if(b.onshore_spot!=null){ bv=b.onshore_spot; bl='onshore − OTC spot'; }
   else if(b.onshore_otc!=null){ bv=b.onshore_otc; bl='onshore − OTC'; }
   if(bv!=null){ $('sparkttl').textContent=bl+', recent';
-    basisD[t]=bv; sBasis.setData(Object.keys(basisD).sort().slice(-60).map(k=>({time:k,value:basisD[k]}))); }
+    basisD[t]=bv;
+    const ks=Object.keys(basisD).sort((a,b)=>{ const na=tkey(a),nb=tkey(b);
+      return (typeof na==='number'&&typeof nb==='number')?na-nb:(na<nb?-1:na>nb?1:0); }).slice(-60);
+    sBasis.setData(ks.map(k=>({time:tkey(k),value:basisD[k]}))); }
 }
 function setCard(id,v){ const el=$(id); if(v==null){el.textContent='—';return;}
   el.textContent=fmtPips(v);

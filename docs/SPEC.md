@@ -3,10 +3,12 @@
 **Status:** Active · Phase 3 · Path 2 · Option A (futures↔futures) · carry 1.9% (to calibrate)
 **Built:** normaliser, EOD track (real NSE futures), `BasisArbitrageEngine` + persistence
 + scoring, `BasisEvent` v1.1 + Redis Streams + consumer-group replay test,
-`DhanDataSource` (read-only, `dhanhq` 2.x, token verified), semantic adapter + E2E
+`UpstoxDataSource` (default onshore leg — free market data, current instrument
+master) + `DhanDataSource` (kept, needs paid Dhan Data API), semantic adapter + E2E
 chain, `/basis` dashboard + `BasisReplayer`.
-**Remaining:** live tick capture during NSE hours on a current front-month contract;
-real 5-level depth -> `SimulatedExecutionFilter`.
+Onshore feed **verified live** (Upstox analytics token, `NCD_FO|1769`, 5×5 depth).
+`BasisExecutionFilter` (real onshore book -> slippage + verdict) built and wired.
+**Remaining:** live 3-leg basis (offshore + OTC live sources); carry calibration.
 **Owners:** arbitrage / feeds / measurement team (semantic engine excluded — separate owner)
 **Companion docs:** `CLAUDE.md`, "Arbex Build Plan" artifact, "Arbex Literature & Novelty" dossier
 
@@ -92,18 +94,26 @@ chart built from it "implied spot, carry assumption stated".
 ## 4. Functional requirements
 
 ### FR-1 · Feed ingestion
-- FR-1.1 An onshore-broker `DataSourceInterface` implementation (`DhanDataSource` /
-  `UpstoxDataSource` — free APIs; `KiteDataSource` skeleton exists but Kite costs ₹500/mo)
-  streams the NSE-CDS USD/INR near-month future via WebSocket; `get_tick()` returns a
-  `RawTick` (with `extra["expiry"]`); a `get_depth(symbol)` extension returns the top 5
-  bid and 5 ask levels `(price, qty)`. **Built** (`dhanhq` >= 2.x: `DhanContext` +
-  `MarketFeed`, `Full` request code — v2 marketfeed rejects the bare `Depth` code; the
-  `Full` packet carries the 5-level book). Token verified live (`/v2/fundlimit` 200,
-  balance 0). The near-month contract resolves from Dhan's public scrip master, which
-  currently lags the live NSE board — `resolve_near_month(allow_stale=True)` falls back
-  to the latest listed contract with a warning, and `DHAN_USDINR_SECURITY_ID` pins it
-  outright. `research/check_dhan.py` runs a token healthcheck + master check + a live
-  sample.
+- FR-1.1 An onshore-broker `DataSourceInterface` implementation streams the NSE-CDS
+  USD/INR near-month future; `get_tick()` returns a `RawTick` (with `extra["expiry"]`);
+  `get_depth(symbol)` returns the top 5 bid + 5 ask levels `(price, qty)`. Broker is
+  selected by `ARBEX_ONSHORE_BROKER` (default `upstox`).
+  - **`UpstoxDataSource` (default, built).** Upstox API v2 market data is **free** — no
+    data subscription (verified against Upstox docs 2026-08-31; only API-*placed* orders
+    carry brokerage). Pure `urllib` REST, polls `/v2/market-quote/quote` at 1 s (well
+    inside the 10 req/s free limit) for LTP + 5-level depth. `UPSTOX_ACCESS_TOKEN` only
+    (an *analytics token* avoids daily re-auth). `upstox_instruments.py` resolves the
+    near-month **monthly** contract (`weekly == False`, segment `NCD_FO`) from the public
+    instrument master `assets.upstox.com/.../NSE.json.gz`, which stays current (carries
+    `USDINR FUT 28 SEP 26` = `NCD_FO|1769` and out to Aug 2027). Pin with
+    `UPSTOX_USDINR_INSTRUMENT_KEY`. Validate: `research/check_upstox.py [--probe KEY]`.
+  - **`DhanDataSource` (kept, blocked).** `dhanhq` >= 2.x (`DhanContext` + `MarketFeed`,
+    `Full` request code). Trading token verified (`/v2/fundlimit` 200) but **market data
+    needs Dhan's paid Data API subscription** — every quote/feed call returns
+    `401 806 "Data APIs not Subscribed"`. Dhan's public scrip master is also months stale
+    for the currency segment (`resolve_near_month(allow_stale=True)` + `DHAN_USDINR_SECURITY_ID`
+    override). `research/check_dhan.py --probe SID`. Use only if the paid plan is bought.
+  - Zerodha Kite Connect costs ₹500/mo; `KiteDataSource` is a skeleton.
 - FR-1.2 An onshore `StreamAdapter(BaseStreamAdapter)` publishes real 5-level DOM to
   `arbex.orderbooks` for `OrderbookService`, replacing the mock `MT5StreamAdapter` for USD/INR.
 - FR-1.3 A `CMEDelayedSource` polls a delayed offshore rupee future; each `RawTick`
@@ -135,11 +145,24 @@ chart built from it "implied spot, carry assumption stated".
 - FR-3.3 `OpportunityTracker` persistence-class thresholds are configurable and re-tuned:
   proposed `ephemeral < 5 s`, `flickering 5–60 s`, `persistent > 60 s` (validate against data).
 
-### FR-4 · Feasibility
-- FR-4.1 `SimulatedExecutionFilter` consumes **real** onshore 5-level depth for the onshore
-  leg and produces a real slippage estimate and a `Strong / Risky / Unlikely` verdict.
-- FR-4.2 For the offshore leg, the filter runs a sensitivity analysis over a configurable
-  assumed-depth profile; output is explicitly labelled `assumed_depth = true`.
+### FR-4 · Feasibility  — **built** (`basis_execution.py::BasisExecutionFilter`, T2.3)
+- FR-4.1 The filter walks each leg's order book for `target_notional_usd` (default
+  $100k, retail scale): notional-weighted price offset from the touch = per-leg slippage
+  in pips, plus a `min_leg_cost_pips` floor (the spread you cross) and a
+  `thin_book_penalty` when a book cannot fill the size. The **onshore** leg uses the
+  real Upstox 5-level book (`get_depth()`, wired in `basis_pipeline._tick_once`).
+- FR-4.2 The **offshore** future and **OTC** spot have no retail L2 → the filter falls
+  back to `OFFSHORE_FEASIBILITY_CONFIG.assumed_depth_levels` and sets `assumed_depth =
+  true` on the event (always true for `onshore_offshore`, matching the "partial /
+  sensitivity-only" position in the novelty matrix).
+- FR-4.3 `net_basis_pips = basis_pips − expected_slippage_pips − offshore staleness
+  haircut`; verdict = `viable` (net ≥ `min_viable_net_pips`, default 2) / `risky`
+  (0..2) / `unlikely` (≤ 0). `stamp()` writes `execution_verdict`,
+  `expected_slippage_pips`, `assumed_depth` onto the `BasisEvent` before scoring, so
+  `score_basis_event` picks up the real verdict bonus. Runs in both the live pipeline
+  and the EOD runner (EOD = all-assumed). EOD `real` run: 673 viable / 24 risky / 0
+  unlikely — at retail size the EOD basis clears cost whenever it fires; the mix
+  broadens on the live intraday feed.
 
 ### FR-5 · Ranking
 - FR-5.1 `OpportunityRanker` adds features: leg-liquidity asymmetry, offshore staleness
@@ -189,17 +212,19 @@ chart built from it "implied spot, carry assumption stated".
 
 | Leg | Provider (default) | Protocol | Instrument | Depth | Freshness | Auth | Cost |
 |---|---|---|---|---|---|---|---|
-| Onshore | **Dhan** (`DhanDataSource`) | WebSocket (`dhanhq` marketfeed) | NSE USD/INR `FUTCUR` near-month | 5×5, up to 200-level | sub-second | `DHAN_CLIENT_ID` + `DHAN_ACCESS_TOKEN` | **free**, keep account unfunded |
+| Onshore | **Upstox** (`UpstoxDataSource`, default) | REST poll `/v2/market-quote/quote` @ 1 s | NSE USD/INR `NCD_FO` monthly future | 5×5 | ~1 s | `UPSTOX_ACCESS_TOKEN` (analytics token) | **free** — no data subscription |
+| Onshore (alt) | Dhan (`DhanDataSource`) | WebSocket (`dhanhq` `MarketFeed`, `Full`) | NSE USD/INR `FUTCUR` near-month | 5×5 | sub-second | `DHAN_CLIENT_ID` + `DHAN_ACCESS_TOKEN` | data API **paid** (₹~500/mo) |
 | Offshore | CME / SGX settlements, Barchart, Nasdaq Data Link | CSV (EOD) / REST poll (live) | Rupee future 6R / MIR — **USD-per-INR, reciprocated on load** | top-of-book | EOD or ~10 min delayed | none / free tier | free tier |
 | OTC spot | yfinance `USDINR=X` / Dukascopy demo / Twelve Data | WS / REST / CSV | USD/INR spot | none (synthesised) | seconds–EOD | none / demo | free |
 | Reference | RBI / FBIL | REST / CSV | USD/INR fix | n/a | daily | none | free |
 
-**Onshore broker note.** Zerodha Kite Connect costs ₹500/month; **Dhan** and **Upstox**
-APIs are free. The onshore leg is `DhanDataSource` (`dhan_data_source.py`) — read-only
-(market feed + depth, **no order calls anywhere**), lazy `dhanhq` import, resolves the
-near-month contract from Dhan's public scrip master (`dhan_instruments.py`), with a
-`DHAN_USDINR_SECURITY_ID` env override if the master snapshot is stale. Validate the
-setup with `python research/check_dhan.py`. A `KiteDataSource` skeleton also exists.
+**Onshore broker note.** Only **Upstox** gives free market data for NSE currency
+derivatives — Zerodha Kite (₹500/mo) and Dhan (data API paid, `401 806`) both charge.
+The default onshore leg is `UpstoxDataSource` (`upstox_data_source.py`) — read-only
+(REST quote poll, **no order calls anywhere**), pure `urllib`, resolves the near-month
+monthly contract from Upstox's public instrument master (`upstox_instruments.py`), with
+a `UPSTOX_USDINR_INSTRUMENT_KEY` override. `DhanDataSource` is kept behind
+`ARBEX_ONSHORE_BROKER=dhan`. Validate with `python research/check_upstox.py`.
 Credentials in `.env`, never committed; keep the account unfunded.
 
 ## 6. Config additions (`backend/config.py`)

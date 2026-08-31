@@ -33,6 +33,7 @@ from backend.core.basis.basis_engine import (
     BasisPersistenceTracker,
     score_basis_event,
 )
+from backend.core.basis.basis_execution import BasisExecutionFilter
 from backend.core.basis.basis_event import BasisEvent, RAW_STREAM
 from backend.core.data_sources.cme_delayed_source import CMEDelayedSource
 from backend.core.data_sources.dhan_data_source import DhanDataSource
@@ -84,6 +85,7 @@ class BasisPipeline:
         default_factory=lambda: BasisArbitrageEngine(BASIS_DETECTION_CONFIG))
     tracker: BasisPersistenceTracker = field(
         default_factory=lambda: BasisPersistenceTracker(BASIS_DETECTION_CONFIG, mode="duration"))
+    exec_filter: BasisExecutionFilter = field(default_factory=BasisExecutionFilter)
     _events_detected: int = 0
 
     def _open_log(self):
@@ -135,6 +137,7 @@ class BasisPipeline:
     def _tick_once(self):
         """Returns (snapshot_dict_or_None, list_of_events)."""
         forwards: Dict[str, Any] = {}
+        books: Dict[str, Any] = {}
         for s in self.sources:
             raw = s.get_tick("USDINR")
             if raw is None:
@@ -162,8 +165,16 @@ class BasisPipeline:
                 logger.debug("[basis_pipeline] skip %s: %s", s.source_id, e)
                 continue
             forwards[leg] = {"fwd": fwd, "staleness_ms": extra.get("staleness_ms", 0)}
+            get_depth = getattr(s, "get_depth", None)
+            if callable(get_depth):
+                try:
+                    book = get_depth("USDINR")
+                except Exception:
+                    book = None
+                if book and book.get("bids") and book.get("asks"):
+                    books[leg] = book
 
-        if len(forwards) < 2:
+        if not forwards:
             return None, []
 
         pairs = {}
@@ -175,6 +186,7 @@ class BasisPipeline:
                 )
 
         now = time.time()
+        partial = len(forwards) < 2
         row = {
             "ts": now,
             "target_expiry": self.normalizer.target_expiry.isoformat(),
@@ -182,10 +194,18 @@ class BasisPipeline:
             "forwards": {lg: forwards[lg]["fwd"].to_dict() for lg in forwards},
             "basis_pips": pairs,
             "staleness_ms": {lg: forwards[lg]["staleness_ms"] for lg in forwards},
+            "real_depth_legs": sorted(books.keys()),
+            "partial": partial,          # < 2 legs live -> forwards render, no basis/events
         }
         self._out.write(json.dumps(row) + "\n")
         self._out.flush()
         self._snapshots += 1
+
+        if partial:
+            if self._snapshots % 60 == 0:
+                logger.info("[basis_pipeline] %d partial snapshots; live legs=%s "
+                            "(need offshore + otc for a basis)", self._snapshots, legs)
+            return row, []
 
         # dislocation detection + persistence stamping
         fwd_objs = {lg: forwards[lg]["fwd"] for lg in forwards}
@@ -196,7 +216,8 @@ class BasisPipeline:
         )
         for ev in events:
             ev.persistence_class = self.tracker.observe(ev)
-            ev.composite_score = score_basis_event(ev)
+            self.exec_filter.stamp(ev, books, staleness_ms=staleness)
+            ev.composite_score = score_basis_event(ev)   # now sees a real verdict
             self._events_detected += 1
 
         if self._snapshots % 60 == 0:
@@ -208,9 +229,23 @@ class BasisPipeline:
         self._running = False
 
 
+def _build_onshore_source() -> DataSourceInterface:
+    """
+    Onshore NSE USD/INR future. Broker is selected by ARBEX_ONSHORE_BROKER
+    (default 'upstox' — free market data, current instrument master). 'dhan'
+    keeps the DhanDataSource path (needs a paid Dhan Data API subscription).
+    """
+    broker = os.environ.get("ARBEX_ONSHORE_BROKER", "upstox").lower()
+    cfg = _leg_cfg("onshore")
+    if broker == "dhan":
+        return DhanDataSource(cfg)
+    from backend.core.data_sources.upstox_data_source import UpstoxDataSource
+    return UpstoxDataSource(cfg)
+
+
 def build_basis_pipeline() -> BasisPipeline:
     sources: List[DataSourceInterface] = [
-        DhanDataSource(_leg_cfg("onshore")),
+        _build_onshore_source(),
         CMEDelayedSource(_leg_cfg("offshore"), fetcher=_env_offshore_fetcher()),
         _build_otc_source(),
     ]

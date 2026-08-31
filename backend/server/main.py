@@ -325,15 +325,17 @@ async def lifespan(app: FastAPI):
         # =====================================================================
         global basis_recorder_task
 
-        _have_dhan = bool(os.environ.get("DHAN_CLIENT_ID") and os.environ.get("DHAN_ACCESS_TOKEN"))
-        _replay = os.environ.get("BASIS_REPLAY") == "1" or not _have_dhan
+        _broker = os.environ.get("ARBEX_ONSHORE_BROKER", "upstox").lower()
+        _have_onshore = bool(os.environ.get("UPSTOX_ACCESS_TOKEN")) if _broker != "dhan" \
+            else bool(os.environ.get("DHAN_CLIENT_ID") and os.environ.get("DHAN_ACCESS_TOKEN"))
+        _replay = os.environ.get("BASIS_REPLAY") == "1" or not _have_onshore
 
         if _replay:
             from backend.core.basis.basis_replay import BasisReplayer
             replayer = BasisReplayer(ws_manager)
             app.state.basis_ctx = replayer
             basis_recorder_task = asyncio.create_task(replayer.run())
-            logger.info("Basis dashboard REPLAY mode (no Dhan creds / BASIS_REPLAY=1) "
+            logger.info("Basis dashboard REPLAY mode (no onshore creds / BASIS_REPLAY=1) "
                         "— streaming the EOD run over /ws/basis. Dashboard: /basis")
         else:
             from backend.core.data_sources.basis_pipeline import build_basis_pipeline
