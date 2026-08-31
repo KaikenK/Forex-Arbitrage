@@ -11,7 +11,10 @@ Onshore feed **verified live** (Upstox analytics token, `NCD_FO|1769`, 5×5 dept
 **Live 3-leg basis works** — onshore (Upstox), offshore (Yahoo `SIR=F`, free,
 ~10 min delayed), OTC spot (Yahoo `USDINR=X` intraday / Frankfurter fallback, free).
 Verified live: `onshore_offshore` −7.7 pips (matches the EOD mean).
-**Remaining:** carry calibration; multi-week collection + event study.
+**Collector built** (`research/collect_basis.py`) — always-on, NSE-hours-gated,
+day-rolled files, heartbeat `status.json`, source auto-reconnect, event dedup on
+state change. **Remaining:** run the multi-week collection (start ~late Sept to
+bracket the 5-7 Oct RBI MPC); the event study; carry calibration.
 **Owners:** arbitrage / feeds / measurement team (semantic engine excluded — separate owner)
 **Companion docs:** `CLAUDE.md`, "Arbex Build Plan" artifact, "Arbex Literature & Novelty" dossier
 
