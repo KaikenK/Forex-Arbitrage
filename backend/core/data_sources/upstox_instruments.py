@@ -38,6 +38,15 @@ _UNDERLYING = "USDINR"
 
 
 @dataclass(frozen=True)
+class UpstoxOption:
+    instrument_key: str
+    trading_symbol: str
+    expiry: date
+    strike: float
+    option_type: str                 # "CE" | "PE"
+
+
+@dataclass(frozen=True)
 class UpstoxContract:
     instrument_key: str              # e.g. "NCD_FO|1769" — what the API takes
     trading_symbol: str              # "USDINR FUT 28 SEP 26"
@@ -129,14 +138,15 @@ def resolve_near_month(
     as_of: Optional[date] = None,
     min_days_to_expiry: int = 2,
     prefer_monthly: bool = True,
+    nth: int = 0,
     force: bool = False,
     master_json: Optional[list] = None,
 ) -> UpstoxContract:
     """
-    The nearest unexpired USD/INR future. With ``prefer_monthly`` the monthly
-    contract (``weekly == False``) is chosen when one is available — it is the
-    standard basis reference and matches the EOD NSE-settlement series. Falls
-    back to the nearest weekly if no monthly qualifies.
+    The ``nth`` unexpired USD/INR future (0 = nearest). With ``prefer_monthly``
+    the monthly contracts (``weekly == False``) are used when available — the
+    standard basis reference, matching the EOD NSE-settlement series. ``nth=1``
+    gives the far-month contract for calendar comparison.
     """
     as_of = as_of or date.today()
     futs = usdinr_futures(force=force, master_json=master_json)
@@ -147,8 +157,37 @@ def resolve_near_month(
             f"({len(futs)} total, latest {futs[-1].expiry if futs else 'none'}). "
             f"Set UPSTOX_USDINR_INSTRUMENT_KEY to pin it."
         )
-    if prefer_monthly:
-        monthly = [c for c in live if not c.weekly]
-        if monthly:
-            return monthly[0]
-    return live[0]
+    pool = [c for c in live if not c.weekly] if prefer_monthly else list(live)
+    pool = pool or live
+    return pool[min(nth, len(pool) - 1)]
+
+
+def usdinr_options(
+    expiry: date,
+    *,
+    force: bool = False,
+    master_json: Optional[list] = None,
+) -> List[UpstoxOption]:
+    """All NSE USD/INR CE/PE contracts for one expiry, sorted by strike then type."""
+    out: List[UpstoxOption] = []
+    for r in load_master(force=force, master_json=master_json):
+        if r.get("segment") != CURRENCY_SEGMENT:
+            continue
+        if r.get("instrument_type") not in ("CE", "PE"):
+            continue
+        if r.get("name") != _UNDERLYING and r.get("underlying_symbol") != _UNDERLYING:
+            continue
+        if _expiry_of(r) != expiry:
+            continue
+        try:
+            k = float(r.get("strike_price"))
+        except (TypeError, ValueError):
+            continue
+        out.append(UpstoxOption(
+            instrument_key=str(r.get("instrument_key", "")),
+            trading_symbol=str(r.get("trading_symbol", "")),
+            expiry=expiry,
+            strike=k,
+            option_type=r["instrument_type"],
+        ))
+    return sorted(out, key=lambda o: (o.strike, o.option_type))

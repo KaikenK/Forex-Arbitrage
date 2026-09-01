@@ -33,6 +33,9 @@ _PAIR_LEGS = {
     "onshore_offshore": ("onshore", "offshore"),
     "onshore_otc": ("onshore", "otc"),
     "offshore_otc": ("offshore", "otc"),
+    # retail-arbitrage mode (all on NSE)
+    "future_options": ("future", "options"),   # NSE future vs put-call-parity synthetic
+    "future_far": ("future", "far"),           # calendar: near vs far month
 }
 
 

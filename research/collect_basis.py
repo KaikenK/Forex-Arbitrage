@@ -42,7 +42,8 @@ except Exception:
 
 import logging  # noqa: E402
 
-from backend.core.data_sources.basis_pipeline import build_basis_pipeline  # noqa: E402
+from backend.core.data_sources.basis_pipeline import (  # noqa: E402
+    build_basis_pipeline, build_retail_arb_pipeline)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 _MKT_OPEN = (9, 0)     # 09:00 IST
@@ -72,8 +73,9 @@ def _next_open(now_ist: datetime) -> datetime:
 class DayFiles:
     """Append-only day-stamped output, rolled at IST midnight."""
 
-    def __init__(self, outdir: Path):
+    def __init__(self, outdir: Path, prefix: str = "basis"):
         self.outdir = outdir
+        self.prefix = prefix
         self.outdir.mkdir(parents=True, exist_ok=True)
         self._day = ""
         self.snap = None
@@ -82,8 +84,8 @@ class DayFiles:
     def for_day(self, day: str):
         if day != self._day:
             self.close()
-            self.snap = open(self.outdir / f"basis_{day}.jsonl", "a", encoding="utf-8")
-            self.evt = open(self.outdir / f"events_{day}.jsonl", "a", encoding="utf-8")
+            self.snap = open(self.outdir / f"{self.prefix}_{day}.jsonl", "a", encoding="utf-8")
+            self.evt = open(self.outdir / f"{self.prefix}_events_{day}.jsonl", "a", encoding="utf-8")
             self._day = day
             log.info("writing to %s", self.snap.name)
         return self.snap, self.evt
@@ -97,15 +99,15 @@ class DayFiles:
                 pass
 
 
-def run(outdir: Path, poll_s: float, *, ignore_hours: bool, max_seconds: float | None):
-    pipeline = build_basis_pipeline()
+def run(outdir: Path, poll_s: float, *, ignore_hours: bool, max_seconds, retail: bool = False):
+    pipeline = build_retail_arb_pipeline() if retail else build_basis_pipeline()
     for s in pipeline.sources:
         try:
             s.connect()
         except Exception as e:
             log.warning("connect %s failed: %s", getattr(s, "source_id", "?"), e)
 
-    files = DayFiles(outdir)
+    files = DayFiles(outdir, prefix=getattr(pipeline, 'log_prefix', 'basis'))
     status_path = outdir / "status.json"
     started = time.time()
     stop = {"v": False}
@@ -225,6 +227,7 @@ def main():
     ap.add_argument("--poll", type=float, default=2.0, help="seconds between ticks (default 2)")
     ap.add_argument("--dry-run", action="store_true", help="ignore market hours, run ~90 s")
     ap.add_argument("--force", action="store_true", help="ignore market hours, run forever")
+    ap.add_argument("--retail", action="store_true", help="retail-arb legs (future/options/far) instead of onshore-offshore basis")
     args = ap.parse_args()
 
     outdir = Path(args.outdir)
@@ -241,7 +244,7 @@ def main():
         try:
             run(Path(args.outdir), args.poll,
                 ignore_hours=args.dry_run or args.force,
-                max_seconds=90.0 if args.dry_run else None)
+                max_seconds=90.0 if args.dry_run else None, retail=args.retail)
             return
         except KeyboardInterrupt:
             return

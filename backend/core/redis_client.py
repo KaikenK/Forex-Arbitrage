@@ -23,23 +23,36 @@ class RedisClient:
             cls._instance._host = os.environ.get("REDIS_HOST", "localhost")
             cls._instance._port = int(os.environ.get("REDIS_PORT", 6379))
             cls._instance._connect_lock = asyncio.Lock()
+            cls._instance._disabled = os.environ.get("ARBEX_REDIS", "").lower() in ("off", "0", "false")
+            cls._instance._fail_streak = 0
         return cls._instance
 
     async def connect(self):
+        # circuit breaker: after repeated refusals, stop trying (and stop logging).
+        # Set ARBEX_REDIS=off to skip Redis entirely (dashboard works without it;
+        # only the arbex.raw_opps stream + semantic engine need it).
+        if self._disabled or self._fail_streak >= 3:
+            raise ConnectionError("redis disabled / unreachable")
         async with self._connect_lock:
             if not self._is_connected:
                 try:
                     self._client = redis.Redis(
-                        host=self._host, 
-                        port=self._port, 
-                        decode_responses=True
+                        host=self._host,
+                        port=self._port,
+                        decode_responses=True,
+                        socket_connect_timeout=2,
                     )
                     await self._client.ping()
                     self._pubsub = self._client.pubsub()
                     self._is_connected = True
+                    self._fail_streak = 0
                     logger.info(f"Connected to Redis at {self._host}:{self._port}")
                 except Exception as e:
-                    logger.error(f"Failed to connect to Redis: {e}")
+                    self._fail_streak += 1
+                    if self._fail_streak <= 3:
+                        logger.warning(
+                            f"Redis unavailable ({e}) — continuing without it"
+                            f"{' (further attempts suppressed)' if self._fail_streak == 3 else ''}")
                     raise
 
     async def close(self):

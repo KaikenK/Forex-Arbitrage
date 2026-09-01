@@ -326,6 +326,10 @@ SYNTHETIC_GENERATION_CONFIG = SyntheticGenerationConfig()
 # STATED ASSUMPTION — calibrate against real data (docs/SPEC.md section 3.3).
 CARRY_RATE_ANNUAL: float = 0.019
 
+# INR money-market rate used to discount option premia in the put-call-parity
+# synthetic forward (retail-arb mode). ~1-month rate; a stated assumption.
+OPTIONS_DISCOUNT_RATE_ANNUAL: float = 0.065
+
 
 @dataclass
 class BasisLegConfig:
@@ -384,6 +388,18 @@ class BasisDetectionConfig:
 
 
 BASIS_DETECTION_CONFIG = BasisDetectionConfig()
+
+# Retail-arbitrage mode: NSE future vs options-implied forward, and near-vs-far
+# calendar. All legs on NSE, so no offshore staleness; tighter threshold since
+# the edge is small and the comparison is clean (same exchange, same settlement).
+RETAIL_ARB_CONFIG = BasisDetectionConfig(
+    comparison_basis="futures",
+    basis_window_ms=3000,
+    min_basis_threshold_pips=1.0,
+    enabled_leg_pairs=("future_options", "future_far"),
+    persistence_ephemeral_max_s=8.0,
+    persistence_flickering_max_s=90.0,
+)
 
 
 @dataclass

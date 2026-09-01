@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arbex | USD/INR Onshore–Offshore Basis</title>
+<title>Arbex | USD/INR Basis</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230f6b5c'><path d='M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -57,33 +57,25 @@
 </head>
 <body>
 <header>
-  <h1>Arbex · USD/INR Onshore–Offshore Basis</h1>
+  <h1 id="title">Arbex · USD/INR Basis</h1>
   <span class="badge replay" id="mode">…</span>
-  <span class="sub">contract expiry <b id="tstar">—</b></span>
+  <span class="sub">expiry T* <b id="tstar">—</b></span>
   <span class="sub">carry <b id="carry">—</b></span>
   <span class="sub" id="range"></span>
   <span class="sub" style="margin-left:auto"><span class="dot" id="wsdot"></span><span id="wsstate">connecting…</span></span>
-  <span class="sub">date <b id="curdate">—</b></span>
+  <span class="sub">time <b id="curdate">—</b></span>
 </header>
 
 <div class="grid">
   <div class="cell chart">
     <h2>Normalised forward at T*  ·  Option A</h2>
     <div id="fwdchart"></div>
-    <div class="legend">
-      <span><i style="background:#3fbfa8"></i>onshore (NSE)</span>
-      <span><i style="background:#d8a748"></i>offshore (CME)</span>
-      <span><i style="background:#7e9aa0"></i>OTC spot</span>
-    </div>
+    <div class="legend" id="legend"></div>
   </div>
 
   <div class="cell">
     <h2>Pairwise basis (pips)</h2>
-    <div class="cards">
-      <div class="bcard"><div class="lbl">onshore − offshore</div><div class="val" id="b_oo">—</div></div>
-      <div class="bcard"><div class="lbl">onshore − OTC</div><div class="val" id="b_ot">—</div></div>
-      <div class="bcard"><div class="lbl">offshore − OTC</div><div class="val" id="b_ft">—</div></div>
-    </div>
+    <div class="cards" id="cards"></div>
     <h2 id="sparkttl">primary basis, recent</h2>
     <div id="spark"></div>
   </div>
@@ -106,9 +98,6 @@ const chartOpts = {
   crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
 };
 const chart = LightweightCharts.createChart($('fwdchart'), chartOpts);
-const sOn  = chart.addLineSeries({color:'#3fbfa8',lineWidth:2});
-const sOff = chart.addLineSeries({color:'#d8a748',lineWidth:2});
-const sOtc = chart.addLineSeries({color:'#7e9aa0',lineWidth:2});
 new ResizeObserver(()=>chart.applyOptions({width:$('fwdchart').clientWidth,height:$('fwdchart').clientHeight})).observe($('fwdchart'));
 
 const spark = LightweightCharts.createChart($('spark'), {...chartOpts,
@@ -116,20 +105,51 @@ const spark = LightweightCharts.createChart($('spark'), {...chartOpts,
 const sBasis = spark.addAreaSeries({lineColor:'#3fbfa8',topColor:'rgba(63,191,168,.25)',bottomColor:'rgba(63,191,168,0)',lineWidth:2});
 new ResizeObserver(()=>spark.applyOptions({width:$('spark').clientWidth,height:$('spark').clientHeight})).observe($('spark'));
 
-const onD={}, offD={}, otcD={}, basisD={};
-let evTotal=0;
-const leaders=[];
+// ── generic, data-driven rendering: works for any leg / pair names ──
+const PALETTE = ['#3fbfa8','#d8a748','#7e9aa0','#e5766b','#9b8fd8','#8fc98f'];
+const LEG_LABEL = { onshore:'onshore (NSE)', offshore:'offshore (CME)', otc:'OTC spot',
+                    spot:'OTC spot', future:'near future', options:'options-implied', far:'far future' };
+const legName = k => LEG_LABEL[k] || k;
+const pairLabel = k => k.split('_').map(legName).join(' − ');
+
+const legStore = {};      // leg -> {t: mid}
+const legSeries = {};      // leg -> LineSeries
+const legColor = {};
+const basisD = {};         // primary basis spark: t -> value
+let primaryPair = null;
+let evTotal = 0;
 
 function tkey(k){ return (typeof k==='number' || /^\d+$/.test(k)) ? Number(k) : k; }
-function upsert(store, series, t, v){ if(v==null) return; store[t]=v;
+function seriesData(store){
   const ks = Object.keys(store).sort((a,b)=>{ const na=tkey(a),nb=tkey(b);
     return (typeof na==='number'&&typeof nb==='number') ? na-nb : (na<nb?-1:na>nb?1:0); });
-  series.setData(ks.map(k=>({time:tkey(k),value:store[k]}))); }
+  return ks.map(k=>({time:tkey(k),value:store[k]}));
+}
+function ensureLeg(leg){
+  if(legSeries[leg]) return;
+  const c = PALETTE[Object.keys(legSeries).length % PALETTE.length];
+  legColor[leg] = c;
+  legSeries[leg] = chart.addLineSeries({color:c,lineWidth:2});
+  legStore[leg] = {};
+  const s = document.createElement('span');
+  s.innerHTML = `<i style="background:${c}"></i>${legName(leg)}`;
+  $('legend').appendChild(s);
+}
+function ensureCard(pair){
+  if($('card_'+pair)) return;
+  const d = document.createElement('div');
+  d.className = 'bcard';
+  d.innerHTML = `<div class="lbl">${pairLabel(pair)}</div><div class="val" id="card_${pair}">—</div>`;
+  $('cards').appendChild(d);
+}
+function setCard(pair,v){ const el=$('card_'+pair); if(!el) return;
+  if(v==null){ el.textContent='—'; return; }
+  el.textContent = fmtPips(v);
+  el.style.color = Math.abs(v)>=8 ? '#e5766b' : (Math.abs(v)>=2 ? '#d8a748' : '#5cc07f'); }
 
 let liveScale=false;
 const IST = 5.5*3600;   // Lightweight Charts renders time as UTC; shift so the axis reads IST
 function onSnapshot(m){
-  // live tick -> key the chart by epoch seconds (intraday); replay -> by trade_date
   const live = m.partial!=null || (typeof m.ts==='number' && !m.trade_date);
   const t = m.trade_date || (live ? Math.floor(m.ts)+IST
                                   : (m.ts? new Date(m.ts*1000).toISOString().slice(0,10):null));
@@ -137,29 +157,25 @@ function onSnapshot(m){
   if(live && !liveScale){ liveScale=true;
     chart.applyOptions({timeScale:{timeVisible:true,secondsVisible:true}}); }
   $('curdate').textContent = live ? new Date(m.ts*1000).toLocaleTimeString() : t;
+
   const f = m.forwards||{};
-  if(f.onshore) upsert(onD,sOn,t,f.onshore.mid);
-  if(f.offshore) upsert(offD,sOff,t,f.offshore.mid);
-  if(f.spot||f.otc) upsert(otcD,sOtc,t,(f.spot||f.otc).mid);
+  for(const leg in f){
+    if(f[leg]?.mid==null) continue;
+    ensureLeg(leg); legStore[leg][t] = f[leg].mid;
+    legSeries[leg].setData(seriesData(legStore[leg]));
+  }
   if(m.partial){ $('sparkttl').textContent =
-      'live: '+Object.keys(f).join(' + ')+'  —  need offshore + OTC for a basis'; return; }
+      'live: '+Object.keys(f).join(' + ')+'  —  waiting for a 2nd leg to compute a basis'; return; }
+
   const b = m.basis_pips||{};
-  setCard('b_oo', b.onshore_offshore);
-  setCard('b_ot', b.onshore_spot ?? b.onshore_otc);
-  setCard('b_ft', b.offshore_spot ?? b.offshore_otc);
-  let bv, bl;
-  if(b.onshore_offshore!=null){ bv=b.onshore_offshore; bl='onshore − offshore'; }
-  else if(b.onshore_spot!=null){ bv=b.onshore_spot; bl='onshore − OTC spot'; }
-  else if(b.onshore_otc!=null){ bv=b.onshore_otc; bl='onshore − OTC'; }
-  if(bv!=null){ $('sparkttl').textContent=bl+', recent';
-    basisD[t]=bv;
-    const ks=Object.keys(basisD).sort((a,b)=>{ const na=tkey(a),nb=tkey(b);
-      return (typeof na==='number'&&typeof nb==='number')?na-nb:(na<nb?-1:na>nb?1:0); }).slice(-60);
-    sBasis.setData(ks.map(k=>({time:tkey(k),value:basisD[k]}))); }
+  for(const pair in b){ ensureCard(pair); setCard(pair, b[pair]); }
+  if(!primaryPair) primaryPair = Object.keys(b)[0] || null;
+  if(primaryPair && b[primaryPair]!=null){
+    $('sparkttl').textContent = pairLabel(primaryPair)+', recent';
+    basisD[t] = b[primaryPair];
+    sBasis.setData(seriesData(basisD).slice(-60));
+  }
 }
-function setCard(id,v){ const el=$(id); if(v==null){el.textContent='—';return;}
-  el.textContent=fmtPips(v);
-  el.style.color = Math.abs(v)>=8 ? '#e5766b' : (Math.abs(v)>=2 ? '#d8a748' : '#5cc07f'); }
 
 function onEvent(e){
   evTotal++; $('evcount').textContent='('+evTotal+')';
@@ -180,8 +196,11 @@ function onMeta(m){
   $('mode').textContent = m.mode||'—';
   $('mode').className = 'badge '+((m.mode==='live')?'live':'replay');
   if(m.target_expiry) $('tstar').textContent = m.target_expiry;
-  if(m.carry_rate_annual!=null) $('carry').textContent = (m.carry_rate_annual*100).toFixed(1)+'%';
+  if(m.carry_rate_annual!=null) $('carry').textContent = (m.carry_rate_annual*100).toFixed(2)+'%';
   if(m.date_range) $('range').textContent = m.date_range.join('  →  ');
+  const track = m.track==='retail' ? 'Retail-Arbitrage' : 'Onshore–Offshore Basis';
+  $('title').textContent = 'Arbex · USD/INR ' + track;
+  document.title = 'Arbex | USD/INR ' + track;
 }
 
 let ws;

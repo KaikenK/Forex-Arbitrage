@@ -338,8 +338,10 @@ async def lifespan(app: FastAPI):
             logger.info("Basis dashboard REPLAY mode (no onshore creds / BASIS_REPLAY=1) "
                         "— streaming the EOD run over /ws/basis. Dashboard: /basis")
         else:
-            from backend.core.data_sources.basis_pipeline import build_basis_pipeline
-            basis_ctx = build_basis_pipeline()
+            from backend.core.data_sources.basis_pipeline import (
+                build_basis_pipeline, build_retail_arb_pipeline)
+            _retail = os.environ.get("ARBEX_RETAIL_ARB") == "1"
+            basis_ctx = build_retail_arb_pipeline() if _retail else build_basis_pipeline()
             basis_ctx.ws_manager = ws_manager
             app.state.basis_ctx = basis_ctx
             basis_recorder_task = asyncio.create_task(basis_ctx.run())

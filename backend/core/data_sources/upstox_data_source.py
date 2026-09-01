@@ -67,10 +67,16 @@ class UpstoxDataSource(DataSourceInterface):
         self,
         config: DataSourceConfig,
         access_token: Optional[str] = None,
+        *,
+        leg: str = "onshore",
+        month_offset: int = 0,
     ):
         super().__init__(config)
         self._token = access_token or os.environ.get("UPSTOX_ACCESS_TOKEN")
-        self._pinned_key = os.environ.get("UPSTOX_USDINR_INSTRUMENT_KEY")
+        self._leg = leg                      # tick extra["leg"] — "onshore" | "future" | "far"
+        self._month_offset = month_offset    # 0 = near month, 1 = far month (calendar)
+        self._pinned_key = (os.environ.get("UPSTOX_USDINR_INSTRUMENT_KEY")
+                            if month_offset == 0 else None)
         try:
             self._poll_interval_s = float(os.environ.get("UPSTOX_POLL_INTERVAL", "1.0"))
         except ValueError:
@@ -121,7 +127,7 @@ class UpstoxDataSource(DataSourceInterface):
                 instrument_key=self._pinned_key, trading_symbol=f"{_UNDERLYING}-PINNED",
                 expiry=date.today(), lot_size=1, qty_multiplier=1000.0, weekly=False,
             )
-        return resolve_near_month(force=True)
+        return resolve_near_month(force=True, nth=self._month_offset)
 
     # -- polling ----------------------------------------------------
     def _run_poller(self) -> None:
@@ -196,7 +202,7 @@ class UpstoxDataSource(DataSourceInterface):
             source_id=self.source_id,
             last=snap.get("last"),
             extra={
-                "leg": "onshore",
+                "leg": self._leg,
                 "instrument_kind": "future",
                 "expiry": self._contract.expiry.isoformat() if self._contract else None,
                 "tradingsymbol": self._contract.trading_symbol if self._contract else None,

@@ -97,6 +97,33 @@ A `to_implied_spot()` helper (`F / (1 + carry · τ)`) is also provided for the 
 3-way onshore/offshore/OTC chart. It is **not** used for the headline result; label any
 chart built from it "implied spot, carry assumption stated".
 
+### 3.5 Options-implied forward (retail-arbitrage mode) — **built**
+
+`normalization/options_forward.py`. For European cash-settled NSE USD/INR options at
+expiry `T`, put-call parity gives a synthetic future: `F_T = K + (C − P) / DF(T)`,
+`DF(T) = 1/(1 + r·days/365)`, `r = OPTIONS_DISCOUNT_RATE_ANNUAL` (~6.5%, stated
+assumption). `implied_forward_from_chain()` averages the `n` strikes nearest the
+current future (ATM → tightest option spreads). The bid/ask sides are the
+conversion (`K + (C_ask − P_bid)/DF`) and reversal (`K + (C_bid − P_ask)/DF`) prices.
+The result feeds `InstrumentNormalizer.to_common_forward(..., instrument_kind=
+"options_forward", quote_expiry=T)` → a `NormalizedForward` tagged
+`comparison_basis = "options_implied"`, directly comparable to the NSE future at the
+same expiry.
+
+**Retail-arb mode is wired end to end.** `UpstoxOptionsSource` batch-quotes the
+near-month future + a band of ATM CE/PE strikes each poll and emits the synthetic
+forward. `build_retail_arb_pipeline()` runs three NSE legs — `future` (near-month,
+real 5-level book), `options` (synthetic forward), `far` (far-month future) —
+through `BasisArbitrageEngine(RETAIL_ARB_CONFIG)` (leg pairs `future_options` and
+`future_far`; `BasisEvent` schema **v1.2** adds these enum values, additive).
+`BasisPipeline` gained `legs` / `log_prefix` params to serve both modes. The
+`/basis` dashboard is **data-driven** — it renders a line per leg and a card per
+pair from whatever the snapshot carries (labels prettified, colours from a
+palette), and re-titles from `meta.track`, so it serves both modes unchanged.
+Run: `python research/collect_basis.py --retail`, or
+`ARBEX_RETAIL_ARB=1 ARBEX_DATA_MODE=LIVE_USDINR_BASIS python -m backend.server.run`
+→ `/basis`.
+
 ## 4. Functional requirements
 
 ### FR-1 · Feed ingestion

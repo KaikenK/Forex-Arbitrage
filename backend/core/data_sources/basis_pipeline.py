@@ -77,6 +77,8 @@ class BasisPipeline:
     normalizer: InstrumentNormalizer
     poll_interval_s: float = 1.0
     ws_manager: Optional[Any] = None
+    legs: tuple = ("onshore", "offshore", "otc")   # which legs to compare, in order
+    log_prefix: str = "basis"                      # research/results/raw/<prefix>_<day>.jsonl
     _running: bool = field(default=False, repr=False)
     _out: Optional[Any] = field(default=None, repr=False)
     _snapshots: int = 0
@@ -91,7 +93,7 @@ class BasisPipeline:
     def _open_log(self):
         _RESULTS_RAW.mkdir(parents=True, exist_ok=True)
         day = datetime.now(timezone.utc).strftime("%Y%m%d")
-        return open(_RESULTS_RAW / f"basis_{day}.jsonl", "a", encoding="utf-8")
+        return open(_RESULTS_RAW / f"{self.log_prefix}_{day}.jsonl", "a", encoding="utf-8")
 
     async def run(self) -> None:
         self._running = True
@@ -100,12 +102,14 @@ class BasisPipeline:
                 s.connect()
         self._out = self._open_log()
         day = datetime.now(timezone.utc).strftime("%Y%m%d")
-        self._events_out = open(_RESULTS_RAW / f"events_{day}.jsonl", "a", encoding="utf-8")
+        self._events_out = open(
+            _RESULTS_RAW / f"{self.log_prefix}_events_{day}.jsonl", "a", encoding="utf-8")
         logger.info("[basis_pipeline] recording to %s", self._out.name)
         if self.ws_manager:
             await self.ws_manager.broadcast_basis("basis_meta", {
                 "target_expiry": self.normalizer.target_expiry.isoformat(),
-                "carry_rate_annual": CARRY_RATE_ANNUAL, "mode": "live",
+                "carry_rate_annual": self.normalizer.carry_rate_annual,
+                "mode": "live", "legs": list(self.legs), "track": self.log_prefix,
             })
         try:
             while self._running:
@@ -151,7 +155,7 @@ class BasisPipeline:
                     q_expiry = date.fromisoformat(extra["expiry"][:10])
                 except ValueError:
                     q_expiry = None
-            if kind == "future" and q_expiry is None:
+            if kind in ("future", "options_forward") and q_expiry is None:
                 q_expiry = self.normalizer.target_expiry  # best effort
             try:
                 fwd = self.normalizer.to_common_forward(
@@ -178,7 +182,7 @@ class BasisPipeline:
             return None, []
 
         pairs = {}
-        legs = [lg for lg in ("onshore", "offshore", "otc") if lg in forwards]
+        legs = [lg for lg in self.legs if lg in forwards]
         for i, a in enumerate(legs):
             for b in legs[i + 1:]:
                 pairs[f"{a}_{b}"] = round(
@@ -254,6 +258,40 @@ def build_basis_pipeline() -> BasisPipeline:
         carry_rate_annual=BASIS_DETECTION_CONFIG.carry_rate_annual,
     )
     return BasisPipeline(sources=sources, normalizer=normalizer)
+
+
+def build_retail_arb_pipeline() -> BasisPipeline:
+    """
+    Retail-arbitrage mode — all legs on NSE, all retail-tradable:
+      future  : near-month USD/INR future (Upstox, real 5-level book)
+      options : put-call-parity synthetic forward from the near-month chain
+      far     : far-month future (calendar comparison)
+    Compared as `future_options` and `future_far` by `BasisArbitrageEngine`.
+    """
+    from backend.config import RETAIL_ARB_CONFIG
+    from backend.core.data_sources.upstox_data_source import UpstoxDataSource
+    from backend.core.data_sources.upstox_options_source import UpstoxOptionsSource
+
+    def _cfg(leg: str, sid: str) -> DataSourceConfig:
+        return DataSourceConfig(source_id=sid, source_type=f"retail_{leg}",
+                                display_name=f"NSE USD/INR {leg}", symbols=["USDINR"],
+                                extra_config={"leg": leg})
+
+    sources: List[DataSourceInterface] = [
+        UpstoxDataSource(_cfg("future", "nse_usdinr_fut"), leg="future", month_offset=0),
+        UpstoxOptionsSource(_cfg("options", "nse_usdinr_opt")),
+        UpstoxDataSource(_cfg("far", "nse_usdinr_fut_far"), leg="far", month_offset=1),
+    ]
+    normalizer = InstrumentNormalizer(
+        target_expiry=_default_target_expiry(),
+        carry_rate_annual=RETAIL_ARB_CONFIG.carry_rate_annual,
+    )
+    return BasisPipeline(
+        sources=sources, normalizer=normalizer,
+        legs=("future", "options", "far"), log_prefix="retail",
+        engine=BasisArbitrageEngine(RETAIL_ARB_CONFIG),
+        tracker=BasisPersistenceTracker(RETAIL_ARB_CONFIG, mode="duration"),
+    )
 
 
 def _build_otc_source() -> DataSourceInterface:

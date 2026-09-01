@@ -19,11 +19,16 @@ from dataclasses import dataclass, field, asdict
 from datetime import date
 from typing import Any, Dict, Optional
 
-SCHEMA_VERSION = "1.1"   # 1.1: + composite_score (additive, back-compatible)
+SCHEMA_VERSION = "1.2"   # 1.1: +composite_score; 1.2: +retail-arb leg pairs (additive)
 RAW_STREAM = "arbex.raw_opps"
 SCORED_STREAM = "arbex.scored_opps"
 
-LEG_PAIRS = ("onshore_offshore", "onshore_otc", "offshore_otc")
+LEG_PAIRS = (
+    # research-basis mode
+    "onshore_offshore", "onshore_otc", "offshore_otc",
+    # retail-arbitrage mode
+    "future_options", "future_far",
+)
 PERSISTENCE_CLASSES = ("ephemeral", "flickering", "persistent")
 EXECUTION_VERDICTS = ("viable", "risky", "unlikely", "unknown")
 

@@ -134,9 +134,11 @@ class InstrumentNormalizer:
         if bid <= 0 or ask <= 0 or ask < bid:
             raise ValueError(f"invalid quote bid={bid} ask={ask}")
 
-        if instrument_kind == "future":
+        # "options_forward" is a put-call-parity synthetic future (see
+        # normalization/options_forward.py) — carried to T* exactly like a future.
+        if instrument_kind in ("future", "options_forward"):
             if quote_expiry is None:
-                raise ValueError("quote_expiry is required for a futures leg")
+                raise ValueError("quote_expiry is required for a futures/options leg")
             from_moment = quote_expiry
         elif instrument_kind in ("spot", "fix"):
             if quote_time is None:
@@ -144,6 +146,7 @@ class InstrumentNormalizer:
             from_moment = quote_time.date()
         else:
             raise ValueError(f"unknown instrument_kind {instrument_kind!r}")
+        _cmp_basis = "options_implied" if instrument_kind == "options_forward" else "futures"
 
         factor = self._carry_factor(from_moment)
         raw_mid = (bid + ask) / 2.0
@@ -159,7 +162,7 @@ class InstrumentNormalizer:
             ask=f_ask,
             carry_adjustment_pips=adj_pips,
             quote_ts=quote_ts,
-            comparison_basis="futures",
+            comparison_basis=_cmp_basis,
         )
 
     # -- basis & validation ------------------------------------------------
