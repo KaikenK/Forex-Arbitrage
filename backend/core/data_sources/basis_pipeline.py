@@ -26,7 +26,6 @@ from typing import Any, Dict, List, Optional
 from backend.config import (
     BASIS_DETECTION_CONFIG,
     BASIS_LEGS,
-    CARRY_RATE_ANNUAL,
 )
 from backend.core.basis.basis_engine import (
     BasisArbitrageEngine,
@@ -39,7 +38,11 @@ from backend.core.data_sources.cme_delayed_source import CMEDelayedSource
 from backend.core.data_sources.dhan_data_source import DhanDataSource
 from backend.core.data_sources.rest_data_source import RESTDataSource, RESTSourceConfig
 from backend.core.interfaces.data_source import DataSourceConfig, DataSourceInterface
-from backend.core.normalization import InstrumentNormalizer, month_end_expiry_estimate
+from backend.core.normalization import (
+    CarryCalibrator,
+    InstrumentNormalizer,
+    month_end_expiry_estimate,
+)
 from backend.core.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,7 @@ class BasisPipeline:
     ws_manager: Optional[Any] = None
     legs: tuple = ("onshore", "offshore", "otc")   # which legs to compare, in order
     log_prefix: str = "basis"                      # research/results/raw/<prefix>_<day>.jsonl
+    carry_calibrator: Optional[CarryCalibrator] = None  # infer carry from near/far curve
     _running: bool = field(default=False, repr=False)
     _out: Optional[Any] = field(default=None, repr=False)
     _snapshots: int = 0
@@ -140,14 +144,21 @@ class BasisPipeline:
 
     def _tick_once(self):
         """Returns (snapshot_dict_or_None, list_of_events)."""
-        forwards: Dict[str, Any] = {}
+        now = time.time()
+        now_ms = now * 1000.0
+        cfg = self.engine.config
+        raw_legs: Dict[str, Dict[str, Any]] = {}
         books: Dict[str, Any] = {}
+
+        # -- pass 1: collect raw quotes ----------------------------------
         for s in self.sources:
             raw = s.get_tick("USDINR")
             if raw is None:
                 continue
             extra = raw.extra or {}
-            leg = extra.get("leg", s.source_type.replace("basis_", ""))
+            leg = extra.get(
+                "leg",
+                s.source_type.replace("basis_", "").replace("retail_", ""))
             kind = extra.get("instrument_kind", "spot")
             q_expiry = None
             if extra.get("expiry"):
@@ -157,18 +168,13 @@ class BasisPipeline:
                     q_expiry = None
             if kind in ("future", "options_forward") and q_expiry is None:
                 q_expiry = self.normalizer.target_expiry  # best effort
-            try:
-                fwd = self.normalizer.to_common_forward(
-                    raw.bid, raw.ask,
-                    leg=leg, instrument_kind=kind, source_id=s.source_id,
-                    quote_ts=raw.timestamp_ms / 1000.0,
-                    quote_expiry=q_expiry,
-                    quote_time=datetime.fromtimestamp(raw.timestamp_ms / 1000.0, tz=timezone.utc),
-                )
-            except ValueError as e:
-                logger.debug("[basis_pipeline] skip %s: %s", s.source_id, e)
-                continue
-            forwards[leg] = {"fwd": fwd, "staleness_ms": extra.get("staleness_ms", 0)}
+            staleness = int(extra.get("staleness_ms")
+                            or max(0.0, now_ms - raw.timestamp_ms))
+            raw_legs[leg] = {
+                "bid": raw.bid, "ask": raw.ask, "kind": kind, "expiry": q_expiry,
+                "source_id": s.source_id, "quote_ts": raw.timestamp_ms / 1000.0,
+                "staleness_ms": staleness,
+            }
             get_depth = getattr(s, "get_depth", None)
             if callable(get_depth):
                 try:
@@ -177,6 +183,53 @@ class BasisPipeline:
                     book = None
                 if book and book.get("bids") and book.get("asks"):
                     books[leg] = book
+
+        # -- carry calibration from the near/far futures curve ----------
+        # The two NSE contracts define the fair carry; inferring it here makes
+        # the near/far calendar basis collapse to ~0 unless a contract is
+        # genuinely mispriced, instead of reporting the (assumed - true) carry
+        # gap as a permanent phantom dislocation.
+        if self.carry_calibrator is not None:
+            near = raw_legs.get("future") or raw_legs.get("onshore")
+            far = raw_legs.get("far")
+            if near and far and near["expiry"] and far["expiry"]:
+                self.normalizer.carry_rate_annual = self.carry_calibrator.update(
+                    (near["bid"] + near["ask"]) / 2.0, near["expiry"],
+                    (far["bid"] + far["ask"]) / 2.0, far["expiry"],
+                )
+            carry_meta = self.carry_calibrator.to_dict()
+        else:
+            carry_meta = {
+                "carry_rate_annual": round(self.normalizer.carry_rate_annual, 5),
+                "carry_source": "assumed", "carry_samples": 0,
+            }
+
+        # -- pass 2: validity gates + normalise ------------------------
+        forwards: Dict[str, Any] = {}
+        suppressed: Dict[str, str] = {}
+        for leg, q in raw_legs.items():
+            spread_pips = (q["ask"] - q["bid"]) / _PIP
+            if spread_pips <= 0.0:
+                suppressed[leg] = "degenerate quote (LTP fallback — not trading)"
+                continue
+            if spread_pips > cfg.max_leg_spread_pips:
+                suppressed[leg] = (f"spread {spread_pips:.1f}p > "
+                                   f"{cfg.max_leg_spread_pips:.0f}p gate")
+                continue
+            if q["staleness_ms"] > cfg.max_leg_staleness_ms:
+                suppressed[leg] = f"feed stale {q['staleness_ms'] // 1000}s"
+                continue
+            try:
+                fwd = self.normalizer.to_common_forward(
+                    q["bid"], q["ask"], leg=leg, instrument_kind=q["kind"],
+                    source_id=q["source_id"], quote_ts=q["quote_ts"],
+                    quote_expiry=q["expiry"],
+                    quote_time=datetime.fromtimestamp(q["quote_ts"], tz=timezone.utc),
+                )
+            except ValueError as e:
+                suppressed[leg] = f"normalise failed: {e}"
+                continue
+            forwards[leg] = {"fwd": fwd, "staleness_ms": q["staleness_ms"]}
 
         if not forwards:
             return None, []
@@ -189,16 +242,17 @@ class BasisPipeline:
                     InstrumentNormalizer.basis_pips(forwards[a]["fwd"], forwards[b]["fwd"]), 3
                 )
 
-        now = time.time()
         partial = len(forwards) < 2
         row = {
             "ts": now,
             "target_expiry": self.normalizer.target_expiry.isoformat(),
-            "carry_rate_annual": CARRY_RATE_ANNUAL,
+            "carry_rate_annual": carry_meta["carry_rate_annual"],
+            "carry_source": carry_meta["carry_source"],
             "forwards": {lg: forwards[lg]["fwd"].to_dict() for lg in forwards},
             "basis_pips": pairs,
             "staleness_ms": {lg: forwards[lg]["staleness_ms"] for lg in forwards},
             "real_depth_legs": sorted(books.keys()),
+            "suppressed_legs": suppressed,
             "partial": partial,          # < 2 legs live -> forwards render, no basis/events
         }
         self._out.write(json.dumps(row) + "\n")
@@ -208,7 +262,7 @@ class BasisPipeline:
         if partial:
             if self._snapshots % 60 == 0:
                 logger.info("[basis_pipeline] %d partial snapshots; live legs=%s "
-                            "(need offshore + otc for a basis)", self._snapshots, legs)
+                            "suppressed=%s", self._snapshots, legs, suppressed)
             return row, []
 
         # dislocation detection + persistence stamping
@@ -225,8 +279,11 @@ class BasisPipeline:
             self._events_detected += 1
 
         if self._snapshots % 60 == 0:
-            logger.info("[basis_pipeline] %d snapshots, %d events; last basis=%s",
-                        self._snapshots, self._events_detected, pairs)
+            logger.info("[basis_pipeline] %d snapshots, %d events; basis=%s "
+                        "carry=%s(%s) suppressed=%s",
+                        self._snapshots, self._events_detected, pairs,
+                        carry_meta["carry_rate_annual"], carry_meta["carry_source"],
+                        suppressed or "-")
         return row, events
 
     def stop(self) -> None:
@@ -286,9 +343,12 @@ def build_retail_arb_pipeline() -> BasisPipeline:
         target_expiry=_default_target_expiry(),
         carry_rate_annual=RETAIL_ARB_CONFIG.carry_rate_annual,
     )
+    calibrator = (CarryCalibrator(fallback_annual=RETAIL_ARB_CONFIG.carry_rate_annual)
+                  if RETAIL_ARB_CONFIG.calibrate_carry_from_curve else None)
     return BasisPipeline(
         sources=sources, normalizer=normalizer,
         legs=("future", "options", "far"), log_prefix="retail",
+        carry_calibrator=calibrator,
         engine=BasisArbitrageEngine(RETAIL_ARB_CONFIG),
         tracker=BasisPersistenceTracker(RETAIL_ARB_CONFIG, mode="duration"),
     )

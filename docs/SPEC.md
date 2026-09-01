@@ -1,6 +1,6 @@
 # Arbex — Technical Specification: Onshore–Offshore USD/INR Basis Detection
 
-**Status:** Active · Phase 3 · Path 2 · Option A (futures↔futures) · carry 1.9% (to calibrate)
+**Status:** Active · Phase 3 · Path 2 · Option A (futures↔futures) · carry calibrated live in retail-arb (§3.3), 1.9% fallback
 **Built:** normaliser, EOD track (real NSE futures), `BasisArbitrageEngine` + persistence
 + scoring, `BasisEvent` v1.1 + Redis Streams + consumer-group replay test,
 `UpstoxDataSource` (default onshore leg — free market data, current instrument
@@ -84,8 +84,19 @@ leg pair, with both quotes inside the same `basis_window_ms` window (§FR-3.1).
 ### 3.3 Rate source & validation
 
 - **v1:** `carry` held constant at `CARRY_RATE_ANNUAL` (config), flagged in every output.
-- **v2:** infer `carry` from the NSE forward curve (NSE lists 3 monthly expiries) — the
-  implied onshore forward rate between two listed contracts.
+- **v2 (done, retail-arb mode):** `CarryCalibrator` infers `carry` live from the NSE
+  near/far futures — `carry_annual = (F_far/F_near − 1)·365/(T_far−T_near)`, EMA-smoothed,
+  clamped to `[−3%, 15%]`, falling back to `CARRY_RATE_ANNUAL` outside the band. Every
+  snapshot records `carry_rate_annual` + `carry_source ∈ {calibrated, assumed}`. Verified
+  live 2026-09-01: carry 4.12%, `future_far` basis −15.2 → +0.1 pips. Corollary: the
+  near/far calendar pair cannot itself detect calendar arbitrage (it defines the carry);
+  the same-expiry `future_options` pair is the carry-free retail signal. Research mode
+  keeps v1 until anchored to a money-market spread (SOFR − MIBOR).
+- **Leg validity gates** (`BasisDetectionConfig`, applied in `BasisPipeline._tick_once`):
+  a leg is dropped from comparison and logged in `snapshot.suppressed_legs` if its
+  bid/ask exceeds `max_leg_spread_pips` (10 retail / 8 research), its feed age exceeds
+  `max_leg_staleness_ms` (20 s retail / 40 min research), or `spread ≤ 0` (the off-hours
+  LTP-only fallback). This is what suppresses the currently-illiquid NSE options leg.
 - **Validation:** every `F*_leg` must stay within `reference_band_pips` of the RBI
   reference rate carried to `T*`; `InstrumentNormalizer` unit tests assert this and check
   the conversion against hand-computed values.

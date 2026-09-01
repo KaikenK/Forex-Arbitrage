@@ -60,7 +60,8 @@
   <h1 id="title">Arbex · USD/INR Basis</h1>
   <span class="badge replay" id="mode">…</span>
   <span class="sub">expiry T* <b id="tstar">—</b></span>
-  <span class="sub">carry <b id="carry">—</b></span>
+  <span class="sub">carry <b id="carry">—</b><span id="carrysrc" class="muted"></span></span>
+  <span class="sub" id="gates"></span>
   <span class="sub" id="range"></span>
   <span class="sub" style="margin-left:auto"><span class="dot" id="wsdot"></span><span id="wsstate">connecting…</span></span>
   <span class="sub">time <b id="curdate">—</b></span>
@@ -157,6 +158,14 @@ function onSnapshot(m){
   if(live && !liveScale){ liveScale=true;
     chart.applyOptions({timeScale:{timeVisible:true,secondsVisible:true}}); }
   $('curdate').textContent = live ? new Date(m.ts*1000).toLocaleTimeString() : t;
+
+  if(m.carry_rate_annual!=null) $('carry').textContent = (m.carry_rate_annual*100).toFixed(2)+'%';
+  if(m.carry_source) $('carrysrc').textContent = ' ('+m.carry_source+')';
+  const sup = m.suppressed_legs||{};
+  const supKeys = Object.keys(sup);
+  $('gates').innerHTML = supKeys.length
+    ? 'suppressed: '+supKeys.map(k=>`<b>${legName(k)}</b> — ${sup[k]}`).join(' · ')
+    : '';
 
   const f = m.forwards||{};
   for(const leg in f){

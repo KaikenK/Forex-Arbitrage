@@ -104,3 +104,102 @@ def test_retail_pipeline_wiring():
     assert p.log_prefix == "retail"
     assert p.engine.config.enabled_leg_pairs == ("future_options", "future_far")
     assert [s.source_type for s in p.sources] == ["retail_future", "retail_options", "retail_far"]
+    assert p.carry_calibrator is not None   # calibrate_carry_from_curve = True
+
+
+# -- validity gates + carry calibration in the tick loop -------------------
+
+import io  # noqa: E402
+import time  # noqa: E402
+
+from backend.core.data_sources.basis_pipeline import BasisPipeline  # noqa: E402
+from backend.core.basis.basis_engine import BasisArbitrageEngine, BasisPersistenceTracker  # noqa: E402
+from backend.core.normalization import CarryCalibrator, InstrumentNormalizer  # noqa: E402
+from backend.core.interfaces.data_source import RawTick  # noqa: E402
+from backend.config import RETAIL_ARB_CONFIG  # noqa: E402
+
+_T_STAR = date(2026, 9, 28)
+_FAR_EXP = date(2026, 10, 28)
+
+
+class _StubLeg:
+    def __init__(self, sid, leg, bid, ask, kind="future", expiry=_T_STAR, age_ms=0):
+        self.source_id = sid
+        self.source_type = f"retail_{leg}"
+        self.is_connected = True
+        self._leg, self._bid, self._ask, self._kind = leg, bid, ask, kind
+        self._expiry, self._age_ms = expiry, age_ms
+
+    def connect(self): self.is_connected = True
+    def disconnect(self): self.is_connected = False
+
+    def get_tick(self, _sym):
+        return RawTick(
+            symbol="USDINR", bid=self._bid, ask=self._ask,
+            timestamp_ms=int(time.time() * 1000) - self._age_ms,
+            source_id=self.source_id, last=(self._bid + self._ask) / 2,
+            extra={"leg": self._leg, "instrument_kind": self._kind,
+                   "expiry": self._expiry.isoformat() if self._expiry else None},
+        )
+
+
+def _pipeline(sources):
+    p = BasisPipeline(
+        sources=sources,
+        normalizer=InstrumentNormalizer(target_expiry=_T_STAR,
+                                        carry_rate_annual=RETAIL_ARB_CONFIG.carry_rate_annual),
+        legs=("future", "options", "far"), log_prefix="retail",
+        carry_calibrator=CarryCalibrator(fallback_annual=RETAIL_ARB_CONFIG.carry_rate_annual,
+                                         ema_alpha=1.0),
+        engine=BasisArbitrageEngine(RETAIL_ARB_CONFIG),
+        tracker=BasisPersistenceTracker(RETAIL_ARB_CONFIG, mode="duration"),
+    )
+    p._out = io.StringIO()
+    return p
+
+
+def test_carry_calibrated_from_curve_kills_phantom_calendar_basis():
+    # far priced 0.30 above near = a consistent ~3.8% forward premium, NOT arbitrage.
+    # With the assumed 1.9% carry this used to report a ~15 pip "persistent" basis.
+    p = _pipeline([
+        _StubLeg("fut", "future", 94.9600, 94.9750),
+        _StubLeg("far", "far", 95.2600, 95.2750, expiry=_FAR_EXP),
+    ])
+    row, events = p._tick_once()
+    assert row["carry_source"] == "calibrated"
+    assert 0.035 < row["carry_rate_annual"] < 0.042
+    # near/far now agree at T* -> basis within a pip, nothing fires
+    assert abs(row["basis_pips"]["future_far"]) < 1.5
+    assert events == []
+
+
+def test_wide_options_leg_is_suppressed_not_compared():
+    p = _pipeline([
+        _StubLeg("fut", "future", 94.9600, 94.9750),
+        _StubLeg("opt", "options", 94.8000, 95.1500, kind="options_forward"),  # 35p wide
+        _StubLeg("far", "far", 95.2600, 95.2750, expiry=_FAR_EXP),
+    ])
+    row, events = p._tick_once()
+    assert "options" in row["suppressed_legs"]
+    assert "future_options" not in row["basis_pips"]
+    assert all(e.leg_pair != "future_options" for e in events)
+
+
+def test_degenerate_ltp_quote_is_suppressed():
+    p = _pipeline([
+        _StubLeg("fut", "future", 94.9600, 94.9750),
+        _StubLeg("far", "far", 95.10, 95.10, expiry=_FAR_EXP),   # bid == ask (LTP fallback)
+    ])
+    row, _ = p._tick_once()
+    assert "far" in row["suppressed_legs"]
+    assert "degenerate" in row["suppressed_legs"]["far"]
+
+
+def test_stale_feed_is_suppressed():
+    p = _pipeline([
+        _StubLeg("fut", "future", 94.9600, 94.9750),
+        _StubLeg("far", "far", 95.2600, 95.2750, expiry=_FAR_EXP, age_ms=60_000),  # 60s old
+    ])
+    row, _ = p._tick_once()
+    assert "far" in row["suppressed_legs"]
+    assert "stale" in row["suppressed_legs"]["far"]

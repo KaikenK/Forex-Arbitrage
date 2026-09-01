@@ -385,6 +385,13 @@ class BasisDetectionConfig:
     # persistence re-tuned for the minute-scale regime
     persistence_ephemeral_max_s: float = 5.0
     persistence_flickering_max_s: float = 60.0
+    # -- validity gates (a leg failing any of these is dropped, not compared) --
+    max_leg_spread_pips: float = 8.0           # wider bid/ask => illiquid / stale quote
+    max_leg_staleness_ms: int = 2_400_000      # feed age ceiling (default ~40 min:
+                                               # catches a dead poll, tolerates the
+                                               # delayed offshore leg)
+    calibrate_carry_from_curve: bool = False   # infer carry from near/far futures
+                                               # instead of the constant assumption
 
 
 BASIS_DETECTION_CONFIG = BasisDetectionConfig()
@@ -399,6 +406,13 @@ RETAIL_ARB_CONFIG = BasisDetectionConfig(
     enabled_leg_pairs=("future_options", "future_far"),
     persistence_ephemeral_max_s=8.0,
     persistence_flickering_max_s=90.0,
+    # retail legs are all on NSE and should be genuinely live: gate hard.
+    # 10 pips drops the current (illiquid) options-implied leg until NSE option
+    # quotes tighten; 20 s catches a contract that has stopped trading.
+    max_leg_spread_pips=10.0,
+    max_leg_staleness_ms=20_000,
+    # near vs far NSE future defines the fair carry — infer it, don't assume it.
+    calibrate_carry_from_curve=True,
 )
 
 

@@ -125,8 +125,10 @@ F(T*) = F(t_leg) · [ 1 + CARRY_RATE_ANNUAL · (T* − t_leg) / 365 ]
 - The far (Oct) future is discounted back ~1 month.
 - Spot is carried forward to `T*`.
 
-`CARRY_RATE_ANNUAL = 0.019` is a **stated assumption**, printed in every output. It is
-*not yet calibrated* — see §11. `basis_pips = (F_leg_A(T*) − F_leg_B(T*)) / 0.01`.
+`CARRY_RATE_ANNUAL = 0.019` is the **fallback** only. Retail‑arb mode now infers the
+carry live from the near/far NSE futures curve (`CarryCalibrator`, §11.1); research mode
+still uses the constant until it is anchored to money‑market rates. Every snapshot states
+`carry_rate_annual` and `carry_source`. `basis_pips = (F_leg_A(T*) − F_leg_B(T*)) / 0.01`.
 `implied_spot` (Option B — back out spot from each future) is kept **dashboard‑only**.
 
 ### 4.2 Options‑implied forward — put‑call parity (`normalization/options_forward.py`)
@@ -221,6 +223,7 @@ that the user explicitly authorised.
 |---|---|
 | `instrument_normalizer.py` | Option‑A carry maths. `to_common_forward()` handles `instrument_kind` `future` and `options_forward`. |
 | `options_forward.py` | put‑call‑parity synthetic forward; `implied_forward_from_chain()`. |
+| `carry_calibrator.py` | `CarryCalibrator` — infers the annualised carry from the near/far futures curve (EMA‑smoothed, clamped); replaces the fixed `CARRY_RATE_ANNUAL` assumption in retail‑arb mode. See §11.1. |
 
 ### `backend/core/basis/`
 | file | role |
@@ -243,7 +246,7 @@ that the user explicitly authorised.
 | `dhan_data_source.py`, `dhan_instruments.py` | onshore leg via Dhan — **built but blocked** on Dhan's paid data plan; kept behind `ARBEX_ONSHORE_BROKER=dhan`. |
 | `cme_delayed_source.py` | polled offshore adapter skeleton. |
 | `eod_loader.py` | column‑tolerant CSV / yfinance loader, NSE front‑month selection, HTML‑response guard, `INRUSD_x10000` convention. |
-| `basis_pipeline.py` | **assembles it all.** `build_basis_pipeline()` (research), `build_retail_arb_pipeline()` (retail), `_tick_once()` (one poll → normalise → detect → stamp → broadcast + Redis), `_yahoo_offshore_fetcher()`, `_build_onshore_source()`, `_build_otc_source()`. Writes `basis_<day>.jsonl` + `basis_events_<day>.jsonl` (research) / `retail_*.jsonl` (retail). |
+| `basis_pipeline.py` | **assembles it all.** `build_basis_pipeline()` (research), `build_retail_arb_pipeline()` (retail), `_tick_once()` (poll → **calibrate carry** → **validity gates** → normalise → detect → stamp → broadcast + Redis), `_yahoo_offshore_fetcher()`, `_build_onshore_source()`, `_build_otc_source()`. Snapshot now includes `carry_source` and `suppressed_legs`. Writes `basis_<day>.jsonl` + `basis_events_<day>.jsonl` (research) / `retail_*.jsonl` (retail). |
 
 ### `backend/`
 | file | Phase‑3 change |
@@ -304,10 +307,10 @@ zero‑balance account physically cannot place a trade, which is our safety guar
 
 ### Key config objects (`backend/config.py`)
 
-- `CARRY_RATE_ANNUAL = 0.019` — carry for Option‑A normalisation. **Stated assumption, uncalibrated.**
+- `CARRY_RATE_ANNUAL = 0.019` — fallback carry for Option‑A normalisation (used when there is no curve to calibrate from).
 - `OPTIONS_DISCOUNT_RATE_ANNUAL = 0.065` — discount rate in the put‑call‑parity forward.
-- `BASIS_DETECTION_CONFIG` — research mode: `min_basis_threshold_pips=2.0`, `basis_window_ms=2000`, pairs `onshore_offshore / onshore_otc / offshore_otc`.
-- `RETAIL_ARB_CONFIG` — retail mode: `min_basis_threshold_pips=1.0`, `basis_window_ms=3000`, pairs `future_options / future_far`.
+- `BASIS_DETECTION_CONFIG` — research mode: `min_basis_threshold_pips=2.0`, `basis_window_ms=2000`, pairs `onshore_offshore / onshore_otc / offshore_otc`, `max_leg_spread_pips=8`, `max_leg_staleness_ms=2_400_000`.
+- `RETAIL_ARB_CONFIG` — retail mode: `min_basis_threshold_pips=1.0`, `basis_window_ms=3000`, pairs `future_options / future_far`, `max_leg_spread_pips=10`, `max_leg_staleness_ms=20_000`, `calibrate_carry_from_curve=True`.
 - `BASIS_EXECUTION_CONFIG` — `target_notional_usd=100_000`, `contract_size_usd=1_000`, `min_leg_cost_pips=0.5`, `min_viable_net_pips=2.0`.
 
 ---
@@ -428,25 +431,66 @@ it does **not** need the Next.js app.)
 
 ---
 
-## 11. Known limitations / caveats (read before trusting a number)
+## 11. Making the signals valid — what was done, what remains
 
-1. **`CARRY_RATE_ANNUAL` is not calibrated.** It is fixed at 1.9%. The real USD/INR
-   near/far forward spread currently annualises to ~3.5–4%. So in **retail‑arb mode**
-   the normaliser only strips ~half the real Sep→Oct spread and reports the leftover
-   (~15 pips) as a "persistent dislocation" that fires every tick. **That is a modelling
-   artifact, not arbitrage.** Fix: infer the carry from the live near/far futures
-   instead of assuming it. Same caveat applies (smaller) to research mode.
+The retail‑arb dashboard originally showed a **−15 pip "PERSISTENT" `future_far`
+dislocation** firing every tick, and a **−12 pip `future_options`** gap. Neither was
+arbitrage. Both are now handled:
 
-2. **The offshore leg (`SIR=F`) is thin and delayed.** CME's Indian Rupee future trades
+### 11.1 Calibrated carry (`CarryCalibrator`, `normalization/carry_calibrator.py`)
+
+The `future_far` gap was **model error, not a dislocation**. `CARRY_RATE_ANNUAL` was
+fixed at 1.9%; the real USD/INR Sep→Oct forward premium annualises to ~4%. So carrying
+the Oct future back to `T*` removed only ~half the real calendar spread and reported the
+leftover as a permanent basis.
+
+Fix: the near and far NSE futures **define** the fair carry —
+`carry_annual = (F_far / F_near − 1) · 365 / (T_far − T_near)` — so the pipeline now
+infers it live (EMA‑smoothed, clamped to a sane band), instead of assuming it.
+`RETAIL_ARB_CONFIG.calibrate_carry_from_curve = True`. **Verified live 2026‑09‑01:**
+calibrated carry **4.12%**, `future_far` basis collapsed from **−15.2 → +0.1 pips**, zero
+phantom events. The snapshot now carries `carry_rate_annual` + `carry_source`
+(`calibrated` / `assumed`); the dashboard shows both.
+
+Consequence, and it is the honest answer: **you cannot detect calendar arbitrage from
+the two contracts whose ratio defines the carry.** `future_far` is now a
+curve‑consistency check. The real retail signal is `future_options` — it compares two
+instruments at the **same expiry `T*`**, so it needs no carry assumption at all.
+(Research mode keeps the configured carry; it has no far‑future leg to calibrate from,
+and for the paper the carry will be anchored to money‑market rates / CIP.)
+
+### 11.2 Validity gates (`BasisPipeline._tick_once`, `BasisDetectionConfig`)
+
+Before a leg is compared it must pass three gates (a failure is recorded in
+`snapshot["suppressed_legs"]` with a reason and shown on the dashboard):
+
+| gate | config | rejects |
+|---|---|---|
+| spread | `max_leg_spread_pips` (10 retail / 8 research) | an illiquid or stale quote — this is what drops the current NSE options leg (~17 pip spread) until option liquidity improves |
+| freshness | `max_leg_staleness_ms` (20 s retail / 40 min research) | a contract that has stopped updating |
+| degenerate | hard `spread ≤ 0` | the LTP‑only fallback an Upstox source returns off‑hours (`bid == ask`) |
+
+The engine already only fires on the **executable** basis (buy at ask, sell at bid), so
+a mid‑gap smaller than the two spreads never becomes an event. Persistence
+classification and the `BasisExecutionFilter` "viable/risky/unlikely" verdict then gate
+what counts as a *signal* (vs. a blip).
+
+### 11.3 What still limits validity
+
+1. **The offshore leg (`SIR=F`) is thin and delayed.** CME's Indian Rupee future trades
    ~12 times/day and, during Indian market hours, is in CME's overnight session — quotes
-   lag 15–30 min. The offshore line looks stagnant/step‑wise. For the paper: use
-   **onshore − OTC spot** (continuous) as the live headline, and **onshore − offshore
-   future** only for EOD where staleness is irrelevant. The execution filter already
-   applies a staleness haircut, but a stale mid is still a stale mid.
+   lag 15–30 min. For the paper: use **onshore − OTC spot** (continuous) as the live
+   headline, and **onshore − offshore future** only for EOD where staleness is
+   irrelevant. The research‑mode staleness gate is deliberately loose (40 min) so the
+   existing demo still renders; tighten it once a better offshore feed exists.
 
-3. **NSE USD/INR options barely trade.** The options‑implied forward has a ~20–30 paise
-   bid/ask. Any `future_options` basis against it is mostly noise. Needs a max‑spread
-   gate before those events are published.
+2. **`future_options` is only as good as NSE option liquidity.** Right now the leg is
+   correctly *suppressed* most of the time. When ATM USD/INR option quotes tighten below
+   the 10‑pip gate, the pair activates automatically — no code change.
+
+3. **Research‑mode carry is still assumed** (`CARRY_RATE_ANNUAL`, now used only when
+   there is no curve to calibrate from). Impact is bounded (~2–3 pips over a few days of
+   spot carry); the paper will anchor it to SOFR − MIBOR.
 
 4. **Yahoo is an unofficial API** — no SLA, can change without notice. Frankfurter is
    the sanctioned fallback for spot; there is no free fallback for the offshore future.
@@ -466,9 +510,10 @@ it does **not** need the Next.js app.)
 From `md/PHASE3_PLAN.md`:
 
 1. **Start the collector** (calendar‑bound — needs weeks of data before the 7 Oct MPC).
-2. **Calibrate `CARRY_RATE_ANNUAL`** from the live forward curve (kills the retail‑arb artifact).
-3. **Max‑spread gate** on the options leg.
-4. **The event study** — basis behaviour around the RBI 12:30 fixing / MPC / month‑end,
+2. ~~Calibrate carry from the forward curve~~ — **done** (§11.1).
+3. ~~Max‑spread / freshness gates~~ — **done** (§11.2).
+4. **Anchor research‑mode carry** to money‑market rates (SOFR − MIBOR / T‑bill spread).
+5. **The event study** — basis behaviour around the RBI 12:30 fixing / MPC / month‑end,
    news‑conditioned by the semantic engine. This is the paper's core result.
 5. Backup finding if the dynamics are unremarkable: the **feasibility‑adjusted
    opportunity** — raw basis vs what survives execution cost (`BasisExecutionFilter`).
