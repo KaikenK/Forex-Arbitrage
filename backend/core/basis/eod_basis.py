@@ -16,6 +16,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from statistics import median
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -28,7 +29,15 @@ from backend.core.basis.basis_engine import (
 )
 from backend.core.basis.basis_event import BasisEvent
 from backend.core.data_sources.eod_loader import EODBar
-from backend.core.normalization import InstrumentNormalizer, month_end_expiry_estimate
+from backend.core.normalization import (
+    CarryCalibrator,
+    InstrumentNormalizer,
+    month_end_expiry_estimate,
+)
+
+# carry outside this annualised band is rejected as a bad mark (same as the live
+# CarryCalibrator default); falls back to the assumed constant that day.
+_CARRY_MIN, _CARRY_MAX = -0.03, 0.15
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +54,14 @@ class EODBasisRow:
     forwards: Dict[str, dict]           # leg -> NormalizedForward.to_dict()
     basis_pips: Dict[str, float]        # "onshore_offshore" -> pips
     carry_adjustment_pips: Dict[str, float]
+    carry_source: str = "assumed"      # "calibrated" (from F_onshore/S) | "assumed"
 
     def to_dict(self) -> dict:
         return {
             "trade_date": self.trade_date.isoformat(),
             "target_expiry": self.target_expiry.isoformat(),
             "carry_rate_annual": self.carry_rate_annual,
+            "carry_source": self.carry_source,
             "forwards": self.forwards,
             "basis_pips": self.basis_pips,
             "carry_adjustment_pips": self.carry_adjustment_pips,
@@ -62,7 +73,8 @@ _LEG_TO_ENGINE = {"onshore": "onshore", "offshore": "offshore", "spot": "otc"}
 
 @dataclass
 class EODBasisRunner:
-    carry_rate_annual: float = CARRY_RATE_ANNUAL
+    carry_rate_annual: float = CARRY_RATE_ANNUAL   # fallback only when calibrate_carry
+    calibrate_carry: bool = True                   # infer carry per day from F_onshore/S
     rows: List[EODBasisRow] = field(default_factory=list)
     events: List[BasisEvent] = field(default_factory=list)
     _exec_filter: BasisExecutionFilter = field(default_factory=BasisExecutionFilter, repr=False)
@@ -85,14 +97,50 @@ class EODBasisRunner:
         ref_by_date = {b.trade_date: b for b in (reference or [])}
 
         all_dates = sorted(set().union(*(d.keys() for d in by_leg.values())))
+
+        # -- carry calibration (Option A v2) -------------------------------
+        # The onshore near future and same-day spot pin the market's own forward
+        # premium: (F_onshore/S - 1)*365/days. Without it, a spot-involving pair
+        # is carried the full ~1 month at an assumed rate and the (assumed-true)
+        # gap (~8-15 pips) sits in the reported basis as pure model error.
+        # onshore<->offshore is unaffected (both futures at T*, carry cancels).
+        #
+        # Near expiry the annualisation is unstable, so only days with >= 10 days
+        # to T* seed the estimate; the median of those becomes the carry for the
+        # remaining days (>> a flat 1.9% guess). Front-month can be an NSE weekly.
+        seeds = []
+        for d in all_dates:
+            on, sp = by_leg["onshore"].get(d), by_leg["spot"].get(d)
+            if not (on and sp):
+                continue
+            tx = self._target_expiry(on, d)
+            if (tx - d).days < 10:
+                continue
+            imp = CarryCalibrator.implied_annual(sp.mark, d, on.mark, tx)
+            if imp is not None and _CARRY_MIN <= imp <= _CARRY_MAX:
+                seeds.append(imp)
+        carry_floor = (median(seeds) if seeds and self.calibrate_carry
+                       else self.carry_rate_annual)
+        self._carry_seeds = len(seeds)
+
         self.rows = []
         for d in all_dates:
             present = {leg: by_leg[leg][d] for leg in _LEG_ORDER if d in by_leg[leg]}
             if len(present) < 2:
                 continue
             t_star = self._target_expiry(present.get("onshore"), d)
+
+            day_carry, carry_source = self.carry_rate_annual, "assumed"
+            if self.calibrate_carry:
+                day_carry, carry_source = carry_floor, "calibrated_pooled"
+                if "onshore" in present and "spot" in present and (t_star - d).days >= 10:
+                    implied = CarryCalibrator.implied_annual(
+                        present["spot"].mark, d, present["onshore"].mark, t_star)
+                    if implied is not None and _CARRY_MIN <= implied <= _CARRY_MAX:
+                        day_carry, carry_source = implied, "calibrated"
+
             norm = InstrumentNormalizer(target_expiry=t_star,
-                                        carry_rate_annual=self.carry_rate_annual)
+                                        carry_rate_annual=day_carry)
 
             forwards, adj, fwd_objs = {}, {}, {}
             for leg, bar in present.items():
@@ -133,7 +181,7 @@ class EODBasisRunner:
                     )
             self.rows.append(EODBasisRow(
                 trade_date=d, target_expiry=t_star,
-                carry_rate_annual=self.carry_rate_annual,
+                carry_rate_annual=round(day_carry, 5), carry_source=carry_source,
                 forwards=forwards, basis_pips=pairs, carry_adjustment_pips=adj,
             ))
 
@@ -194,22 +242,44 @@ class EODBasisRunner:
             }
         ev_by_pair: dict = {}
         persistence = {"ephemeral": 0, "flickering": 0, "persistent": 0}
+        verdicts = {"viable": 0, "risky": 0, "unlikely": 0, "unknown": 0}
         for ev in self.events:
             ev_by_pair[ev.leg_pair] = ev_by_pair.get(ev.leg_pair, 0) + 1
             persistence[ev.persistence_class] = persistence.get(ev.persistence_class, 0) + 1
+            verdicts[ev.execution_verdict] = verdicts.get(ev.execution_verdict, 0) + 1
+
+        src = {"calibrated": 0, "calibrated_pooled": 0, "assumed": 0}
+        for r in self.rows:
+            src[r.carry_source] = src.get(r.carry_source, 0) + 1
+        per_day = [r.carry_rate_annual for r in self.rows if r.carry_source == "calibrated"]
 
         return {
             "rows": len(self.rows),
             "date_range": [self.rows[0].trade_date.isoformat(),
                            self.rows[-1].trade_date.isoformat()],
-            "carry_rate_annual": self.carry_rate_annual,
+            "carry": {
+                "mode": "calibrated" if self.calibrate_carry else "assumed_flat",
+                "assumed_fallback_annual": self.carry_rate_annual,
+                "seed_days": getattr(self, "_carry_seeds", 0),
+                "by_source": src,
+                "per_day_mean_annual": (round(sum(per_day) / len(per_day), 4)
+                                        if per_day else None),
+                "pooled_annual": (round(median([r.carry_rate_annual for r in self.rows
+                                                if r.carry_source == "calibrated_pooled"]), 4)
+                                  if src["calibrated_pooled"] else None),
+            },
             "min_basis_threshold_pips": BASIS_DETECTION_CONFIG.min_basis_threshold_pips,
             "basis_stats_pips": stats,
             "dislocation_events": {
                 "total": len(self.events),
                 "days_with_an_event": len({ev.ts for ev in self.events}),
                 "by_leg_pair": ev_by_pair,
+                "execution_verdict": verdicts,
                 "persistence": persistence,
+                "persistence_note": (
+                    "count-mode on daily bars: 'persistent' = basis present 4+ "
+                    "consecutive trading days. NOT comparable to the intraday "
+                    "duration-mode classes; treat execution_verdict as the headline."),
             },
         }
 

@@ -67,6 +67,43 @@ def test_summary_stats():
     assert oo["min_pips"] == -2.0 and oo["max_pips"] == 5.0
 
 
+def test_carry_calibrated_from_onshore_over_spot():
+    # onshore future is 6% annualised over spot; calibration must recover ~6%,
+    # NOT leave the assumed 1.9% (which would misprice the spot leg by ~10 pips).
+    d = date(2026, 9, 1)
+    days = (T_STAR - d).days
+    onshore_fut = 86.50 * (1 + 0.06 * days / 365)
+    runner = EODBasisRunner(CARRY)   # fallback 1.9%, calibrate_carry=True
+    rows = runner.run([_onshore(d, onshore_fut)], [], [_spot(d, 86.50)])
+    assert rows[0].carry_source == "calibrated"
+    assert abs(rows[0].carry_rate_annual - 0.06) < 0.003
+    # spot carried at the real 6% now lands on the future -> basis ~0
+    assert abs(rows[0].basis_pips["onshore_spot"]) < 1.0
+
+
+def test_no_calibrate_flag_keeps_flat_carry():
+    d = date(2026, 9, 1)
+    days = (T_STAR - d).days
+    onshore_fut = 86.50 * (1 + 0.06 * days / 365)
+    rows = EODBasisRunner(CARRY, calibrate_carry=False).run(
+        [_onshore(d, onshore_fut)], [], [_spot(d, 86.50)])
+    assert rows[0].carry_source == "assumed"
+    assert rows[0].carry_rate_annual == CARRY
+    # under-carried spot -> the ~10 pip model error the reviewer flagged
+    assert rows[0].basis_pips["onshore_spot"] > 5.0
+
+
+def test_summary_reports_carry_and_verdicts():
+    on = [_onshore(date(2026, 9, i), 87.0) for i in range(1, 6)]
+    off = [_offshore(date(2026, 9, i), 86.9) for i in range(1, 6)]
+    runner = EODBasisRunner(CARRY)
+    runner.run(on, off, [])
+    summ = runner.summary()
+    assert "by_source" in summ["carry"]
+    assert "execution_verdict" in summ["dislocation_events"]
+    assert "persistence_note" in summ["dislocation_events"]
+
+
 def test_write_creates_files(tmp_path, monkeypatch):
     import backend.core.basis.eod_basis as mod
     monkeypatch.setattr(mod, "_RESULTS_EOD", tmp_path)

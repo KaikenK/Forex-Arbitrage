@@ -233,19 +233,31 @@ def normalise_convention(
 
 def front_month(bars: List["EODBar"]) -> List["EODBar"]:
     """
-    Collapse a multi-contract series to one bar per trade date: the nearest
-    non-expired contract (front month). Bars without an expiry are kept as-is.
+    Collapse a multi-contract series to one bar per trade date.
+
+    NSE currency now lists **weekly** USD/INR futures alongside the monthlies, and
+    the weeklies are thin (settlement prices drift on low OI). "Nearest expiry"
+    would pick those, so we instead pick, per trade date, the **most liquid**
+    contract with >= 7 days to expiry — highest open interest, then highest volume,
+    then nearest expiry as a last resort. Bars without an expiry are kept as-is.
     """
     by_date: dict = {}
+    groups: dict = {}
     for b in bars:
         if b.expiry is None:
             by_date.setdefault(b.trade_date, b)
             continue
-        if b.expiry <= b.trade_date:
+        if (b.expiry - b.trade_date).days < 7:
             continue
-        cur = by_date.get(b.trade_date)
-        if cur is None or cur.expiry is None or b.expiry < cur.expiry:
-            by_date[b.trade_date] = b
+        groups.setdefault(b.trade_date, []).append(b)
+
+    def _liq(b):
+        return (b.open_interest or 0, b.volume or 0, -((b.expiry - b.trade_date).days))
+
+    for d, gs in groups.items():
+        if d in by_date:            # an expiry-less bar already claimed this date
+            continue
+        by_date[d] = max(gs, key=_liq)
     return sorted(by_date.values(), key=lambda x: x.trade_date)
 
 

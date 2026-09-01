@@ -64,14 +64,23 @@ class RedisClient:
             self._is_connected = False
 
     async def publish(self, channel: str, message: Dict[str, Any]):
-        """Publish a JSON dictionary message to a channel."""
+        """
+        Publish a JSON dictionary message to a channel. Best-effort: if Redis is
+        disabled or unreachable the circuit breaker in connect() has already
+        logged (at most 3 times) — this call then silently no-ops rather than
+        logging once per tick.
+        """
         if not self._is_connected:
-            await self.connect()
+            try:
+                await self.connect()
+            except Exception:
+                return
         try:
             payload = json.dumps(message)
             await self._client.publish(channel, payload)
         except Exception as e:
-            logger.error(f"Error publishing to {channel}: {e}")
+            if self._fail_streak < 3:
+                logger.error(f"Error publishing to {channel}: {e}")
 
     async def xadd(
         self,
@@ -94,7 +103,8 @@ class RedisClient:
                 stream, fields, maxlen=maxlen, approximate=True
             )
         except Exception as e:
-            logger.error(f"Error xadd to {stream}: {e}")
+            if self._fail_streak < 3:
+                logger.error(f"Error xadd to {stream}: {e}")
             return None
 
     async def subscribe(self, channel: str, callback: Callable[[Dict[str, Any]], None]):

@@ -4,46 +4,64 @@
     "2025-06-02",
     "2026-08-28"
   ],
-  "carry_rate_annual": 0.019,
+  "carry": {
+    "mode": "calibrated",
+    "assumed_fallback_annual": 0.019,
+    "seed_days": 181,
+    "by_source": {
+      "calibrated": 181,
+      "calibrated_pooled": 142,
+      "assumed": 0
+    },
+    "per_day_mean_annual": 0.0368,
+    "pooled_annual": 0.03
+  },
   "min_basis_threshold_pips": 2.0,
   "basis_stats_pips": {
     "onshore_offshore": {
       "n": 240,
-      "mean_pips": -6.81,
-      "abs_mean_pips": 15.49,
-      "min_pips": -209.05,
-      "max_pips": 101.89,
-      "p90_abs_pips": 31.65
+      "mean_pips": 5.69,
+      "abs_mean_pips": 13.88,
+      "min_pips": -40.09,
+      "max_pips": 99.89,
+      "p90_abs_pips": 31.88
     },
     "onshore_spot": {
       "n": 241,
-      "mean_pips": 2.51,
-      "abs_mean_pips": 22.31,
-      "min_pips": -195.47,
-      "max_pips": 182.38,
-      "p90_abs_pips": 49.53
+      "mean_pips": -2.91,
+      "abs_mean_pips": 9.67,
+      "min_pips": -111.28,
+      "max_pips": 83.44,
+      "p90_abs_pips": 42.33
     },
     "offshore_spot": {
       "n": 322,
-      "mean_pips": 7.33,
-      "abs_mean_pips": 25.51,
-      "min_pips": -174.98,
-      "max_pips": 180.45,
-      "p90_abs_pips": 54.23
+      "mean_pips": -7.4,
+      "abs_mean_pips": 21.79,
+      "min_pips": -178.99,
+      "max_pips": 179.61,
+      "p90_abs_pips": 47.59
     }
   },
   "dislocation_events": {
-    "total": 697,
-    "days_with_an_event": 313,
+    "total": 543,
+    "days_with_an_event": 288,
     "by_leg_pair": {
-      "offshore_otc": 296,
-      "onshore_offshore": 193,
-      "onshore_otc": 208
+      "offshore_otc": 288,
+      "onshore_offshore": 197,
+      "onshore_otc": 58
+    },
+    "execution_verdict": {
+      "viable": 517,
+      "risky": 26,
+      "unlikely": 0,
+      "unknown": 0
     },
     "persistence": {
       "ephemeral": 6,
       "flickering": 12,
-      "persistent": 679
-    }
+      "persistent": 525
+    },
+    "persistence_note": "count-mode on daily bars: 'persistent' = basis present 4+ consecutive trading days. NOT comparable to the intraday duration-mode classes; treat execution_verdict as the headline."
   }
 }

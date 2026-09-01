@@ -390,8 +390,9 @@ class BasisDetectionConfig:
     max_leg_staleness_ms: int = 2_400_000      # feed age ceiling (default ~40 min:
                                                # catches a dead poll, tolerates the
                                                # delayed offshore leg)
-    calibrate_carry_from_curve: bool = False   # infer carry from near/far futures
-                                               # instead of the constant assumption
+    calibrate_carry_from_curve: bool = True    # infer carry live — from near/far
+                                               # futures (retail) or F_onshore/S
+                                               # (research) — not the constant
 
 
 BASIS_DETECTION_CONFIG = BasisDetectionConfig()

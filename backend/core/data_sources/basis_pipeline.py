@@ -192,10 +192,21 @@ class BasisPipeline:
         if self.carry_calibrator is not None:
             near = raw_legs.get("future") or raw_legs.get("onshore")
             far = raw_legs.get("far")
+            spot = raw_legs.get("otc")
             if near and far and near["expiry"] and far["expiry"]:
+                # retail-arb: near vs far NSE future defines the fair carry
                 self.normalizer.carry_rate_annual = self.carry_calibrator.update(
                     (near["bid"] + near["ask"]) / 2.0, near["expiry"],
                     (far["bid"] + far["ask"]) / 2.0, far["expiry"],
+                )
+            elif near and near["expiry"] and spot:
+                # research: onshore near future vs same-day spot -> (F/S - 1)*365/days.
+                # Without this, the spot leg is carried a full month at an assumed
+                # rate and the (assumed - true) gap sits in the reported basis.
+                self.normalizer.carry_rate_annual = self.carry_calibrator.update(
+                    (spot["bid"] + spot["ask"]) / 2.0,
+                    datetime.now(timezone.utc).date(),
+                    (near["bid"] + near["ask"]) / 2.0, near["expiry"],
                 )
             carry_meta = self.carry_calibrator.to_dict()
         else:
@@ -314,7 +325,10 @@ def build_basis_pipeline() -> BasisPipeline:
         target_expiry=_default_target_expiry(),
         carry_rate_annual=BASIS_DETECTION_CONFIG.carry_rate_annual,
     )
-    return BasisPipeline(sources=sources, normalizer=normalizer)
+    calibrator = (CarryCalibrator(fallback_annual=BASIS_DETECTION_CONFIG.carry_rate_annual)
+                  if BASIS_DETECTION_CONFIG.calibrate_carry_from_curve else None)
+    return BasisPipeline(sources=sources, normalizer=normalizer,
+                         carry_calibrator=calibrator)
 
 
 def build_retail_arb_pipeline() -> BasisPipeline:

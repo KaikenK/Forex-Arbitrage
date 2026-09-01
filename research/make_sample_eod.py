@@ -19,7 +19,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from backend.core.normalization import month_end_expiry_estimate  # noqa: E402
 
-OUT = Path(__file__).resolve().parent.parent / "data" / "eod"
+import argparse
+
+_ap = argparse.ArgumentParser(description="Generate synthetic EOD USD/INR sample CSVs")
+_ap.add_argument("--outdir", default=str(Path(__file__).resolve().parent.parent / "data" / "eod"))
+_args, _ = _ap.parse_known_args()
+OUT = Path(_args.outdir)
 OUT.mkdir(parents=True, exist_ok=True)
 
 rng = random.Random(20260828)

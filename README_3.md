@@ -87,8 +87,12 @@ set of legs is the only difference between the two modes.**
 | `otc` | aggregated USD/INR spot | Yahoo `USDINR=X`, Frankfurter fallback (`OtcSpotSource`) | ✅ |
 
 Pairs detected: `onshore_offshore`, `onshore_otc`, `offshore_otc`.
-This is the **paper's subject**. Headline number: the onshore−OTC basis (continuous),
-with onshore−offshore for EOD where staleness does not matter.
+This is the **paper's subject**. Headline number: **`onshore_offshore`** — both legs are
+futures carried to the same `T*`, so the carry assumption *cancels* and the basis is
+carry‑independent and robust. The spot leg is a continuity / sanity check: once carry is
+calibrated from `F_onshore / S` (§11.1) the `onshore_otc` pair is ~0 by construction and
+`offshore_otc ≈ −onshore_offshore`, so they carry no independent information — do not
+report them as separate findings.
 
 ### Mode B — retail‑arb  (`build_retail_arb_pipeline()`, `ARBEX_RETAIL_ARB=1`)
 
@@ -398,6 +402,9 @@ $env:ARBEX_DATA_MODE="LIVE_USDINR_BASIS"; $env:BASIS_REPLAY="1"; python -m backe
 ```
 This is **backtest‑style validation**: it replays a completed EOD run and shows how the
 detection + classification + feasibility pipeline behaves on real historical settlements.
+The `real` and `sample` runs are committed under `research/results/eod/` so this works
+from a clean clone with no CSVs. To rebuild the `real` run from your own data, see the
+EOD command below, then `--run-id real`.
 
 ### Basis dashboard — LIVE research mode (needs `UPSTOX_ACCESS_TOKEN` in `.env`, market hours)
 ```bash
@@ -412,9 +419,20 @@ $env:ARBEX_DATA_MODE="LIVE_USDINR_BASIS"; $env:ARBEX_RETAIL_ARB="1"; $env:ARBEX_
 
 ### EOD basis (no server, no account)
 ```bash
-python research/run_eod_basis.py --onshore data/eod/nse_usdinr.csv \
-    --offshore data/eod/cme_sir.csv --offshore-convention INRUSD_x10000
+# on the bundled synthetic sample (regenerate it first if missing):
+python research/make_sample_eod.py
+python research/run_eod_basis.py --run-id sample
 ```
+```bash
+# on real data you supply (onshore NSE FUTCUR export + CME/investing.com CSV):
+python research/run_eod_basis.py --run-id real \
+    --onshore-csv data/eod/nse_usdinr_fut.csv \
+    --offshore-csv data/eod/cme_inr_fut.csv --offshore-convention INRUSD_x10000 \
+    --use-yfinance --start 2025-06-01 --end 2026-08-29
+```
+Flags are `--onshore-csv` / `--offshore-csv` / `--spot-csv` (not `--onshore`). `--use-yfinance`
+pulls the spot leg (`USDINR=X`) and needs `--start` / `--end`. Carry is calibrated per day
+from `F_onshore / S` (§11.1); `--no-calibrate-carry` reverts to a flat `--carry`.
 
 ### Verify a broker token
 ```bash
@@ -456,8 +474,29 @@ Consequence, and it is the honest answer: **you cannot detect calendar arbitrage
 the two contracts whose ratio defines the carry.** `future_far` is now a
 curve‑consistency check. The real retail signal is `future_options` — it compares two
 instruments at the **same expiry `T*`**, so it needs no carry assumption at all.
-(Research mode keeps the configured carry; it has no far‑future leg to calibrate from,
-and for the paper the carry will be anchored to money‑market rates / CIP.)
+
+**Research mode is calibrated the same way** — it has no far‑future leg, so it uses the
+**onshore near future vs same‑day spot**: `carry = (F_onshore / S − 1) · 365 / days`.
+Without this the spot leg is carried the full distance to `T*` (up to ~1 month), so at
+the old assumed 1.9% vs a real ~4% the systematic error was **7–15 pips** — larger than
+the mean basis itself. Same corollary as retail: this makes `onshore_otc` ~0 by
+construction, so **`onshore_offshore` (carry‑free) is the one independent research
+basis**. `BASIS_DETECTION_CONFIG.calibrate_carry_from_curve = True`.
+
+**The EOD track** (`EODBasisRunner`, `eod_basis.py`) calibrates **per trading day** from
+that day's `F_onshore / S`. Days too close to expiry to annualise stably (< 10 days) get
+the **median of the well‑conditioned days** (`carry_source: "calibrated_pooled"`) rather
+than a flat guess. On the committed `real` run (323 days, Jun 2025 – Aug 2026):
+`onshore_spot` |mean| dropped **22.31 → 9.67 pips**, `offshore_spot` **25.51 → 21.79**,
+and the `onshore_offshore` range tightened from `[−209, +102]` to `[−40, +100]` (the old
+tails were a thin‑contract artifact — see next point). Per‑day mean carry ≈ 3.7%.
+`--no-calibrate-carry` reverts to the flat `--carry` value.
+
+**Front‑month selection fix (same commit).** NSE now lists **weekly** USD/INR futures
+alongside the monthlies; `eod_loader.front_month()` was picking the nearest expiry =
+a thin weekly whose settlement price drifts on low OI. It now picks the **most liquid**
+contract with ≥ 7 days to expiry (highest open interest, then volume). This is what
+removed the −209 pip outlier and is why the `real` run's stats above shifted.
 
 ### 11.2 Validity gates (`BasisPipeline._tick_once`, `BasisDetectionConfig`)
 
@@ -477,30 +516,46 @@ what counts as a *signal* (vs. a blip).
 
 ### 11.3 What still limits validity
 
-1. **The offshore leg (`SIR=F`) is thin and delayed.** CME's Indian Rupee future trades
-   ~12 times/day and, during Indian market hours, is in CME's overnight session — quotes
-   lag 15–30 min. For the paper: use **onshore − OTC spot** (continuous) as the live
-   headline, and **onshore − offshore future** only for EOD where staleness is
-   irrelevant. The research‑mode staleness gate is deliberately loose (40 min) so the
-   existing demo still renders; tighten it once a better offshore feed exists.
+1. **The offshore leg (`SIR=F`) is thin and delayed → live research mode is a demo, not
+   a measurement.** CME's Indian Rupee future trades ~12 times/day and, during Indian
+   market hours, sits in CME's overnight session — quotes lag 15–30 min. Since
+   `onshore_offshore` is the only independent pair and it needs a fresh offshore price,
+   the **real measurement is the EOD track** (all legs are same‑day settlements — no
+   staleness, and `onshore_offshore` is carry‑free). The live dashboard is for
+   monitoring / demo until a real‑time offshore feed (paid, or a co‑operating desk)
+   exists. The research staleness gate is loose (40 min) so the demo still renders.
 
 2. **`future_options` is only as good as NSE option liquidity.** Right now the leg is
    correctly *suppressed* most of the time. When ATM USD/INR option quotes tighten below
    the 10‑pip gate, the pair activates automatically — no code change.
 
-3. **Research‑mode carry is still assumed** (`CARRY_RATE_ANNUAL`, now used only when
-   there is no curve to calibrate from). Impact is bounded (~2–3 pips over a few days of
-   spot carry); the paper will anchor it to SOFR − MIBOR.
+3. **Carry calibration is `F/S`‑based, not CIP.** It recovers the market's *own* forward
+   premium (which is what the basis should be measured against), but it inherits any
+   onshore/spot snapshot mismatch and is noisy near expiry (hence the pooled fallback).
+   For the paper, cross‑check the calibrated series against SOFR − MIBOR / T‑bill spread.
+   `CARRY_RATE_ANNUAL` is now only the last‑resort fallback when no `F` and `S` overlap.
 
-4. **Yahoo is an unofficial API** — no SLA, can change without notice. Frankfurter is
+4. **EOD persistence classes are not a finding.** On daily bars in `count` mode,
+   "persistent" just means the basis was present ≥ 4 consecutive trading days — 97% of
+   events clear that trivially. It is a cadence artifact, **not comparable** to the
+   intraday duration‑mode classes. The EOD `summary.json` now leads with
+   `execution_verdict` (viable / risky / unlikely) instead; report that, or set the
+   event threshold from an explicit round‑trip trading cost rather than the current
+   2.0‑pip default (which fires on ~90% of days against a 15–25 pip mean basis).
+
+5. **Onshore EOD coverage gap.** The NSE FUTCUR export used for the `real` run starts
+   2025‑08‑29, so `onshore_offshore` / `onshore_spot` have n ≈ 240 of 323 rows; only
+   `offshore_spot` spans the full window. State this `n` in any results table.
+
+6. **Yahoo is an unofficial API** — no SLA, can change without notice. Frankfurter is
    the sanctioned fallback for spot; there is no free fallback for the offshore future.
 
-5. **The retail‑arb edge is genuinely small.** Even with calibrated carry, an NSE
+7. **The retail‑arb edge is genuinely small.** Even with calibrated carry, an NSE
    box/calendar trade is a few paise, capital‑heavy, and needs near‑simultaneous
    two‑leg execution with an options‑enabled NSE account. It is a **monitor / pre‑trade
    filter**, not a money‑maker. The paper's value is the research basis.
 
-6. **Repo carries ~9 MB of committed runtime logs** (`sentiment_assets/runtime/*.jsonl`)
+8. **Repo carries ~9 MB of committed runtime logs** (`sentiment_assets/runtime/*.jsonl`)
    — the semantic owner's, not ours; do not touch.
 
 ---
@@ -509,15 +564,19 @@ what counts as a *signal* (vs. a blip).
 
 From `md/PHASE3_PLAN.md`:
 
-1. **Start the collector** (calendar‑bound — needs weeks of data before the 7 Oct MPC).
-2. ~~Calibrate carry from the forward curve~~ — **done** (§11.1).
-3. ~~Max‑spread / freshness gates~~ — **done** (§11.2).
-4. **Anchor research‑mode carry** to money‑market rates (SOFR − MIBOR / T‑bill spread).
+1. ~~Calibrate carry from the curve~~ (`F_far/F_near` retail, `F_onshore/S` research +
+   EOD) and ~~max‑spread / freshness gates~~ — **done** (§11.1, §11.2). Was blocking the
+   headline number; had to land before collection so weeks of data don't need recomputing.
+2. **Start the collector** (calendar‑bound — needs weeks of data before the 7 Oct MPC).
+3. **Cross‑check the calibrated carry** against SOFR − MIBOR / T‑bill spread (validation,
+   not a blocker — the `F/S` series is the primary).
+4. **Set the event threshold from a real round‑trip cost** and report `execution_verdict`
+   counts, not the 2.0‑pip‑default event count or the EOD persistence classes (§11.3.4).
 5. **The event study** — basis behaviour around the RBI 12:30 fixing / MPC / month‑end,
    news‑conditioned by the semantic engine. This is the paper's core result.
-5. Backup finding if the dynamics are unremarkable: the **feasibility‑adjusted
+6. Backup finding if the dynamics are unremarkable: the **feasibility‑adjusted
    opportunity** — raw basis vs what survives execution cost (`BasisExecutionFilter`).
-6. Team decisions still open: target venue for the paper, guide sign‑off, final effort split.
+7. Team decisions still open: target venue for the paper, guide sign‑off, final effort split.
 
 ### Team split (current)
 - **Davis** — data feeds (Upstox / offshore / OTC) + the collector.

@@ -90,8 +90,23 @@ leg pair, with both quotes inside the same `basis_window_ms` window (§FR-3.1).
   snapshot records `carry_rate_annual` + `carry_source ∈ {calibrated, assumed}`. Verified
   live 2026-09-01: carry 4.12%, `future_far` basis −15.2 → +0.1 pips. Corollary: the
   near/far calendar pair cannot itself detect calendar arbitrage (it defines the carry);
-  the same-expiry `future_options` pair is the carry-free retail signal. Research mode
-  keeps v1 until anchored to a money-market spread (SOFR − MIBOR).
+  the same-expiry `future_options` pair is the carry-free retail signal.
+- **v2 (done, research + EOD):** no far-future leg, so `carry` is inferred from the
+  onshore near future vs same-day spot — `carry_annual = (F_onshore/S − 1)·365/days`.
+  This removes carry error from the spot-involving pairs; the trade-off is that
+  `onshore_otc` then goes to ~0 by construction and `offshore_otc ≈ −onshore_offshore`,
+  so **`onshore_offshore` (carry-free, both futures) is the single independent research
+  basis** — the spot pairs are continuity/sanity checks, not separate findings. Without
+  calibration the spot leg is carried the full ~1 month to `T*` at assumed 1.9% vs real
+  ~4%, a 7–15 pip systematic error. Live: `BASIS_DETECTION_CONFIG.calibrate_carry_from_curve`.
+  EOD (`EODBasisRunner`): calibrated **per trading day**; days < 10 to expiry get the
+  median of the well-conditioned days (`carry_source: calibrated_pooled`). On the 323-day
+  `real` run this cut `onshore_spot` |mean| 22.3 → 9.7 pips. `--no-calibrate-carry`
+  reverts to a flat `--carry`. Still `F/S`-based, not CIP — cross-check vs SOFR − MIBOR.
+- **Front-month fix (`eod_loader.front_month`):** NSE now lists **weekly** USD/INR
+  futures; "nearest expiry" was picking thin weeklies whose settlement price drifts.
+  Now picks the most liquid contract (OI, then volume) with ≥ 7 days to expiry — removed
+  a −209 pip outlier from the `real` run and tightened `onshore_offshore` to `[−40,+100]`.
 - **Leg validity gates** (`BasisDetectionConfig`, applied in `BasisPipeline._tick_once`):
   a leg is dropped from comparison and logged in `snapshot.suppressed_legs` if its
   bid/ask exceeds `max_leg_spread_pips` (10 retail / 8 research), its feed age exceeds

@@ -20,6 +20,11 @@ data/cache/
 research/results/raw/
 research/results/eod/*/events.jsonl
 research/results/eod/*/basis_eod.jsonl
+# ...except the two committed demo runs the zero-credential dashboard replays
+!research/results/eod/real/events.jsonl
+!research/results/eod/real/basis_eod.jsonl
+!research/results/eod/sample/events.jsonl
+!research/results/eod/sample/basis_eod.jsonl
 
 # Office lock files
 ~$*

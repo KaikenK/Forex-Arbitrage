@@ -37,7 +37,10 @@ def main() -> None:
                          "(NSE blocks scrapers; Yahoo has no rupee future).")
     ap.add_argument("--start", default=None)
     ap.add_argument("--end", default=None)
-    ap.add_argument("--carry", type=float, default=CARRY_RATE_ANNUAL)
+    ap.add_argument("--carry", type=float, default=CARRY_RATE_ANNUAL,
+                    help="fallback annualised carry when a day cannot be calibrated")
+    ap.add_argument("--no-calibrate-carry", action="store_true",
+                    help="disable per-day carry calibration (F_onshore/S); use --carry flat")
     ap.add_argument("--offshore-convention", default="auto",
                     choices=["auto", "USDINR", "INRUSD", "USDINR_x100", "INRUSD_x10000"],
                     help="CME/SGX rupee futures quote USD-per-INR — 'auto' inverts them")
@@ -74,12 +77,17 @@ def main() -> None:
         print("\n  No overlapping dates between the onshore leg and the others - "
               "0 rows. Check date ranges and that each file actually loaded.")
 
-    runner = EODBasisRunner(carry_rate_annual=args.carry)
+    runner = EODBasisRunner(carry_rate_annual=args.carry,
+                            calibrate_carry=not args.no_calibrate_carry)
     runner.run(onshore, offshore, spot)
     outdir = runner.write(run_id=args.run_id)
     s = runner.summary()
 
-    print(f"\n=== EOD USD/INR basis  (run '{args.run_id}', carry {args.carry:.3f}) ===")
+    _c = s.get("carry", {})
+    _bs = _c.get("by_source", {})
+    print(f"\n=== EOD USD/INR basis  (run '{args.run_id}', carry {_c.get('mode')}: "
+          f"{_bs.get('calibrated', 0)} per-day + {_bs.get('calibrated_pooled', 0)} pooled "
+          f"@ {_c.get('pooled_annual')}, {_bs.get('assumed', 0)} assumed) ===")
     print(f"  dated rows      : {s['rows']}   {s.get('date_range')}")
     for pair, st in s.get("basis_stats_pips", {}).items():
         print(f"  {pair:<18}: mean {st['mean_pips']:+.2f}  |mean| {st['abs_mean_pips']:.2f}  "
