@@ -157,3 +157,39 @@ class TestCrossSourceDetection:
             if opp.type == ArbitrageType.CROSS_SOURCE
         ]
         assert len(cross_source) == 0
+
+
+class TestLiveExchangeMode:
+    """Live exchange legs: only genuinely crossed books are opportunities."""
+
+    def _engine(self, **overrides):
+        cfg = dict(min_profit_pips=0.25, min_confidence=0.0, max_latency_risk_ms=2000,
+                   enable_triangular=False, enable_session_analysis=False,
+                   enable_latency_arbitrage=False)
+        cfg.update(overrides)
+        return ArbitrageEngine(ArbitrageConfig(**cfg))
+
+    def test_mid_gap_without_cross_is_not_reported(self):
+        # NSE 88.7000/88.7100, BSE 88.7050/88.7300: mids differ by 1.25 paise,
+        # but no bid exceeds the other venue's ask -> nothing executable.
+        window = make_window("USDINR", {
+            "upstox_nse_usdinr": make_tick("USDINR", 88.7000, 88.7100, "upstox_nse_usdinr"),
+            "upstox_bse_usdinr": make_tick("USDINR", 88.7050, 88.7300, "upstox_bse_usdinr"),
+        }, window_size_ms=500)
+        assert self._engine().detect(window) == []
+        # the default (synthetic-mode) behaviour still reports it as latency arbitrage
+        legacy = self._engine(enable_latency_arbitrage=True, min_profit_pips=-100)
+        assert any(o.type == ArbitrageType.LATENCY_ARBITRAGE for o in legacy.detect(window))
+
+    def test_crossed_book_is_reported_in_paise(self):
+        # BSE bid 88.7150 > NSE ask 88.7100: buy NSE, sell BSE for 0.5 paise.
+        window = make_window("USDINR", {
+            "upstox_nse_usdinr": make_tick("USDINR", 88.7075, 88.7100, "upstox_nse_usdinr"),
+            "upstox_bse_usdinr": make_tick("USDINR", 88.7150, 88.7200, "upstox_bse_usdinr"),
+        }, window_size_ms=500)
+        opps = self._engine().detect(window)
+        assert len(opps) == 1
+        opp = opps[0]
+        assert opp.type == ArbitrageType.CROSS_SOURCE
+        assert (opp.buy_source, opp.sell_source) == ("upstox_nse_usdinr", "upstox_bse_usdinr")
+        assert opp.estimated_profit_pips == pytest.approx(0.5)

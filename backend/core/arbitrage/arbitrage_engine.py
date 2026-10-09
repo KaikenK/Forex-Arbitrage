@@ -118,6 +118,7 @@ class ArbitrageConfig:
         enable_cross_source: Enable cross-source arbitrage detection
         enable_triangular: Enable triangular arbitrage detection
         enable_session_analysis: Enable session inefficiency detection
+        enable_latency_arbitrage: Report mid-price gaps without a crossed book
         source_latencies: Known latencies for each source (ms)
         source_reliabilities: Reliability scores for each source (0.0 to 1.0)
     """
@@ -127,6 +128,7 @@ class ArbitrageConfig:
     enable_cross_source: bool = True
     enable_triangular: bool = True
     enable_session_analysis: bool = True
+    enable_latency_arbitrage: bool = True
     source_latencies: Dict[str, float] = field(default_factory=dict)
     source_reliabilities: Dict[str, float] = field(default_factory=dict)
 
@@ -304,8 +306,9 @@ class ArbitrageEngine:
                     )
                     opportunities.append(opp)
                 
-                # Check for near-arbitrage (small positive spread)
-                else:
+                # Check for near-arbitrage (small positive spread). Not executable:
+                # a bet that the lagging source catches up. Disabled for live legs.
+                elif self.config.enable_latency_arbitrage:
                     # Calculate potential profit if we could beat the spread
                     spread_a = tick_a.spread
                     spread_b = tick_b.spread

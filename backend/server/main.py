@@ -23,11 +23,13 @@ Research Mode (DATA_MODE = SYNTHETIC_USDINR_ONLY):
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from collections import deque
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +42,8 @@ from backend.config import (
     DATA_MODE,
     DataMode,
     is_synthetic_mode,
+    is_live_exchange_mode,
+    LIVE_EXCHANGE_CONFIG,
     get_active_symbol,
     RESEARCH_SYMBOL,
     SYNTHETIC_FEEDS,
@@ -135,6 +139,11 @@ if is_synthetic_mode():
     logger.info(f"Symbol: {RESEARCH_SYMBOL}")
     logger.info("MT5 and live data sources are DISABLED")
     logger.info("=" * 60)
+elif is_live_exchange_mode():
+    DEFAULT_SYMBOLS = [RESEARCH_SYMBOL]  # USD/INR futures, NSE + BSE
+    logger.info("=" * 60)
+    logger.info("LIVE MODE: LIVE_USDINR_EXCHANGES (NSE/BSE USD/INR futures)")
+    logger.info("=" * 60)
 else:
     DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
 
@@ -181,6 +190,11 @@ MIN_PROFIT_PIPS = ARBITRAGE_RESEARCH_CONFIG.min_profit_pips if is_synthetic_mode
 # Minimum confidence score (0.0 to 1.0)
 MIN_CONFIDENCE = ARBITRAGE_RESEARCH_CONFIG.min_confidence if is_synthetic_mode() else 0.5
 
+if is_live_exchange_mode():
+    ALIGNMENT_WINDOW_MS = LIVE_EXCHANGE_CONFIG.alignment_window_ms
+    MIN_PROFIT_PIPS = LIVE_EXCHANGE_CONFIG.min_profit_pips
+    MIN_CONFIDENCE = LIVE_EXCHANGE_CONFIG.min_confidence
+
 # ============================================================================
 
 # Global instances (conditionally initialized based on mode)
@@ -191,6 +205,10 @@ bar_aggregators: Dict[str, Any] = {}
 # Multi-source components
 mt5_data_source = None
 synthetic_sources: List[SessionAwareSyntheticSource] = []
+live_feed_setup = None  # LiveFeedSetup in LIVE_USDINR_EXCHANGES mode
+# Opportunities seen in live mode, kept locally so the mode works without Redis
+# and the semantic engine (which only see them via arbex.raw_opps).
+live_opportunities: "deque[Dict[str, Any]]" = deque(maxlen=500)
 multi_source_streamer: Optional[MultiSourceStreamer] = None
 
 # v2.0: Advanced state management and execution
@@ -228,7 +246,7 @@ async def lifespan(app: FastAPI):
     - Full arbitrage pipeline
     """
     global mt5_client, tick_streamer, bar_aggregators
-    global mt5_data_source, synthetic_sources, multi_source_streamer
+    global mt5_data_source, synthetic_sources, multi_source_streamer, live_feed_setup
     global state_store, arbitrage_state_machine, time_weighted_metrics
     global execution_engine, semantic_context_engine
     global metrics_collector
@@ -243,6 +261,9 @@ async def lifespan(app: FastAPI):
         logger.info("MODE: SYNTHETIC_USDINR_ONLY (Research Grade)")
         logger.info(f"Symbol: {RESEARCH_SYMBOL}")
         logger.info("MT5 Connection: DISABLED")
+    elif is_live_exchange_mode():
+        logger.info("Starting FX Arbitrage Engine on live exchange feeds")
+        logger.info("MODE: LIVE_USDINR_EXCHANGES")
     else:
         logger.info("Starting MT5 Market Data Engine with Arbitrage Detection")
         logger.info("MODE: LIVE_MT5")
@@ -306,7 +327,65 @@ async def lifespan(app: FastAPI):
         logger.info(f"Synthetic research pipeline initialized with "
                    f"{len(synthetic_sources)} data sources")
         logger.info(f"Arbitrage detection enabled for cross-provider and cross-session analysis")
-        
+
+    elif is_live_exchange_mode():
+        # =====================================================================
+        # LIVE NSE/BSE USD/INR FUTURES (Upstox free, Kite low-cost)
+        # =====================================================================
+        from backend.core.data_sources.live_feeds import (
+            build_live_exchange_sources,
+            build_replay_sources,
+        )
+
+        replay_dir = os.environ.get("ARBEX_LIVE_REPLAY")
+        if replay_dir:
+            live_feed_setup = build_replay_sources(
+                replay_dir, speed=float(os.environ.get("ARBEX_REPLAY_SPEED", "1.0")),
+                loop=os.environ.get("ARBEX_REPLAY_LOOP", "1") != "0")
+            logger.info(f"Replaying recorded live session from {replay_dir}")
+        else:
+            # Network calls (instrument masters) run off the event loop.
+            try:
+                live_feed_setup = await asyncio.to_thread(build_live_exchange_sources)
+            except Exception as e:
+                # Keep the server up so /health and /live/status explain why.
+                from backend.core.data_sources.live_feeds import LiveFeedSetup
+                logger.error(f"Live feeds unavailable: {e}")
+                live_feed_setup = LiveFeedSetup(sources=[], hubs={}, skipped={"setup": str(e)})
+        for line in live_feed_setup.describe():
+            logger.info(f"  {line}")
+
+        arbitrage_config = ArbitrageConfig(
+            min_profit_pips=MIN_PROFIT_PIPS,
+            min_confidence=MIN_CONFIDENCE,
+            max_latency_risk_ms=LIVE_EXCHANGE_CONFIG.max_latency_risk_ms,
+            enable_cross_source=True,         # crossed books between legs
+            enable_triangular=False,          # single instrument
+            enable_session_analysis=False,    # not an executable trade
+            enable_latency_arbitrage=False,   # mid gaps without a cross are not arbitrage
+        )
+        multi_source_streamer = MultiSourceStreamer(
+            ws_manager=ws_manager,
+            bar_aggregators=bar_aggregators,
+            arbitrage_config=arbitrage_config,
+            ranking_config=RankingConfig(min_composite_score=0.0, max_results=100),
+            alignment_window_ms=ALIGNMENT_WINDOW_MS,
+        )
+        for source in live_feed_setup.sources:
+            multi_source_streamer.add_source(source)
+
+        def _log_live_opportunity(opp):
+            row = opp.to_dict()
+            live_opportunities.append(row)
+            rec = live_feed_setup.recorder
+            if rec is not None and rec.session_dir is not None:
+                with (rec.session_dir / "opportunities.jsonl").open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row) + "\n")
+
+        multi_source_streamer.on_arbitrage(_log_live_opportunity)
+        await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
+        logger.info(f"Live exchange pipeline initialized with {len(live_feed_setup.sources)} legs")
+
     else:
         # =====================================================================
         # LIVE MT5 MODE (Original behavior)
@@ -488,6 +567,10 @@ async def lifespan(app: FastAPI):
         logger.info(f"Data sources: {len(synthetic_sources)}")
         for src in synthetic_sources:
             logger.info(f"  - {src.source_id}: {src.session.value} / {src.provider.value}")
+    elif is_live_exchange_mode() and live_feed_setup:
+        logger.info("LIVE MODE ACTIVE - NSE/BSE USD/INR futures")
+        if live_feed_setup.recorder:
+            logger.info(f"Recording quotes under {os.environ.get('ARBEX_RECORD_DIR', 'research/recordings')}")
     logger.info("=" * 60)
     logger.info(f"WebSocket endpoints:")
     logger.info(f"  - ws://localhost:8000/ws/ticks/{{symbol}}")
@@ -560,6 +643,11 @@ async def lifespan(app: FastAPI):
         for source in synthetic_sources:
             source.disconnect()
         logger.info(f"Disconnected {len(synthetic_sources)} synthetic sources")
+    elif is_live_exchange_mode():
+        if live_feed_setup:
+            for source in live_feed_setup.sources:
+                source.disconnect()
+            logger.info(f"Disconnected {len(live_feed_setup.sources)} live exchange legs")
     else:
         if mt5_data_source:
             mt5_data_source.disconnect()
@@ -693,6 +781,30 @@ async def health():
             }
             for src in synthetic_sources
         ]
+    elif is_live_exchange_mode():
+        health_data["mt5"] = "disabled"
+        health_data["research_mode"] = False
+        legs = live_feed_setup.sources if live_feed_setup else []
+        health_data["live_legs"] = [
+            {
+                "id": src.source_id,
+                "exchange": src.contract.exchange,
+                "provider": src.contract.provider,
+                "contract": src.contract.trading_symbol,
+                "expiry": src.contract.expiry.isoformat(),
+                "healthy": src.is_healthy(),
+                "suppressed_reason": src.get_stats()["suppressed_reason"],
+            }
+            for src in legs
+        ]
+        health_data["skipped_feeds"] = live_feed_setup.skipped if live_feed_setup else {}
+        health_data["hubs"] = (
+            {name: hub.stats() for name, hub in live_feed_setup.hubs.items()} if live_feed_setup else {}
+        )
+        if live_feed_setup and live_feed_setup.recorder:
+            health_data["recorded_rows"] = live_feed_setup.recorder.rows_written
+        if not any(src.is_healthy() for src in legs):
+            health_data["status"] = "degraded"
     else:
         mt5_status = "connected" if (mt5_client and mt5_client.is_connected) else "disconnected"
         health_data["mt5"] = mt5_status
@@ -946,6 +1058,52 @@ async def get_recent_arbitrage(limit: int = 20):
     return {
         "opportunities": ws_manager.get_recent_arbitrage(limit=limit),
         "total_available": len(ws_manager.recent_arbitrage),
+    }
+
+
+@app.get("/live/status")
+async def get_live_status():
+    """
+    Live NSE/BSE legs side by side: each venue's current book and the pairwise
+    executable spread in paise (positive = crossed market = arbitrage before costs).
+    """
+    if not is_live_exchange_mode() or not live_feed_setup:
+        return {"error": "Live exchange mode is not active (set ARBEX_DATA_MODE=LIVE_USDINR_EXCHANGES)"}
+    from backend.core.data_sources.live_feeds import cross_spreads
+
+    now_ms = int(time.time() * 1000)
+    legs, quotes = [], {}
+    for src in live_feed_setup.sources:
+        q = src.hub.latest(src.contract.instrument_key)
+        quotes[src.source_id] = q
+        legs.append({
+            "id": src.source_id,
+            "exchange": src.contract.exchange,
+            "provider": src.contract.provider,
+            "contract": src.contract.trading_symbol,
+            "expiry": src.contract.expiry.isoformat(),
+            "bid": q.bid if q else None,
+            "ask": q.ask if q else None,
+            "bid_qty": q.bid_qty if q else None,
+            "ask_qty": q.ask_qty if q else None,
+            "spread_paise": round((q.ask - q.bid) / 0.01, 4) if q and q.two_sided else None,
+            "age_ms": now_ms - q.recv_ts_ms if q else None,
+            "exchange_ts_ms": q.exchange_ts_ms if q else None,
+            "healthy": src.is_healthy(),
+            "suppressed_reason": src.get_stats()["suppressed_reason"],
+        })
+    return {
+        "mode": "replay" if live_feed_setup.replay_dir else "live",
+        "replay_dir": str(live_feed_setup.replay_dir) if live_feed_setup.replay_dir else None,
+        # a looping replay re-detects the same recorded opportunities each pass
+        "replay_loops": getattr(live_feed_setup.hubs.get("replay"), "loops", None),
+        "legs": legs,
+        "cross_spreads": cross_spreads(quotes),
+        "opportunities_seen": len(live_opportunities),
+        "recent_opportunities": list(live_opportunities)[-20:],
+        "hubs": {name: hub.stats() for name, hub in live_feed_setup.hubs.items()},
+        "skipped_feeds": live_feed_setup.skipped,
+        "recorded_rows": live_feed_setup.recorder.rows_written if live_feed_setup.recorder else 0,
     }
 
 

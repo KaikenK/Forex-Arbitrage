@@ -12,7 +12,14 @@ Design Decisions:
 - Deterministic seeding enables reproducible research experiments
 """
 
+import os
 from enum import Enum
+try:  # .env (tokens, ARBEX_DATA_MODE) must be loaded before DATA_MODE is read below
+    from pathlib import Path
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -23,9 +30,12 @@ class DataMode(str, Enum):
     
     LIVE_MT5: Uses MetaTrader 5 and real broker feeds
     SYNTHETIC_USDINR_ONLY: Research mode with synthetic USD/INR feeds only
+    LIVE_USDINR_EXCHANGES: Live NSE + BSE USD/INR futures via Upstox (free)
+        and optionally Kite Connect (low cost) — see data_sources/live_feeds.py
     """
     LIVE_MT5 = "LIVE_MT5"
     SYNTHETIC_USDINR_ONLY = "SYNTHETIC_USDINR_ONLY"
+    LIVE_USDINR_EXCHANGES = "LIVE_USDINR_EXCHANGES"
 
 
 class TradingSession(str, Enum):
@@ -57,7 +67,8 @@ class DataProvider(str, Enum):
 
 # Set this to DataMode.SYNTHETIC_USDINR_ONLY for research mode
 # Set to DataMode.LIVE_MT5 for live trading mode (requires MetaTrader 5)
-DATA_MODE = DataMode.SYNTHETIC_USDINR_ONLY
+# Override without editing code: ARBEX_DATA_MODE=LIVE_USDINR_EXCHANGES
+DATA_MODE = DataMode(os.environ.get("ARBEX_DATA_MODE", DataMode.SYNTHETIC_USDINR_ONLY.value))
 
 # ============================================================================
 # SYMBOL CONFIGURATION
@@ -273,6 +284,31 @@ class ArbitrageResearchConfig:
 
 ARBITRAGE_RESEARCH_CONFIG = ArbitrageResearchConfig()
 
+
+@dataclass
+class LiveExchangeConfig:
+    """
+    Arbitrage detection on live exchange legs (NSE/BSE USD/INR futures).
+
+    A real opportunity is a crossed book: one venue's bid above another's ask,
+    on the same contract. Thresholds reflect 1 Hz retail polling:
+    - min_profit_pips 0.25: one tick (0.0025 INR); a pip here is one paisa.
+    - min_confidence 0.0: the confidence heuristic was tuned on synthetic
+      sub-second feeds and is not calibrated for 1 Hz exchange data, so it
+      must not gate a crossed book; ranking and the execution filter grade it.
+    - max_latency_risk_ms 2000: ~one poll interval to act on both legs; faster
+      execution is out of retail reach and is reported, not assumed.
+    - alignment_window_ms 500: legs from one hub share a timestamp, and a
+      window shorter than the poll interval never mixes two polls.
+    """
+    min_profit_pips: float = 0.25
+    min_confidence: float = 0.0
+    max_latency_risk_ms: float = 2000.0
+    alignment_window_ms: int = 500
+
+
+LIVE_EXCHANGE_CONFIG = LiveExchangeConfig()
+
 # ============================================================================
 # SYNTHETIC GENERATION PARAMETERS
 # ============================================================================
@@ -315,9 +351,14 @@ def is_synthetic_mode() -> bool:
     return DATA_MODE == DataMode.SYNTHETIC_USDINR_ONLY
 
 
+def is_live_exchange_mode() -> bool:
+    """Check if system is streaming live NSE/BSE USD/INR futures."""
+    return DATA_MODE == DataMode.LIVE_USDINR_EXCHANGES
+
+
 def get_active_symbol() -> str:
     """Get the active symbol for the current mode."""
-    if is_synthetic_mode():
+    if is_synthetic_mode() or is_live_exchange_mode():
         return RESEARCH_SYMBOL
     return "EURUSD"  # Default for live mode
 

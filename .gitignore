@@ -35,3 +35,7 @@ Thumbs.db
 
 
 
+
+# Live exchange mode: recorded quotes (research data, publish separately) and instrument-master cache
+research/recordings/
+data/cache/
