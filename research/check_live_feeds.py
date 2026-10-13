@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -51,6 +51,26 @@ def _diagnose_upstox_segments(exchange: str) -> None:
     segs = sorted({(r.get("segment"), r.get("instrument_type")) for r in rows
                    if "USDINR" in str(r.get("name")) + str(r.get("trading_symbol"))})
     print(f"    USDINR rows in Upstox {exchange} master by (segment, type): {segs or 'none'}")
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _market_open(now: datetime) -> bool:
+    """NSE/BSE currency derivatives: Mon-Fri 09:00-17:00 IST (exchange holidays not checked)."""
+    return now.weekday() < 5 and 9 <= now.hour < 17
+
+
+def _verdict(quotes, now: datetime) -> str:
+    empty = sorted(k for k, q in quotes.items() if q is None or not q.two_sided)
+    if not _market_open(now):
+        return (f"Outside currency market hours ({now:%a %H:%M} IST; Mon-Fri 09:00-17:00) - "
+                f"empty books are expected.")
+    if empty:
+        return (f"Market is open ({now:%a %H:%M} IST) and the connection works, but "
+                f"{', '.join(empty)} has no live orders right now: that venue is illiquid, "
+                f"not a connection problem.")
+    return f"OK - market open ({now:%a %H:%M} IST) and every leg has a two-sided book."
 
 
 def main() -> int:
@@ -95,7 +115,7 @@ def main() -> int:
     print("\nExecutable cross-spread (paise; > 0 means crossed = arbitrage before costs):")
     for row in cross_spreads(quotes) or [{"note": "fewer than two two-sided books right now"}]:
         print(f"  {row}")
-    print("\nOK — outside NSE currency hours (Mon-Fri 09:00-17:00 IST) books are usually empty.")
+    print("\n" + _verdict(quotes, datetime.now(IST)))
     return 0
 
 
