@@ -193,3 +193,14 @@ class TestLiveExchangeMode:
         assert opp.type == ArbitrageType.CROSS_SOURCE
         assert (opp.buy_source, opp.sell_source) == ("upstox_nse_usdinr", "upstox_bse_usdinr")
         assert opp.estimated_profit_pips == pytest.approx(0.5)
+
+    def test_one_tick_cross_is_not_lost_to_float_rounding(self):
+        # 95.4525 - 95.4500 is 0.0024999999999977 in binary floating point,
+        # i.e. 0.2499... paise; a one-tick (0.25 paise) cross must still count.
+        window = make_window("USDINR", {
+            "upstox_nse_usdinr": make_tick("USDINR", 95.4475, 95.4500, "upstox_nse_usdinr"),
+            "upstox_bse_usdinr": make_tick("USDINR", 95.4525, 95.4600, "upstox_bse_usdinr"),
+        }, window_size_ms=500)
+        opps = self._engine().detect(window)
+        assert len(opps) == 1
+        assert opps[0].estimated_profit_pips == pytest.approx(0.25)

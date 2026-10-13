@@ -220,7 +220,9 @@ class ArbitrageEngine:
         filtered = [
             opp for opp in opportunities
             if opp.confidence_score >= self.config.min_confidence
-            and opp.estimated_profit_pips >= self.config.min_profit_pips
+            # tolerance: a one-tick cross (e.g. 95.4525 - 95.4500) is 0.2499999... pips
+            # in binary floating point and must not fall below a one-tick threshold
+            and opp.estimated_profit_pips >= self.config.min_profit_pips - 1e-9
             and opp.latency_risk_ms <= self.config.max_latency_risk_ms
         ]
         
