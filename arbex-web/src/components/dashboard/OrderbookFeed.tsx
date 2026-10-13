@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { useArbexStore } from '@/lib/store';
+import { sourceLabel } from '@/lib/sources';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
@@ -19,6 +20,17 @@ export function OrderbookFeed() {
     return orderbookData[availableSources[0]];
   }, [orderbookData, selectedSource, availableSources]);
 
+  // Calculate max volume for relative progress bars. Must run before the early
+  // return below: hooks have to be called in the same order on every render,
+  // and the book empties whenever the feed is switched.
+  const maxVolume = useMemo(() => {
+    if (!activeOrderbook) return 1;
+    let max = 0;
+    activeOrderbook.bids.forEach(b => { if (b.volume > max) max = b.volume; });
+    activeOrderbook.asks.forEach(a => { if (a.volume > max) max = a.volume; });
+    return max || 1;
+  }, [activeOrderbook]);
+
   if (!activeOrderbook) {
     return (
       <Card className="bg-[#141620] border-[#1e2235] p-4 flex flex-col items-center justify-center h-[200px]">
@@ -27,13 +39,6 @@ export function OrderbookFeed() {
     );
   }
 
-  // Calculate max volume for relative progress bars
-  const maxVolume = useMemo(() => {
-    let max = 0;
-    activeOrderbook.bids.forEach(b => { if (b.volume > max) max = b.volume; });
-    activeOrderbook.asks.forEach(a => { if (a.volume > max) max = a.volume; });
-    return max || 1;
-  }, [activeOrderbook]);
 
   return (
     <Card className="bg-[#141620] border-[#1e2235] p-3 flex flex-col font-mono">
@@ -45,7 +50,7 @@ export function OrderbookFeed() {
           onChange={(e) => setSelectedSource(e.target.value)}
         >
           {availableSources.map(src => (
-            <option key={src} value={src}>{src.split('_')[0] + ' ' + src.split('_')[1]}</option>
+            <option key={src} value={src}>{sourceLabel(src)}</option>
           ))}
         </select>
       </div>
@@ -77,7 +82,11 @@ export function OrderbookFeed() {
         {/* Spread / Mid Indicator */}
         <div className="flex justify-center items-center py-1 bg-black/20 border-y border-[#1e2235]/50 mb-2">
           <span className="text-slate-500 text-[9px] tracking-widest">
-             SPREAD: {((activeOrderbook.asks[0]?.price - activeOrderbook.bids[0]?.price) * 100).toFixed(1)} PIPS
+             {activeOrderbook.asks.length && activeOrderbook.bids.length
+               ? `SPREAD: ${((activeOrderbook.asks[0].price - activeOrderbook.bids[0].price) * 100).toFixed(2)} PAISE`
+               : !activeOrderbook.asks.length && !activeOrderbook.bids.length
+                 ? 'EMPTY BOOK · NO ORDERS'
+                 : `ONE-SIDED BOOK · NO ${activeOrderbook.asks.length ? 'BIDS' : 'ASKS'}`}
           </span>
         </div>
 

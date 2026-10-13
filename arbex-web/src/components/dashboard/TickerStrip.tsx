@@ -1,5 +1,6 @@
 import React from 'react';
 import { useArbexStore, SessionPriceInfo } from '@/lib/store';
+import { sourceLabel } from '@/lib/sources';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
@@ -15,7 +16,7 @@ export function TickerStrip() {
           {Object.entries(activePairs).map(([sourceId, data]) => (
             <div key={sourceId} className="flex flex-col border-r border-[#1e2235] pr-4 min-w-[120px]">
               <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mb-0.5">
-                {data.session} - {sourceId.split('_')[0]}
+                {sourceLabel(sourceId)}
               </div>
               <div className="flex justify-between items-center text-[10px] space-x-3">
                 <span className="text-slate-400">BID <span className={`font-mono text-[11px] font-medium ${data.drift > 0 ? 'text-emerald-400' : data.drift < 0 ? 'text-red-400' : 'text-slate-300'}`}>{(data.bid ?? 0).toFixed(4)}</span></span>

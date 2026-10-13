@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { MarketSourceUpdate, NewsBias, RankedOpportunity, useArbexStore } from '@/lib/store';
+import { parseSourceId } from '@/lib/sources';
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_ARBEX_WS_BASE_URL || 'ws://127.0.0.1:8000';
 const ARBITRAGE_WS_URL = `${WS_BASE_URL}/ws/arbitrage`;
@@ -74,6 +75,13 @@ export function useWebSocket() {
     let dashWs: WebSocket | null = null;
     let flushInterval: NodeJS.Timeout;
 
+    // A feed switch (synthetic <-> live <-> replay) empties the store and bumps
+    // feedEpoch; drop buffered opportunities from the previous feed with it.
+    const unsubscribeEpoch = useArbexStore.subscribe(
+      (state) => state.feedEpoch,
+      () => { opportunitiesBuffer.current = []; }
+    );
+
     const connect = () => {
       arbWs = new WebSocket(ARBITRAGE_WS_URL);
       srcWs = new WebSocket(SOURCES_WS_URL);
@@ -109,6 +117,10 @@ export function useWebSocket() {
                  asks: payload.data.asks,
                });
              }
+          } else if (payload.type === 'feed_mode') {
+             // Backend switched feeds: clear prices/opportunities from the old feed now
+             // (useFeedMode's poll will also pick up the new status).
+             useArbexStore.getState().resetMarketData();
           } else if (payload.type === 'stats' && payload.data) {
              // Update ticks scanned
              if (payload.data.ticks_processed) {
@@ -129,9 +141,10 @@ export function useWebSocket() {
           // The python backend's `broadcast_source_comparison` payload wraps sources in an array
           if (data.sources && Array.isArray(data.sources)) {
             data.sources.forEach((src) => {
-              // Map session from the source_id (e.g. 'bloomberg_tokyo_usdinr' -> 'TOKYO')
+              // Group from the source_id: session for synthetic ('bloomberg_tokyo_usdinr' -> 'TOKYO'),
+              // exchange for live/replay ('upstox_nse_usdinr' -> 'NSE')
               if (!src.session && src.source_id) {
-                src.session = src.source_id.split('_')[1].toUpperCase();
+                src.session = parseSourceId(src.source_id).group;
               }
               updateMarketData(src);
             });
@@ -237,6 +250,7 @@ export function useWebSocket() {
     connect();
 
     return () => {
+      unsubscribeEpoch();
       clearInterval(flushInterval);
       if (arbWs) arbWs.close();
       if (srcWs) srcWs.close();

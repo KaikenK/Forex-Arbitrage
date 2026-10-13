@@ -93,6 +93,28 @@ export interface OrderbookUpdate {
   asks: OrderbookLevel[];
 }
 
+export type FeedMode = 'synthetic' | 'live' | 'replay';
+
+export interface FeedModeAvailability {
+  available: boolean;
+  reason?: string | null;
+  providers?: string[];
+  sessions?: string[];
+}
+
+export interface FeedStatus {
+  mode: FeedMode | null;
+  replay_session: string | null;
+  last_error: string | null;
+  sources: string[];
+  available: {
+    switchable: boolean;
+    synthetic: FeedModeAvailability;
+    live: FeedModeAvailability;
+    replay: FeedModeAvailability;
+  };
+}
+
 // --------------------------------------------------------
 // Zustand Store Definition
 // --------------------------------------------------------
@@ -112,6 +134,11 @@ interface ArbexState {
   // High-Frequency Arrays
   rankedOpportunities: RankedOpportunity[];
   topCompositeScore: number;
+
+  // Feed (synthetic / live / replay). feedEpoch bumps on every switch so
+  // charts and buffers can drop data from the previous feed.
+  feedStatus: FeedStatus | null;
+  feedEpoch: number;
   
   // Actions
   setConnectionStatus: (status: boolean) => void;
@@ -119,7 +146,18 @@ interface ArbexState {
   updateOrderbook: (data: OrderbookUpdate) => void;
   flushOpportunities: (opportunities: RankedOpportunity[], totalTicks: number, detectionRate: number) => void;
   setMetrics: (totalTicks: number, detectionRate: number) => void;
+  setFeedStatus: (status: FeedStatus) => void;
+  resetMarketData: () => void;
 }
+
+const emptyMarket = {
+  activePairs: {},
+  orderbookData: {},
+  rankedOpportunities: [],
+  topCompositeScore: 0,
+  totalTicksLogged: 0,
+  detectedRate: 0,
+};
 
 export const useArbexStore = create<ArbexState>()(
   subscribeWithSelector((set) => ({
@@ -134,6 +172,8 @@ export const useArbexStore = create<ArbexState>()(
     orderbookData: {},
     rankedOpportunities: [],
     topCompositeScore: 0,
+    feedStatus: null,
+    feedEpoch: 0,
     
     // Writers
     setConnectionStatus: (status) => set({ isConnected: status }),
@@ -167,6 +207,15 @@ export const useArbexStore = create<ArbexState>()(
     setMetrics: (totalTicks, detectionRate) => set(() => ({
       totalTicksLogged: totalTicks,
       detectedRate: detectionRate
-    }))
+    })),
+
+    setFeedStatus: (status) => set((state) => {
+      const changed = state.feedStatus?.mode != null && state.feedStatus.mode !== status.mode;
+      return changed
+        ? { feedStatus: status, ...emptyMarket, feedEpoch: state.feedEpoch + 1 }
+        : { feedStatus: status };
+    }),
+
+    resetMarketData: () => set((state) => ({ ...emptyMarket, feedEpoch: state.feedEpoch + 1 })),
   }))
 );

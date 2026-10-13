@@ -89,6 +89,41 @@ Replay legs are named `replay_…` so they can never be mistaken for live data.
 A looping replay (the default) re-detects the same recorded opportunities each
 pass; `/live/status` shows `replay_loops`. Set `ARBEX_REPLAY_LOOP=0` to play once.
 
+## Switching feeds from the dashboard (no restart)
+
+The `arbex-web` dashboard has a **Synthetic | Live | Replay** toggle in its
+header. Start the backend in any of these modes, then switch from the UI:
+
+```bash
+python -m backend.server.run              # backend (synthetic unless ARBEX_DATA_MODE says otherwise)
+cd arbex-web && npm install && npm run dev   # dashboard on http://localhost:3001
+```
+
+- **Synthetic:** the six generated feeds, as before.
+- **Live:** enabled once `UPSTOX_ACCESS_TOKEN` (or Kite keys) is in `.env`.
+  The server re-reads `.env` on every check, so **attaching keys needs no
+  restart**. (Removing a key does need one.) Hover a greyed-out button to see why
+  it is unavailable.
+- **Replay:** enabled once a session has been recorded; pick the day from the
+  dropdown next to the toggle.
+
+Switching is safe: live and replay legs are built *before* the running feed is
+stopped, so a bad token or a network error leaves the current feed running and
+shows the error next to the toggle. Every switch clears prices, candles and
+opportunities from the previous feed, so nothing synthetic lingers on a live
+screen.
+
+In live and replay modes the left column becomes **Exchange Venues** (one line
+per venue, prices to 4 decimals) and the depth panel shows the real L2 book.
+The **Arbitrage Feed** column shows opportunities after the semantic engine
+scores them, which needs Redis and `run_semantic.bat` running, in every mode.
+Without them, use `/live` for detections.
+
+API (what the toggle calls): `GET /feeds/mode` returns the current mode and
+what is available; `POST /feeds/mode` with `{"mode": "live"}`,
+`{"mode": "synthetic"}` or `{"mode": "replay", "session": "2026-10-13"}`
+switches. Not available when the server was started in `LIVE_MT5` mode.
+
 ## What to open on review day
 
 | endpoint | shows |

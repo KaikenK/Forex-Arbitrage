@@ -10,12 +10,16 @@ import { OrderbookFeed } from '@/components/dashboard/OrderbookFeed';
 import { GlobalRanking } from '@/components/dashboard/GlobalRanking';
 import { ExecutionPanel } from '@/components/dashboard/ExecutionPanel';
 import { SentimentWorkbench } from '@/components/dashboard/SentimentWorkbench';
+import { FeedModeToggle } from '@/components/dashboard/FeedModeToggle';
 
 export default function ArbexDashboard() {
   // Initialize the Buffered WebSocket Connection
   useWebSocket();
 
   const isConnected = useArbexStore((state) => state.isConnected);
+  const feedMode = useArbexStore((state) => state.feedStatus?.mode ?? null);
+  const feedEpoch = useArbexStore((state) => state.feedEpoch);
+  const venueMode = feedMode === 'live' || feedMode === 'replay';
 
   return (
     <div className="bg-[#08090d] text-[#e8ecf4] min-h-screen font-sans overflow-hidden flex flex-col">
@@ -26,9 +30,9 @@ export default function ArbexDashboard() {
              <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
           </svg>
           <h1 className="text-[13px] font-semibold tracking-wide uppercase">Arbex</h1>
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500 text-white font-semibold tracking-wide ml-2">
-            SYNTHETIC USD/INR
-          </span>
+          <div className="ml-2">
+            <FeedModeToggle />
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -41,7 +45,7 @@ export default function ArbexDashboard() {
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
           <div className="text-[11px] text-slate-400 font-mono tracking-widest">
-            SESSION: NEW YORK
+            {venueMode ? 'USD/INR FUT · NSE / BSE' : 'SYNTHETIC USD/INR'}
           </div>
         </div>
       </header>
@@ -55,15 +59,20 @@ export default function ArbexDashboard() {
         {/* COL 1: Sessions */}
         <section className="bg-[#0e1018] flex flex-col overflow-hidden">
           <header className="bg-[#141620] px-3.5 py-2 border-b border-[#1e2235] flex justify-between items-center shrink-0">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#505872]">Market Sessions</span>
-            <div className="flex gap-1.5">
-              <span className="text-[9px] px-1.5 py-0.5 rounded border border-red-400 text-red-400">TYO</span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded border border-blue-400 text-blue-400">LDN</span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded border border-emerald-400 text-emerald-400">NYC</span>
-            </div>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#505872]">
+              {venueMode ? 'Exchange Venues' : 'Market Sessions'}
+            </span>
+            {!venueMode && (
+              <div className="flex gap-1.5">
+                <span className="text-[9px] px-1.5 py-0.5 rounded border border-red-400 text-red-400">TYO</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded border border-blue-400 text-blue-400">LDN</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded border border-emerald-400 text-emerald-400">NYC</span>
+              </div>
+            )}
           </header>
           <div className="flex-1 overflow-y-auto p-2.5 custom-scrollbar">
-            <SessionChartGrid />
+            {/* remount on every feed switch so no line carries over from the previous feed */}
+            <SessionChartGrid key={feedEpoch} venueMode={venueMode} />
           </div>
         </section>
 
