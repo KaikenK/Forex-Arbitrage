@@ -74,3 +74,16 @@ def test_replay_reproduces_quotes_on_a_shared_clock(tmp_path):
     assert b2.two_sided and b2.bid == 88.69
     assert n2.recv_ts_ms == b2.recv_ts_ms == 2_000_000_001_000
     assert hub.finished
+
+
+def test_replay_ignores_the_opportunity_log_in_the_session_folder(tmp_path):
+    """Regression: live mode writes opportunities.jsonl next to the quote files;
+    replay must not try to read those rows as quotes."""
+    rec = _record_session(tmp_path)
+    (rec.session_dir / "opportunities.jsonl").write_text(
+        json.dumps({"type": "cross_source", "buy_source": "upstox_nse_usdinr"}) + "\n")
+    assert len(load_recorded_contracts(rec.session_dir)) == 2
+    hub = ReplayQuoteHub(rec.session_dir, speed=1.0, clock=Clock(2_000_000_000.0))
+    hub.register("N")
+    hub.poll_once()
+    assert hub.latest("N").bid == 88.70

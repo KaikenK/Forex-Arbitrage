@@ -23,12 +23,21 @@ from backend.core.data_sources.exchange_contracts import FutureContract
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
 
 
+OPPORTUNITY_LOG = "opportunities.jsonl"   # written alongside the quote files in live mode
+
+
 def _read_rows(session_dir: Path) -> List[dict]:
+    """Recorded quote rows (one file per provider); the opportunity log is skipped."""
     rows = []
     for path in sorted(Path(session_dir).glob("*.jsonl")):
+        if path.name == OPPORTUNITY_LOG:
+            continue
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                rows.append(json.loads(line))
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if "instrument_key" in row and "recv_ts_ms" in row:
+                rows.append(row)
     return rows
 
 
