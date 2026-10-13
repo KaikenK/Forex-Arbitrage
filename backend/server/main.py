@@ -34,7 +34,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from typing import Any, Dict, Optional, List
 
 # Research configuration - check mode FIRST
@@ -230,6 +231,238 @@ orderbook_service: Optional[OrderbookService] = None
 
 
 
+# ============================================================================
+# FEED MANAGEMENT — synthetic / live / replay, switchable at runtime
+# ============================================================================
+# Synthetic and live-exchange modes share the whole pipeline downstream of the
+# data sources, so the server can swap the sources while it runs. MT5 mode is
+# not switchable (it needs a Windows terminal and was chosen at startup).
+
+FEED_MODES = ("synthetic", "live", "replay")
+feed_state: Dict[str, Any] = {"mode": None, "replay_session": None, "last_error": None, "switched_at": None}
+_feed_lock = asyncio.Lock()
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
+def _reload_env() -> None:
+    """Re-read .env so API keys added while the server runs are picked up."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_ENV_FILE, override=True)
+    except ImportError:
+        pass
+
+
+def _recordings_root() -> Path:
+    from backend.core.data_sources.live_feeds import DEFAULT_RECORD_DIR
+    root = os.environ.get("ARBEX_RECORD_DIR", str(DEFAULT_RECORD_DIR))
+    return Path(DEFAULT_RECORD_DIR if root.lower() == "off" else root)
+
+
+def _replay_sessions() -> List[str]:
+    """Recorded sessions available for replay (newest first)."""
+    root = _recordings_root()
+    if not root.is_dir():
+        return []
+    return sorted((d.name for d in root.iterdir()
+                   if d.is_dir() and any(f.name != "opportunities.jsonl" for f in d.glob("*.jsonl"))),
+                  reverse=True)
+
+
+def feed_availability() -> Dict[str, Any]:
+    _reload_env()
+    providers = []
+    if os.environ.get("UPSTOX_ACCESS_TOKEN"):
+        providers.append("upstox")
+    if os.environ.get("KITE_API_KEY") and os.environ.get("KITE_ACCESS_TOKEN"):
+        providers.append("kite")
+    sessions = _replay_sessions()
+    switchable = is_synthetic_mode() or is_live_exchange_mode()
+    return {
+        "switchable": switchable,
+        "synthetic": {"available": switchable},
+        "live": {
+            "available": switchable and bool(providers),
+            "providers": providers,
+            "reason": None if providers else
+                "Add UPSTOX_ACCESS_TOKEN (free) or KITE_API_KEY + KITE_ACCESS_TOKEN to .env - no restart needed.",
+        },
+        "replay": {
+            "available": switchable and bool(sessions),
+            "sessions": sessions,
+            "reason": None if sessions else "No recorded sessions yet - run live mode during market hours to record one.",
+        },
+    }
+
+
+def _reset_market_caches() -> None:
+    """Forget prices, candles and opportunities from the previous feed."""
+    from backend.core.bar_aggregator import MultiIntervalAggregator
+    for symbol in DEFAULT_SYMBOLS:
+        bar_aggregators[symbol] = MultiIntervalAggregator(DEFAULT_INTERVALS, ws_manager)
+    ws_manager.reset_feed_state()
+    live_opportunities.clear()
+
+
+async def _start_orderbook_service() -> None:
+    global orderbook_service
+    orderbook_service = OrderbookService(redis_client=redis_client)
+    orderbook_service.register_adapter(SyntheticStreamAdapter())
+    orderbook_service.register_adapter(TradingViewStreamAdapter())
+    orderbook_service.register_adapter(MT5StreamAdapter())
+    await orderbook_service.start()
+    logger.info("Initialized OrderbookService with modular adapters")
+
+
+async def _prepare_feed(mode: str, replay_path: Optional[str] = None):
+    """Build live/replay legs without touching the running feed (may raise)."""
+    from backend.core.data_sources.live_feeds import build_live_exchange_sources, build_replay_sources
+    if mode == "replay":
+        return build_replay_sources(
+            replay_path, speed=float(os.environ.get("ARBEX_REPLAY_SPEED", "1.0")),
+            loop=os.environ.get("ARBEX_REPLAY_LOOP", "1") != "0")
+    # Network calls (instrument masters) run off the event loop.
+    return await asyncio.to_thread(build_live_exchange_sources)
+
+
+async def _start_synthetic() -> None:
+    global multi_source_streamer, synthetic_sources
+    logger.info("Initializing Synthetic USD/INR Research Pipeline")
+    reset_synthetic_state(seed=42)  # reproducible session
+    arbitrage_config = ArbitrageConfig(
+        min_profit_pips=ARBITRAGE_RESEARCH_CONFIG.min_profit_pips,
+        min_confidence=ARBITRAGE_RESEARCH_CONFIG.min_confidence,
+        enable_cross_source=True,       # Cross-provider detection
+        enable_triangular=False,        # Not applicable for single pair
+        enable_session_analysis=True,   # Session inefficiency detection
+    )
+    multi_source_streamer = MultiSourceStreamer(
+        ws_manager=ws_manager,
+        bar_aggregators=bar_aggregators,
+        arbitrage_config=arbitrage_config,
+        ranking_config=RankingConfig(min_composite_score=20.0, max_results=100),
+        alignment_window_ms=ARBITRAGE_RESEARCH_CONFIG.alignment_window_ms,
+    )
+    synthetic_sources = create_synthetic_sources()
+    for source in synthetic_sources:
+        multi_source_streamer.add_source(source)
+        logger.info(f"Added synthetic source: {source.source_id} "
+                    f"(session={source.session.value}, provider={source.provider.value})")
+    await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
+    await _start_orderbook_service()   # synthetic depth for the orderbook panel
+    logger.info(f"Synthetic research pipeline initialized with {len(synthetic_sources)} data sources")
+
+
+async def _start_live(setup) -> None:
+    global multi_source_streamer, live_feed_setup
+    live_feed_setup = setup
+    for line in setup.describe():
+        logger.info(f"  {line}")
+    arbitrage_config = ArbitrageConfig(
+        min_profit_pips=LIVE_EXCHANGE_CONFIG.min_profit_pips,
+        min_confidence=LIVE_EXCHANGE_CONFIG.min_confidence,
+        max_latency_risk_ms=LIVE_EXCHANGE_CONFIG.max_latency_risk_ms,
+        enable_cross_source=True,         # crossed books between legs
+        enable_triangular=False,          # single instrument
+        enable_session_analysis=False,    # not an executable trade
+        enable_latency_arbitrage=False,   # mid gaps without a cross are not arbitrage
+    )
+    multi_source_streamer = MultiSourceStreamer(
+        ws_manager=ws_manager,
+        bar_aggregators=bar_aggregators,
+        arbitrage_config=arbitrage_config,
+        ranking_config=RankingConfig(min_composite_score=0.0, max_results=100),
+        alignment_window_ms=LIVE_EXCHANGE_CONFIG.alignment_window_ms,
+        comparison_every=1,   # 1 Hz feeds: refresh the venue comparison on every tick
+    )
+    for source in setup.sources:
+        multi_source_streamer.add_source(source)
+
+    def _log_live_opportunity(opp):
+        row = opp.to_dict()
+        live_opportunities.append(row)
+        rec = setup.recorder
+        if rec is not None and rec.session_dir is not None:
+            with (rec.session_dir / "opportunities.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row) + "\n")
+
+    multi_source_streamer.on_arbitrage(_log_live_opportunity)
+
+    # Real depth to the dashboard's orderbook panel (hubs poll on their own threads).
+    loop = asyncio.get_running_loop()
+    by_key = {s.contract.instrument_key: s.source_id for s in setup.sources}
+
+    def _publish_depth(hub_name, quotes):
+        for key, q in quotes.items():
+            source_id = by_key.get(key)
+            if source_id is None:
+                continue
+            msg = json.dumps({"type": "orderbook", "data": {
+                "symbol": "USDINR", "source": source_id, "timestamp": q.recv_ts_ms,
+                "bids": [{"price": lv["price"], "volume": lv["qty"]} for lv in q.depth.get("bids", [])],
+                "asks": [{"price": lv["price"], "volume": lv["qty"]} for lv in q.depth.get("asks", [])],
+            }}) + "\n"
+            asyncio.run_coroutine_threadsafe(
+                ws_manager._broadcast_to_channel("dashboard:unified", msg), loop)
+
+    for hub in setup.hubs.values():
+        hub.add_listener(_publish_depth)
+    await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
+    logger.info(f"Live exchange pipeline initialized with {len(setup.sources)} legs")
+
+
+async def _stop_feed() -> None:
+    """Stop the running synthetic/live/replay feed and release its sources."""
+    global multi_source_streamer, synthetic_sources, live_feed_setup, orderbook_service
+    if multi_source_streamer:
+        await multi_source_streamer.stop()
+        multi_source_streamer = None
+    for source in synthetic_sources:
+        source.disconnect()
+    synthetic_sources = []
+    if live_feed_setup:
+        for source in live_feed_setup.sources:
+            source.disconnect()
+        live_feed_setup = None
+    if orderbook_service:
+        await orderbook_service.stop()
+        orderbook_service = None
+
+
+async def switch_feed(mode: str, *, replay_path: Optional[str] = None,
+                      replay_session: Optional[str] = None, prepared=None) -> None:
+    """
+    Switch the running feed. Live/replay legs are built *before* the current
+    feed is stopped, so a failure (bad token, network, no common expiry) leaves
+    the current feed running and raises.
+    """
+    import backend.config as config_module
+    if mode not in FEED_MODES:
+        raise ValueError(f"unknown feed mode {mode!r}")
+    async with _feed_lock:
+        if mode == "live":
+            _reload_env()
+        setup = prepared if prepared is not None else (
+            None if mode == "synthetic" else await _prepare_feed(mode, replay_path))
+        await _stop_feed()
+        _reset_market_caches()
+        config_module.DATA_MODE = (DataMode.SYNTHETIC_USDINR_ONLY if mode == "synthetic"
+                                   else DataMode.LIVE_USDINR_EXCHANGES)
+        if mode == "synthetic":
+            await _start_synthetic()
+        else:
+            await _start_live(setup)
+        feed_state.update(mode=mode, replay_session=replay_session if mode == "replay" else None,
+                          last_error=None, switched_at=int(time.time() * 1000))
+    await ws_manager.broadcast_to_dashboard("feed_mode", {"data": {"mode": mode}})
+    logger.info(f"Feed mode is now {mode}")
+
+
+def current_data_mode() -> DataMode:
+    import backend.config as config_module
+    return config_module.DATA_MODE
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -278,113 +511,21 @@ async def lifespan(app: FastAPI):
     # MODE-SPECIFIC INITIALIZATION
     # =========================================================================
     
-    if is_synthetic_mode():
-        # =====================================================================
-        # SYNTHETIC USD/INR RESEARCH MODE
-        # =====================================================================
-        logger.info("-" * 60)
-        logger.info("Initializing Synthetic USD/INR Research Pipeline")
-        logger.info("-" * 60)
-        
-        # Reset synthetic state for reproducible session
-        reset_synthetic_state(seed=42)
-        
-        # Create arbitrage configuration for research
-        arbitrage_config = ArbitrageConfig(
-            min_profit_pips=MIN_PROFIT_PIPS,
-            min_confidence=MIN_CONFIDENCE,
-            enable_cross_source=True,  # Cross-provider detection
-            enable_triangular=False,    # Not applicable for single pair
-            enable_session_analysis=True,  # Session inefficiency detection
-        )
-        
-        # Create ranking configuration
-        ranking_config = RankingConfig(
-            min_composite_score=20.0,  # Lower threshold for research
-            max_results=100,
-        )
-        
-        # Initialize multi-source streamer
-        multi_source_streamer = MultiSourceStreamer(
-            ws_manager=ws_manager,
-            bar_aggregators=bar_aggregators,
-            arbitrage_config=arbitrage_config,
-            ranking_config=ranking_config,
-            alignment_window_ms=ALIGNMENT_WINDOW_MS,
-        )
-        
-        # Create all six synthetic sources
-        synthetic_sources = create_synthetic_sources()
-        
-        for source in synthetic_sources:
-            multi_source_streamer.add_source(source)
-            logger.info(f"Added synthetic source: {source.source_id} "
-                       f"(session={source.session.value}, provider={source.provider.value})")
-        
-        # Start multi-source streaming for USD/INR only
-        await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
-        
-        logger.info(f"Synthetic research pipeline initialized with "
-                   f"{len(synthetic_sources)} data sources")
-        logger.info(f"Arbitrage detection enabled for cross-provider and cross-session analysis")
-
-    elif is_live_exchange_mode():
-        # =====================================================================
-        # LIVE NSE/BSE USD/INR FUTURES (Upstox free, Kite low-cost)
-        # =====================================================================
-        from backend.core.data_sources.live_feeds import (
-            build_live_exchange_sources,
-            build_replay_sources,
-        )
-
-        replay_dir = os.environ.get("ARBEX_LIVE_REPLAY")
-        if replay_dir:
-            live_feed_setup = build_replay_sources(
-                replay_dir, speed=float(os.environ.get("ARBEX_REPLAY_SPEED", "1.0")),
-                loop=os.environ.get("ARBEX_REPLAY_LOOP", "1") != "0")
-            logger.info(f"Replaying recorded live session from {replay_dir}")
+    if is_synthetic_mode() or is_live_exchange_mode():
+        # Synthetic, live and replay share one switchable pipeline (/feeds/mode).
+        if is_synthetic_mode():
+            await switch_feed("synthetic")
         else:
-            # Network calls (instrument masters) run off the event loop.
+            replay_dir = os.environ.get("ARBEX_LIVE_REPLAY")
             try:
-                live_feed_setup = await asyncio.to_thread(build_live_exchange_sources)
+                await switch_feed("replay" if replay_dir else "live", replay_path=replay_dir,
+                                  replay_session=Path(replay_dir).name if replay_dir else None)
             except Exception as e:
-                # Keep the server up so /health and /live/status explain why.
+                # Keep the server up so /health, /live/status and the UI explain why.
                 from backend.core.data_sources.live_feeds import LiveFeedSetup
                 logger.error(f"Live feeds unavailable: {e}")
-                live_feed_setup = LiveFeedSetup(sources=[], hubs={}, skipped={"setup": str(e)})
-        for line in live_feed_setup.describe():
-            logger.info(f"  {line}")
-
-        arbitrage_config = ArbitrageConfig(
-            min_profit_pips=MIN_PROFIT_PIPS,
-            min_confidence=MIN_CONFIDENCE,
-            max_latency_risk_ms=LIVE_EXCHANGE_CONFIG.max_latency_risk_ms,
-            enable_cross_source=True,         # crossed books between legs
-            enable_triangular=False,          # single instrument
-            enable_session_analysis=False,    # not an executable trade
-            enable_latency_arbitrage=False,   # mid gaps without a cross are not arbitrage
-        )
-        multi_source_streamer = MultiSourceStreamer(
-            ws_manager=ws_manager,
-            bar_aggregators=bar_aggregators,
-            arbitrage_config=arbitrage_config,
-            ranking_config=RankingConfig(min_composite_score=0.0, max_results=100),
-            alignment_window_ms=ALIGNMENT_WINDOW_MS,
-        )
-        for source in live_feed_setup.sources:
-            multi_source_streamer.add_source(source)
-
-        def _log_live_opportunity(opp):
-            row = opp.to_dict()
-            live_opportunities.append(row)
-            rec = live_feed_setup.recorder
-            if rec is not None and rec.session_dir is not None:
-                with (rec.session_dir / "opportunities.jsonl").open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(row) + "\n")
-
-        multi_source_streamer.on_arbitrage(_log_live_opportunity)
-        await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
-        logger.info(f"Live exchange pipeline initialized with {len(live_feed_setup.sources)} legs")
+                await switch_feed("live", prepared=LiveFeedSetup(sources=[], hubs={}, skipped={"setup": str(e)}))
+                feed_state["last_error"] = str(e)
 
     else:
         # =====================================================================
@@ -548,14 +689,10 @@ async def lifespan(app: FastAPI):
     metrics_collector = MetricsCollector()
     logger.info("Initialized MetricsCollector for experimental output")
     
-    # Initialize OrderbookService
-    global orderbook_service
-    orderbook_service = OrderbookService(redis_client=redis_client)
-    orderbook_service.register_adapter(SyntheticStreamAdapter())
-    orderbook_service.register_adapter(TradingViewStreamAdapter())
-    orderbook_service.register_adapter(MT5StreamAdapter())
-    await orderbook_service.start()
-    logger.info("Initialized OrderbookService with modular adapters")
+    # OrderbookService: synthetic mode starts it with its feed (switch_feed);
+    # MT5 mode keeps it for the whole session.
+    if not (is_synthetic_mode() or is_live_exchange_mode()):
+        await _start_orderbook_service()
 
     sentiment_bridge.start_live_ingest()
     logger.info("Started SentimentBridge live feed ingest")
@@ -622,33 +759,23 @@ async def lifespan(app: FastAPI):
         await execution_engine.stop()
         logger.info("Stopped ExecutionEngine")
         
-    # Stop orderbook service
-    if orderbook_service:
-        await orderbook_service.stop()
-        logger.info("Stopped OrderbookService")
 
     sentiment_bridge.stop_live_ingest()
     logger.info("Stopped SentimentBridge live feed ingest")
-    
-    # Stop multi-source streamer
-    if multi_source_streamer:
-        await multi_source_streamer.stop()
     
     # Stop original tick streams (if used)
     if tick_streamer:
         await tick_streamer.stop_all()
     
-    # Disconnect data sources based on mode
-    if is_synthetic_mode():
-        for source in synthetic_sources:
-            source.disconnect()
-        logger.info(f"Disconnected {len(synthetic_sources)} synthetic sources")
-    elif is_live_exchange_mode():
-        if live_feed_setup:
-            for source in live_feed_setup.sources:
-                source.disconnect()
-            logger.info(f"Disconnected {len(live_feed_setup.sources)} live exchange legs")
+    # Stop the feed (streamer, sources, orderbook service)
+    if is_synthetic_mode() or is_live_exchange_mode():
+        await _stop_feed()
+        logger.info("Stopped feed")
     else:
+        if multi_source_streamer:
+            await multi_source_streamer.stop()
+        if orderbook_service:
+            await orderbook_service.stop()
         if mt5_data_source:
             mt5_data_source.disconnect()
         if mt5_client:
@@ -746,7 +873,7 @@ async def root():
         "service": "FX Arbitrage Research Engine" if is_synthetic_mode() else "MT5 Market Data Engine",
         "version": "3.0.0-research" if is_synthetic_mode() else "2.0.0",
         "status": "running",
-        "mode": DATA_MODE.value,
+        "mode": current_data_mode().value,
         "symbols": DEFAULT_SYMBOLS,
         "data_sources": len(synthetic_sources) if is_synthetic_mode() else "MT5 + Synthetic",
         "arbitrage_enabled": ENABLE_ARBITRAGE_DETECTION,
@@ -759,7 +886,7 @@ async def health():
     """Health check endpoint with detailed status."""
     health_data = {
         "status": "healthy",
-        "mode": DATA_MODE.value,
+        "mode": current_data_mode().value,
         "active_channels": len(ws_manager.get_all_channels()),
         "symbols": DEFAULT_SYMBOLS,
         "intervals": DEFAULT_INTERVALS,
@@ -1061,6 +1188,60 @@ async def get_recent_arbitrage(limit: int = 20):
     }
 
 
+class FeedModeRequest(BaseModel):
+    mode: str                       # "synthetic" | "live" | "replay"
+    session: Optional[str] = None   # replay: a recorded session name from GET /feeds/mode
+
+
+def _feed_status() -> Dict[str, Any]:
+    sources = []
+    if multi_source_streamer:
+        sources = sorted(multi_source_streamer.get_sources())
+    return {
+        "mode": feed_state["mode"],
+        "replay_session": feed_state["replay_session"],
+        "last_error": feed_state["last_error"],
+        "switched_at": feed_state["switched_at"],
+        "data_mode": current_data_mode().value,
+        "sources": sources,
+        "available": feed_availability(),
+    }
+
+
+@app.get("/feeds/mode")
+async def get_feed_mode():
+    """Current feed (synthetic / live / replay) and which modes can be switched to."""
+    return _feed_status()
+
+
+@app.post("/feeds/mode")
+async def set_feed_mode(req: FeedModeRequest):
+    """
+    Switch the running feed without restarting the server. Live and replay legs
+    are built before the current feed stops, so a failure leaves it running.
+    """
+    avail = feed_availability()
+    if not avail["switchable"]:
+        return JSONResponse(status_code=409, content={"error": "Feed switching is not available in LIVE_MT5 mode."})
+    if req.mode not in FEED_MODES:
+        return JSONResponse(status_code=400, content={"error": f"mode must be one of {list(FEED_MODES)}"})
+    if not avail[req.mode]["available"]:
+        return JSONResponse(status_code=409, content={"error": avail[req.mode]["reason"], **_feed_status()})
+    replay_path = None
+    if req.mode == "replay":
+        session = req.session or avail["replay"]["sessions"][0]
+        if session not in avail["replay"]["sessions"]:   # only listed names, never a raw path
+            return JSONResponse(status_code=400, content={"error": f"unknown recorded session {session!r}"})
+        replay_path, req.session = str(_recordings_root() / session), session
+    try:
+        await switch_feed(req.mode, replay_path=replay_path, replay_session=req.session)
+    except Exception as e:
+        feed_state["last_error"] = f"Could not switch to {req.mode}: {e}"
+        logger.error(feed_state["last_error"])
+        return JSONResponse(status_code=409, content={"error": feed_state["last_error"], **_feed_status()})
+    return _feed_status()
+
+
 @app.get("/live")
 async def live_monitor_page():
     """Self-updating view of the live exchange legs (polls /live/status)."""
@@ -1171,7 +1352,7 @@ async def get_stats():
         "sources_active": 0,
         "avg_latency_ms": 0,
         "symbols": DEFAULT_SYMBOLS,
-        "mode": DATA_MODE.value,
+        "mode": current_data_mode().value,
     }
     
     if multi_source_streamer:
@@ -1210,7 +1391,7 @@ async def get_research_config():
     )
     
     return {
-        "mode": DATA_MODE.value,
+        "mode": current_data_mode().value,
         "symbol": RESEARCH_SYMBOL,
         "sessions": {
             session.value: {
@@ -1748,7 +1929,7 @@ async def get_context_analysis():
     return {
         "result": result.to_dict(),
         "engine_stats": semantic_context_engine.get_stats(),
-        "mode": DATA_MODE.value,
+        "mode": current_data_mode().value,
         "symbol": analysis_symbol,
     }
 

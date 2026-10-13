@@ -357,6 +357,18 @@ class WebSocketManager:
         for ws in disconnected:
             self.disconnect(ws, channel)
     
+    def reset_feed_state(self) -> None:
+        """Forget prices and opportunities from the previous feed (on a mode switch)."""
+        self.last_ticks.clear()
+        self.last_candles.clear()
+        self.last_ticks_by_source.clear()
+        self.recent_arbitrage.clear()
+        self.arbitrage_stats = {
+            "total_opportunities": 0,
+            "opportunities_by_type": defaultdict(int),
+            "last_opportunity_time": None,
+        }
+
     def update_tick_by_source(self, symbol: str, source_id: str, tick: Dict[str, Any]):
         """
         Update tracked tick for a source/symbol combination.
@@ -381,7 +393,7 @@ class WebSocketManager:
             Comparison dict with prices per source and differences
         """
         ticks = self.last_ticks_by_source.get(symbol, {})
-        if len(ticks) < 2:
+        if not ticks:   # a single live venue is still worth showing
             return None
         
         sources = []
@@ -402,7 +414,7 @@ class WebSocketManager:
         # Calculate differences
         max_mid = max(mids)
         min_mid = min(mids)
-        pip_value = 0.01 if "JPY" in symbol else 0.0001
+        pip_value = 0.01 if "JPY" in symbol or "INR" in symbol else 0.0001
         
         return {
             "symbol": symbol,

@@ -116,6 +116,7 @@ class MultiSourceStreamer:
         tracker_config: Optional[TrackerConfig] = None,
         execution_filter_config: Optional[ExecutionFilterConfig] = None,
         alignment_window_ms: int = 20,
+        comparison_every: int = 5,
     ):
         """
         Initialize multi-source streamer.
@@ -128,8 +129,10 @@ class MultiSourceStreamer:
             tracker_config: Configuration for opportunity persistence tracking (NEW)
             execution_filter_config: Configuration for execution feasibility filter (NEW)
             alignment_window_ms: Size of tick alignment windows
+            comparison_every: Broadcast the source comparison every N ticks
         """
         self.ws_manager = ws_manager
+        self._comparison_every = max(1, comparison_every)
         self.bar_aggregators = bar_aggregators or {}
         
         # Data sources registry
@@ -391,7 +394,7 @@ class MultiSourceStreamer:
             self.ws_manager.update_tick_by_source(symbol, source_id, enriched)
         
         # Broadcast source comparison periodically
-        if self._ticks_processed % 5 == 0 and hasattr(self.ws_manager, 'broadcast_source_comparison'):
+        if self._ticks_processed % self._comparison_every == 0 and hasattr(self.ws_manager, 'broadcast_source_comparison'):
             comparison = self.ws_manager.get_source_comparison(symbol)
             if comparison:
                 await self.ws_manager.broadcast_source_comparison(symbol, comparison)
