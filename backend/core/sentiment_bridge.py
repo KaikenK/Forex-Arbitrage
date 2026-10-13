@@ -100,13 +100,18 @@ class SentimentBridge:
             payload["service"] = self.get_status(normalized_pair)["news_stream"]
             return payload
 
-        payload = self._fetch_json(
-            "/sentiment/live",
-            {
-                "pair": normalized_pair,
-                "window_minutes": window_minutes,
-            },
-        )
+        try:
+            payload = self._fetch_json(
+                "/sentiment/live",
+                {
+                    "pair": normalized_pair,
+                    "window_minutes": window_minutes,
+                },
+            )
+        except Exception:
+            # news_stream unreachable: serve the same neutral window as when it is
+            # disabled; the reason stays visible in service.last_error.
+            payload = _neutral_live_payload(normalized_pair, window_minutes)
         payload["pair"] = normalize_pair(str(payload.get("pair", normalized_pair)))
         payload["service"] = self.get_status(normalized_pair)["news_stream"]
         return payload
