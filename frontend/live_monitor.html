@@ -87,6 +87,19 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
   button.pill { cursor: pointer; font: inherit; font-size: 13px; }
 
+  .pairs { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 14px; }
+  .pairs[hidden] { display: none; }
+  .pair {
+    display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0;
+    padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-primary); font: inherit; cursor: pointer; min-width: 96px;
+  }
+  .pair b { font-weight: 600; font-size: 13px; }
+  .pair span { font-size: 12px; color: var(--text-secondary); }
+  .pair span.crossed { color: var(--up-text); font-weight: 600; }
+  .pair[aria-pressed="true"] { border-color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--text-primary); }
+  .pair:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+
   .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
   .label { color: var(--text-secondary); font-size: 13px; }
   .muted { color: var(--text-muted); }
@@ -154,12 +167,14 @@
 <body>
 <main>
   <header>
-    <h1>Arbex · Live USD/INR futures</h1>
+    <h1>Arbex · Live <span id="title-pair">USD/INR</span> futures</h1>
     <span class="pill" id="mode-pill"><span class="dot" id="mode-dot"></span><strong id="mode-text">Connecting…</strong></span>
     <span class="pill"><span id="market-text">–</span></span>
     <span class="pill"><span id="conn-text">–</span></span>
     <button class="pill" id="theme-btn" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </header>
+
+  <nav class="pairs" id="pairs" aria-label="Currency pair" hidden></nav>
 
   <section class="card hero" aria-live="polite">
     <div>
@@ -179,13 +194,13 @@
   <section class="charts">
     <div class="card">
       <p class="chart-title">Mid price by venue</p>
-      <p class="chart-sub">INR per USD, last 10 minutes. Gaps mean the venue had no two-sided book.</p>
+      <p class="chart-sub"><span id="mid-unit">INR per USD</span>, last 10 minutes. Gaps mean the venue had no two-sided book.</p>
       <div class="legend" id="mid-legend"></div>
       <div class="plot" id="mid-plot"></div>
     </div>
     <div class="card">
       <p class="chart-title">Executable spread</p>
-      <p class="chart-sub">Paise. Above 0 = one venue's bid exceeds another's ask (crossed market).</p>
+      <p class="chart-sub"><span class="unit-cap">Paise</span>. Above 0 = one venue's bid exceeds another's ask (crossed market).</p>
       <div class="legend"></div>
       <div class="plot" id="spread-plot"></div>
     </div>
@@ -196,7 +211,7 @@
       <p class="chart-title">Recent opportunities</p>
       <p class="chart-sub">Crossed books detected by the arbitrage engine (before costs).</p>
       <table>
-        <thead><tr><th>Time (IST)</th><th>Buy</th><th>Sell</th><th class="r">Paise</th></tr></thead>
+        <thead><tr><th>Time (IST)</th><th>Buy</th><th>Sell</th><th class="r unit-cap">Paise</th></tr></thead>
         <tbody id="opps-body"><tr><td colspan="4" class="muted">None yet.</td></tr></tbody>
       </table>
     </div>
@@ -218,7 +233,7 @@
     </div>
   </section>
 
-  <p class="foot">Polls <code>/live/status</code> every second. Prices in INR; 1 paisa = 0.01. Read-only — no orders are ever placed.</p>
+  <p class="foot">Polls <code>/live/status</code> every second. INR pairs: spreads in paise (1 paisa = 0.01 INR). Other pairs: spreads in pips. Read-only — no orders are ever placed.</p>
 </main>
 
 <script>
@@ -236,21 +251,32 @@
     new Date(ms).toLocaleTimeString("en-GB", { timeZone: IST, hour12: false });
   const fmtDateTime = (ms) => ms == null ? "–" :
     new Date(ms).toLocaleString("en-GB", { timeZone: IST, hour12: false, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const fmtPx = (v) => v == null ? "–" : v.toFixed(4);
+  // --- selected pair -------------------------------------------------------
+  let pair = null;                     // e.g. "USDINR"
+  try { pair = localStorage.getItem("arbex-live-pair"); } catch (e) {}
+  const info = (sym) => (state && state.instruments && state.instruments[sym]) ||
+    { display: sym ? `${sym.slice(0, 3)}/${sym.slice(3)}` : "–", price_decimals: 4, quote_unit: 1 };
+  const unit = (sym) => (sym || "").endsWith("INR") ? "paise" : "pips";
+  const pipsOf = (row) => row.executable_pips != null ? row.executable_pips : row.executable_paise;
+  const fmtPx = (v) => v == null ? "–" : v.toFixed(info(pair).price_decimals);
   const fmtPaise = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(2);
   const prettyLeg = (id) => {
-    const m = /^(replay_)?([a-z]+)_([a-z]+)_usdinr$/.exec(id || "");
+    const m = /^(replay_)?([a-z]+)_([a-z]+)_([a-z]{6})$/.exec(id || "");
     if (!m) return id;
     const prov = m[2].charAt(0).toUpperCase() + m[2].slice(1);
     return `${m[3].toUpperCase()} · ${prov}${m[1] ? " (replay)" : ""}`;
   };
+  const legsOf = (sym) => (state ? state.legs : []).filter((l) => (l.symbol || "USDINR") === sym);
+  const spreadsOf = (sym) => (state ? state.cross_spreads || [] : []).filter((r) => (r.symbol || "USDINR") === sym);
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
-  // Stable colour per leg: fixed slot order by sorted leg id, never re-ranked.
+  // Stable colour per venue (provider + exchange, same across pairs): fixed
+  // slot order by first appearance in sorted leg ids, never re-ranked.
   const legColorSlot = {};
   const colorFor = (id) => {
-    if (!(id in legColorSlot)) legColorSlot[id] = Object.keys(legColorSlot).length % SLOTS.length;
-    return css(SLOTS[legColorSlot[id]]);
+    const venue = id.replace(/_[a-z]{6}$/, "");
+    if (!(venue in legColorSlot)) legColorSlot[venue] = Object.keys(legColorSlot).length % SLOTS.length;
+    return css(SLOTS[legColorSlot[venue]]);
   };
 
   // --- theme toggle --------------------------------------------------------
@@ -267,9 +293,9 @@
 
   // --- history (client-side; the server only keeps the latest quote) ------
   const mids = {};        // legId -> [{t, v}]
-  const spread = [];      // [{t, v, buy, sell}]
+  const spreads = {};     // pair -> [{t, v, buy, sell}]
   const lastSeen = {};    // legId -> last recv_ts pushed
-  let lastSpreadT = null;
+  const lastSpreadT = {}; // pair -> last t pushed
   let state = null;
   let lastOk = null;
   let failing = false;
@@ -284,24 +310,30 @@
       const v = (l.bid != null && l.ask != null) ? (l.bid + l.ask) / 2 : null;
       (mids[l.id] ||= []).push({ t: l.recv_ts_ms, v });
     }
-    const t = Math.max(...sorted.map((l) => l.recv_ts_ms || 0));
-    if (t && t !== lastSpreadT) {
-      lastSpreadT = t;
-      const best = bestSpread(d.cross_spreads);
-      spread.push(best ? { t, v: best.executable_paise, buy: best.buy, sell: best.sell } : { t, v: null });
-    }
+    const symbols = d.symbols && d.symbols.length ? d.symbols : ["USDINR"];
     const cut = now - WINDOW_MS;
+    for (const sym of symbols) {
+      const legs = sorted.filter((l) => (l.symbol || "USDINR") === sym);
+      const t = Math.max(0, ...legs.map((l) => l.recv_ts_ms || 0));
+      if (t && t !== lastSpreadT[sym]) {
+        lastSpreadT[sym] = t;
+        const best = bestSpread((d.cross_spreads || []).filter((r) => (r.symbol || "USDINR") === sym));
+        (spreads[sym] ||= []).push(best ? { t, v: pipsOf(best), buy: best.buy, sell: best.sell } : { t, v: null });
+      }
+      const s = spreads[sym] || [];
+      while (s.length && s[0].t < cut) s.shift();
+    }
     for (const k in mids) while (mids[k].length && mids[k][0].t < cut) mids[k].shift();
-    while (spread.length && spread[0].t < cut) spread.shift();
   }
 
   const bestSpread = (rows) => (rows && rows.length)
-    ? rows.reduce((a, b) => (b.executable_paise > a.executable_paise ? b : a)) : null;
+    ? rows.reduce((a, b) => (pipsOf(b) > pipsOf(a) ? b : a)) : null;
 
   // --- rendering ----------------------------------------------------------
   function render() {
     renderHeader();
     if (!state) return;
+    renderPairs();
     renderHero();
     renderLegs();
     renderMid();
@@ -332,6 +364,37 @@
     $("mode-dot").style.background = state.error ? css("--critical") : (replay ? css("--warning") : css("--good"));
   }
 
+  function renderPairs() {
+    const symbols = state.symbols && state.symbols.length ? state.symbols : ["USDINR"];
+    if (!symbols.includes(pair)) pair = symbols[0];
+    const i = info(pair);
+    $("title-pair").textContent = i.display.replace(/ \(per \d+\)$/, "");
+    $("mid-unit").textContent = `${pair.slice(3)} per ${i.quote_unit > 1 ? i.quote_unit + " " : ""}${pair.slice(0, 3)}`;
+    document.querySelectorAll(".unit-cap").forEach((n) => {
+      n.textContent = unit(pair) === "paise" ? "Paise" : "Pips";
+    });
+    const nav = $("pairs");
+    nav.hidden = symbols.length < 2;
+    if (nav.hidden) return;
+    nav.replaceChildren();
+    for (const sym of symbols) {
+      const best = bestSpread(spreadsOf(sym));
+      const b = el("button", "pair");
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(sym === pair));
+      b.append(el("b", null, info(sym).display.replace(/ \(per \d+\)$/, "")));
+      const sub = el("span", best && best.crossed ? "crossed num" : "num",
+        best ? `${fmtPaise(pipsOf(best))} ${unit(sym)}` : `${legsOf(sym).length} legs`);
+      b.append(sub);
+      b.addEventListener("click", () => {
+        pair = sym;
+        try { localStorage.setItem("arbex-live-pair", sym); } catch (e) {}
+        render();
+      });
+      nav.append(b);
+    }
+  }
+
   function renderHero() {
     const v = $("hero-value"), sub = $("hero-sub");
     if (state.error) {
@@ -339,18 +402,20 @@
       sub.textContent = state.error;
       return;
     }
-    const best = bestSpread(state.cross_spreads);
+    const best = bestSpread(spreadsOf(pair));
+    const u = unit(pair);
     if (best) {
-      v.textContent = `${fmtPaise(best.executable_paise)} paise`;
+      v.textContent = `${fmtPaise(pipsOf(best))} ${u}`;
       v.className = "hero-value num" + (best.crossed ? " crossed" : "");
       sub.textContent = best.crossed
         ? `Crossed: buy on ${prettyLeg(best.buy)}, sell on ${prettyLeg(best.sell)} — arbitrage before costs.`
-        : `Not crossed. Best trade would be buy ${prettyLeg(best.buy)}, sell ${prettyLeg(best.sell)}, losing ${Math.abs(best.executable_paise).toFixed(2)} paise.`;
+        : `Not crossed. Best trade would be buy ${prettyLeg(best.buy)}, sell ${prettyLeg(best.sell)}, losing ${Math.abs(pipsOf(best)).toFixed(2)} ${u}.`;
     } else {
       v.textContent = "–"; v.className = "hero-value num";
-      const live = state.legs.filter((l) => l.bid != null && l.ask != null);
-      const dead = state.legs.filter((l) => !(l.bid != null && l.ask != null));
-      if (!state.legs.length) sub.textContent = "No legs are configured. Check /health for the reason (credentials or network).";
+      const legs = legsOf(pair);
+      const live = legs.filter((l) => l.bid != null && l.ask != null);
+      const dead = legs.filter((l) => !(l.bid != null && l.ask != null));
+      if (!legs.length) sub.textContent = "No legs are configured. Check /health for the reason (credentials or network).";
       else sub.textContent = `Needs two venues with live orders; ${live.length} has one. ` +
         dead.map((l) => `${prettyLeg(l.id)} has no two-sided book (last trade ${fmtDateTime(l.exchange_ts_ms)} IST)`).join("; ") + ".";
     }
@@ -367,7 +432,7 @@
   function renderLegs() {
     const box = $("legs");
     box.replaceChildren();
-    const legs = [...state.legs].sort((a, b) => a.id.localeCompare(b.id));
+    const legs = [...legsOf(pair)].sort((a, b) => a.id.localeCompare(b.id));
     for (const l of legs) {
       const card = el("div", "card");
       const head = el("div", "leg-head");
@@ -389,7 +454,8 @@
 
       const meta = el("dl", "meta");
       const row = (k, v) => { meta.append(el("dt", null, k), el("dd", "num", v)); };
-      row("Spread", l.spread_paise == null ? "–" : `${l.spread_paise.toFixed(2)} paise`);
+      const own = l.spread_pips != null ? l.spread_pips : l.spread_paise;
+      row("Spread", own == null ? "–" : `${own.toFixed(2)} ${unit(pair)}`);
       row("Quote age", l.age_ms == null ? "–" : `${(l.age_ms / 1000).toFixed(1)} s`);
       row("Last trade", `${fmtDateTime(l.exchange_ts_ms)}${l.last != null ? " @ " + l.last : ""}`);
       card.append(meta);
@@ -504,8 +570,11 @@
     svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
   }
 
+  const legIdsOf = (sym) => Object.keys(mids).filter((id) => legsOf(sym).some((l) => l.id === id)).sort();
+
   function renderMid() {
-    const ids = Object.keys(mids).sort();
+    const ids = legIdsOf(pair);
+    const d = info(pair).price_decimals;
     const series = ids.map((id) => ({ name: prettyLeg(id), short: prettyLeg(id).split(" · ")[0], color: colorFor(id), points: mids[id] }));
     const legend = $("mid-legend");
     legend.replaceChildren();
@@ -516,22 +585,24 @@
     lineChart($("mid-plot"), series, {
       empty: "No two-sided quotes yet. Outside market hours books are usually empty.",
       aria: "Mid price per venue over the last 10 minutes",
-      fmtTick: (v) => v.toFixed(4), fmtVal: (v) => v.toFixed(4), minPad: 0.005, endLabels: true,
+      fmtTick: (v) => v.toFixed(d), fmtVal: (v) => v.toFixed(d), minPad: 5 * Math.pow(10, -d), endLabels: true,
     });
   }
 
   function renderSpread() {
-    lineChart($("spread-plot"), [{ name: "Best executable spread", short: "", color: css("--series-1"), points: spread }], {
+    const u = unit(pair);
+    lineChart($("spread-plot"), [{ name: "Best executable spread", short: "", color: css("--series-1"), points: spreads[pair] || [] }], {
       empty: "Needs two venues with live books at the same moment. With only one live venue there is nothing to compare.",
-      aria: "Best executable spread between venues in paise",
-      fmtTick: (v) => v.toFixed(2), fmtVal: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} paise`, minPad: 0.5, includeZero: true,
+      aria: `Best executable spread between venues in ${u}`,
+      fmtTick: (v) => v.toFixed(2), fmtVal: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} ${u}`, minPad: 0.5, includeZero: true,
     });
   }
 
   function renderTables() {
     const ob = $("opps-body");
     ob.replaceChildren();
-    const opps = [...(state.recent_opportunities || [])].reverse().slice(0, 8);
+    const opps = [...(state.recent_opportunities || [])]
+      .filter((o) => ((o.symbols && o.symbols[0]) || "USDINR") === pair).reverse().slice(0, 8);
     if (!opps.length) {
       const tr = el("tr"); const td = el("td", "muted", "None yet."); td.colSpan = 4; tr.append(td); ob.append(tr);
     }
@@ -553,18 +624,19 @@
     $("skipped").textContent = skipped.length ? "Skipped: " + skipped.map(([k, v]) => `${k} (${v})`).join("; ") : "";
 
     // accessible data table: last 30 observations per leg (mid) + spread
-    const ids = Object.keys(mids).sort();
+    const ids = legIdsOf(pair);
+    const dec = info(pair).price_decimals;
     const head = $("data-head"); head.replaceChildren();
     const hr = el("tr"); hr.append(el("th", null, "Time (IST)"));
     ids.forEach((id) => hr.append(el("th", "r", `${prettyLeg(id)} mid`)));
-    hr.append(el("th", "r", "Spread (paise)")); head.append(hr);
+    hr.append(el("th", "r", `Spread (${unit(pair)})`)); head.append(hr);
     const body = $("data-body"); body.replaceChildren();
-    const rows = spread.slice(-30).reverse();
+    const rows = (spreads[pair] || []).slice(-30).reverse();
     for (const r of rows) {
       const tr = el("tr"); tr.append(el("td", "num", fmtTime(r.t)));
       for (const id of ids) {
         const p = [...(mids[id] || [])].reverse().find((q) => q.t <= r.t);
-        tr.append(el("td", "r num", p && p.v != null ? p.v.toFixed(4) : "–"));
+        tr.append(el("td", "r num", p && p.v != null ? p.v.toFixed(dec) : "–"));
       }
       tr.append(el("td", "r num", fmtPaise(r.v))); body.append(tr);
     }

@@ -74,13 +74,13 @@ DATA_MODE = DataMode(os.environ.get("ARBEX_DATA_MODE", DataMode.SYNTHETIC_USDINR
 # SYMBOL CONFIGURATION
 # ============================================================================
 
-# Default pair, and the only one the synthetic generator and the NSE/BSE live
-# legs can produce today
+# Default pair (what runs when ARBEX_SYMBOLS is unset)
 RESEARCH_SYMBOL = "USDINR"
 
 
 def configured_symbols() -> list:
-    """Pairs to trade, from ARBEX_SYMBOLS (comma separated, e.g. "USDINR,EURINR").
+    """Pairs to trade, from ARBEX_SYMBOLS (comma separated, e.g. "USDINR,EURINR",
+    or a preset: "all" = every pair with NSE/BSE futures, "inr", "cross").
 
     Validated against the instrument registry, so a typo stops the server at
     startup. Unset means RESEARCH_SYMBOL. Each feed then keeps only the pairs it
@@ -92,9 +92,11 @@ def configured_symbols() -> list:
 
 
 # Pairs each data mode can produce; anything else in ARBEX_SYMBOLS is reported
-# and skipped. LIVE_MT5 is None: the broker decides.
-SYNTHETIC_SUPPORTED_SYMBOLS = [RESEARCH_SYMBOL]
-LIVE_EXCHANGE_SUPPORTED_SYMBOLS = [RESEARCH_SYMBOL]
+# and skipped. The synthetic generator can model any registered pair; the live
+# legs need NSE/BSE futures (USD/EUR/GBP/JPY-INR, EURUSD, GBPUSD, USDJPY).
+from backend.core.instruments import EXCHANGE_FUTURES_SYMBOLS, REGISTRY as _INSTRUMENTS
+SYNTHETIC_SUPPORTED_SYMBOLS = list(_INSTRUMENTS)
+LIVE_EXCHANGE_SUPPORTED_SYMBOLS = list(EXCHANGE_FUTURES_SYMBOLS)
 LEGACY_DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
 
 # Base price for USD/INR (close to real-world reference, Mar 2026)
@@ -308,11 +310,13 @@ ARBITRAGE_RESEARCH_CONFIG = ArbitrageResearchConfig()
 @dataclass
 class LiveExchangeConfig:
     """
-    Arbitrage detection on live exchange legs (NSE/BSE USD/INR futures).
+    Arbitrage detection on live exchange legs (NSE/BSE currency futures).
 
     A real opportunity is a crossed book: one venue's bid above another's ask,
     on the same contract. Thresholds reflect 1 Hz retail polling:
-    - min_profit_pips 0.25: one tick (0.0025 INR); a pip here is one paisa.
+    - min_profit_ticks 1: one exchange tick of each pair (USDINR: 0.0025 INR =
+      0.25 pips, a pip being one paisa; EURUSD futures: 0.0001 = 1 pip).
+      `min_profit_pips` is the USDINR equivalent, kept for display.
     - min_confidence 0.0: the confidence heuristic was tuned on synthetic
       sub-second feeds and is not calibrated for 1 Hz exchange data, so it
       must not gate a crossed book; ranking and the execution filter grade it.
@@ -321,6 +325,7 @@ class LiveExchangeConfig:
     - alignment_window_ms 500: legs from one hub share a timestamp, and a
       window shorter than the poll interval never mixes two polls.
     """
+    min_profit_ticks: float = 1.0
     min_profit_pips: float = 0.25
     min_confidence: float = 0.0
     max_latency_risk_ms: float = 2000.0

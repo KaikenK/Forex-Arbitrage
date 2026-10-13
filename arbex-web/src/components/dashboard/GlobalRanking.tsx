@@ -4,6 +4,7 @@ import React from 'react';
 import { useArbexStore, RankedOpportunity } from '@/lib/store';
 import { Card } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
+import { spreadUnit } from '@/lib/instruments';
 
 const getConfidenceColor = (score: number) => {
   if (score >= 90) return 'text-emerald-400';
@@ -19,7 +20,7 @@ const formatTime = (timestampMs: number) => {
 
 const RankingRow = ({ opp, index }: { opp: RankedOpportunity; index: number }) => {
   const confidencePercent = (Number(opp.opportunity.confidence_score) * 100).toFixed(1);
-  const profit = opp.opportunity.estimated_profit_pips.toFixed(1);
+  const profit = opp.opportunity.estimated_profit_pips.toFixed(2);
   const displayTimestamp = opp.opportunity.timestamp_ms ?? opp.last_seen_ms;
 
   return (
@@ -48,7 +49,7 @@ const RankingRow = ({ opp, index }: { opp: RankedOpportunity; index: number }) =
       <div className="flex items-center gap-4 text-right">
         <div className="flex flex-col">
           <span className="text-[11px] font-bold text-emerald-400 font-mono">
-            +{profit} PIPS
+            +{profit} {spreadUnit(opp.opportunity.symbols[0] ?? '')}
           </span>
           <span className={`text-[9px] font-mono ${getConfidenceColor(Number(confidencePercent))}`}>
             {confidencePercent}% CONF

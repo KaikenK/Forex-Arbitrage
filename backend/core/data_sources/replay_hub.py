@@ -21,6 +21,7 @@ from typing import Callable, Dict, List, Tuple
 
 from backend.core.data_sources.exchange_contracts import FutureContract
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
+from backend.core.instruments import REGISTRY, futures_lot_units, normalize_symbol
 
 
 OPPORTUNITY_LOG = "opportunities.jsonl"   # written alongside the quote files in live mode
@@ -41,6 +42,16 @@ def _read_rows(session_dir: Path) -> List[dict]:
     return rows
 
 
+def _recorded_symbol(row: dict) -> str:
+    """Pair of a recorded row; early recordings were USDINR only."""
+    sym = normalize_symbol(row.get("symbol") or "")
+    if sym in REGISTRY:
+        return sym
+    head = normalize_symbol(row.get("trading_symbol") or "")[:6]
+    return head if head in REGISTRY else "USDINR"
+
+
+
 def load_recorded_contracts(session_dir: Path | str) -> List[FutureContract]:
     """One contract per recorded instrument, rebuilt from the recording metadata."""
     seen: Dict[str, FutureContract] = {}
@@ -51,8 +62,10 @@ def load_recorded_contracts(session_dir: Path | str) -> List[FutureContract]:
         seen[key] = FutureContract(
             exchange=r["exchange"], instrument_key=key,
             trading_symbol=r.get("trading_symbol") or key,
-            expiry=date.fromisoformat(r["expiry"]), lot_size=1, contract_size=1000.0,
+            expiry=date.fromisoformat(r["expiry"]), lot_size=1,
+            contract_size=futures_lot_units(_recorded_symbol(r)),
             provider=r.get("provider") or "",
+            symbol=_recorded_symbol(r),
         )
     return list(seen.values())
 

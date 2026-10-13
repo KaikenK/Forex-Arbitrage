@@ -17,17 +17,17 @@ from backend.core.data_sources.tick_recorder import QuoteRecorder
 AS_OF = date(2026, 10, 9)
 
 
-def _contracts(provider, exchange, expiries):
-    return [FutureContract(exchange=exchange, instrument_key=f"{provider}:{exchange}:{e}",
-                           trading_symbol=f"USDINR {e}", expiry=e, lot_size=1,
-                           contract_size=1000.0, provider=provider) for e in expiries]
+def _contracts(provider, exchange, expiries, symbol="USDINR"):
+    return [FutureContract(exchange=exchange, instrument_key=f"{provider}:{exchange}:{symbol}:{e}",
+                           trading_symbol=f"{symbol} {e}", expiry=e, lot_size=1,
+                           contract_size=1000.0, provider=provider, symbol=symbol) for e in expiries]
 
 
 OCT, NOV = date(2026, 10, 28), date(2026, 11, 26)
 
 
 def _loader(table):
-    def load(provider, exchange):
+    def load(provider, exchange, symbols):
         value = table[(provider, exchange)]
         if isinstance(value, Exception):
             raise value
@@ -109,8 +109,8 @@ def test_replay_builds_one_leg_per_recorded_instrument(tmp_path):
     for c in _contracts("upstox", "NSE", [OCT]) + _contracts("upstox", "BSE", [OCT]):
         rec.register_contract(c)
     rec.on_poll("upstox", {
-        "upstox:NSE:2026-10-28": Quote(bid=88.70, ask=88.71, recv_ts_ms=1_800_000_000_000),
-        "upstox:BSE:2026-10-28": Quote(bid=88.69, ask=88.72, recv_ts_ms=1_800_000_000_000),
+        "upstox:NSE:USDINR:2026-10-28": Quote(bid=88.70, ask=88.71, recv_ts_ms=1_800_000_000_000),
+        "upstox:BSE:USDINR:2026-10-28": Quote(bid=88.69, ask=88.72, recv_ts_ms=1_800_000_000_000),
     })
     setup = build_replay_sources(rec.session_dir, speed=1.0)
     assert sorted(s.source_id for s in setup.sources) == [
@@ -170,3 +170,72 @@ def test_every_leg_is_registered_before_the_hub_first_polls():
         time.sleep(0.01)
     hub.stop()
     assert seen[0] == sorted(s.contract.instrument_key for s in setup.sources)
+
+
+# -- several currency pairs ---------------------------------------------------
+
+def test_every_requested_pair_gets_its_own_legs_on_one_hub_per_provider():
+    seen = []
+    hub = PolledQuoteHub("upstox", lambda keys: seen.append(sorted(keys)) or {}, poll_interval_s=60)
+    table = {(p, ex): [c for sym in ("USDINR", "EURINR", "USDJPY") for c in _contracts(p, ex, [OCT, NOV], sym)]
+             for p, ex in (("upstox", "NSE"), ("upstox", "BSE"))}
+    setup = build_live_exchange_sources(
+        symbols=["USDINR", "EURINR", "USDJPY", "AUDUSD"], providers=["upstox"], exchanges=["NSE", "BSE"],
+        as_of=AS_OF, record_dir="off", contract_loader=_loader(table), hub_factory=lambda p: hub)
+    assert sorted(s.source_id for s in setup.sources) == [
+        "upstox_bse_eurinr", "upstox_bse_usdinr", "upstox_bse_usdjpy",
+        "upstox_nse_eurinr", "upstox_nse_usdinr", "upstox_nse_usdjpy"]
+    assert {s.symbol for s in setup.sources} == {"USDINR", "EURINR", "USDJPY"}
+    assert setup.skipped["AUDUSD"] == "no NSE/BSE futures for this pair"
+    eur = next(s for s in setup.sources if s.source_id == "upstox_nse_eurinr")
+    assert eur.get_supported_symbols() == ["EURINR"] and "EUR/INR" in eur.config.display_name
+    # one request covers every pair, so all legs share an observation timestamp
+    hub.poll_once()
+    assert len(seen) == 1 and len(seen[0]) == 6
+
+
+def test_a_pair_listed_on_only_one_exchange_is_skipped_not_fatal():
+    table = {("upstox", "NSE"): _contracts("upstox", "NSE", [OCT]) + _contracts("upstox", "NSE", [OCT], "GBPINR"),
+             ("upstox", "BSE"): _contracts("upstox", "BSE", [OCT])}
+    setup = build_live_exchange_sources(
+        symbols=["USDINR", "GBPINR"], providers=["upstox"], exchanges=["NSE", "BSE"], as_of=AS_OF,
+        record_dir="off", contract_loader=_loader(table), hub_factory=_hubs())
+    assert sorted(s.source_id for s in setup.sources) == ["upstox_bse_usdinr", "upstox_nse_usdinr"]
+    assert setup.skipped == {"GBPINR": "needs two legs; listed on upstox:NSE"}
+
+
+def test_cross_spreads_never_compare_different_pairs():
+    from backend.core.data_sources.live_feeds import cross_spreads
+    rows = cross_spreads({
+        "upstox_nse_usdinr": Quote(bid=88.7075, ask=88.7100),
+        "upstox_bse_usdinr": Quote(bid=88.7150, ask=88.7200),
+        "upstox_nse_eurusd": Quote(bid=1.1600, ask=1.1601),
+        "upstox_bse_eurusd": Quote(bid=1.1603, ask=1.1604),
+    })
+    by_symbol = {r["symbol"]: r for r in rows}
+    assert len(rows) == 2
+    assert by_symbol["EURUSD"]["executable_pips"] == pytest.approx(2.0)   # 1.1603 - 1.1601
+    assert by_symbol["EURUSD"]["executable_paise"] is None
+    assert by_symbol["USDINR"]["executable_paise"] == pytest.approx(0.5)
+
+
+def test_replay_rebuilds_legs_per_pair_and_reads_old_usdinr_recordings(tmp_path):
+    import json
+    rec = QuoteRecorder(tmp_path)
+    contracts = (_contracts("upstox", "NSE", [OCT], "EURINR") + _contracts("upstox", "BSE", [OCT], "EURINR")
+                 + _contracts("upstox", "NSE", [OCT], "GBPINR"))          # GBPINR: one leg only
+    for c in contracts:
+        rec.register_contract(c)
+    rec.on_poll("upstox", {c.instrument_key: Quote(bid=102.1, ask=102.11, recv_ts_ms=1_800_000_000_000)
+                           for c in contracts})
+    # a row written before recordings carried the pair
+    with (rec.session_dir / "old.jsonl").open("w") as fh:
+        for ex in ("NSE", "BSE"):
+            fh.write(json.dumps({"symbol": "USDINR", "instrument_key": f"old:{ex}", "provider": "upstox",
+                                 "exchange": ex, "trading_symbol": "USDINR FUT", "expiry": "2026-10-28",
+                                 "bid": 88.7, "ask": 88.71, "recv_ts_ms": 1_800_000_000_000}) + "\n")
+    setup = build_replay_sources(rec.session_dir)
+    assert sorted(s.source_id for s in setup.sources) == [
+        "replay_upstox_bse_eurinr", "replay_upstox_bse_usdinr",
+        "replay_upstox_nse_eurinr", "replay_upstox_nse_usdinr"]
+    assert setup.skipped == {"GBPINR": "only 1 recorded leg"}

@@ -88,3 +88,16 @@ def test_empty_book_is_not_two_sided_even_with_a_last_price():
 def test_locked_or_crossed_own_book_is_rejected():
     payload = {"data": {"X": _node("NCD_FO|1769", [(88.72, 1)], [(88.71, 1)])}}
     assert not parse_upstox_quotes(payload, recv_ts_ms=1)["NCD_FO|1769"].two_sided
+
+
+def test_master_returns_every_requested_pair_tagged_with_its_symbol():
+    rows = MASTER + [
+        {"segment": "NCD_FO", "name": "JPYINR", "instrument_type": "FUT",
+         "instrument_key": "NCD_FO|2101", "trading_symbol": "JPYINR FUT 28 OCT 26",
+         "expiry": _expiry_ms(date(2026, 10, 28)), "lot_size": 1, "weekly": False},   # no qty_multiplier
+    ]
+    nse = parse_upstox_master(rows, exchange="NSE", symbols=["USDINR", "EURINR", "JPYINR"])
+    by_key = {c.instrument_key: c for c in nse}
+    assert set(by_key) == {"NCD_FO|1769", "NCD_FO|1801", "NCD_FO|2001", "NCD_FO|2101"}
+    assert by_key["NCD_FO|2001"].symbol == "EURINR"
+    assert by_key["NCD_FO|2101"].contract_size == 100_000      # JPYINR lot from the registry

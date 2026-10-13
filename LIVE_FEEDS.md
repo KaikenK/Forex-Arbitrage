@@ -1,4 +1,4 @@
-# Live feeds — testing Arbex on real NSE/BSE USD/INR quotes
+# Live feeds — testing Arbex on real NSE/BSE currency futures quotes
 
 The synthetic mode tests the detector on prices we generate. This mode runs the
 **same** pipeline (`MultiSourceStreamer` → aligner → `ArbitrageEngine` → ranker →
@@ -22,6 +22,11 @@ account.
 Upstox alone gives the NSE-vs-BSE test for free. Adding Kite (the low-cost
 showcase) also gives two *providers* quoting the *same* contract, which is the
 original cross-provider question asked on real data.
+
+USD/INR is the example used below. EUR/INR, GBP/INR, JPY/INR and the
+EUR/USD, GBP/USD and USD/JPY futures work the same way (see
+[Currency pairs](#currency-pairs)). The mode keeps its historical name,
+`LIVE_USDINR_EXCHANGES`.
 
 ## Design rules (why the numbers can be trusted)
 
@@ -155,26 +160,62 @@ recorded `opportunities.jsonl`.
   (2026-08-31), but the BSE segment code and Kite responses must be confirmed
   with `check_live_feeds.py` on a networked machine.
 
-## Currency pairs and pip sizes
+## Currency pairs
 
-Pip size, exchange tick, price decimals and contract size for every pair live in
-one place: `backend/core/instruments.py`. All pip calculations (engine,
-diagnostics, broker simulator, state store, `/live/status`, research endpoints)
-read it, so INR pairs are consistently 1 pip = 0.01 INR (one paisa) and a new
-pair needs one registry line, not a hunt through the code. Unregistered
-six-letter pairs fall back by quote currency (JPY/INR → 0.01, else 0.0001).
+Every currency future listed on NSE and BSE is supported, in all three modes:
 
-Choose the pairs with `ARBEX_SYMBOLS` (comma separated, default `USDINR`):
+| pair | quoted as | pip | futures tick | lot |
+|---|---|---|---|---|
+| USD/INR | INR per USD | 0.01 (1 paisa) | 0.0025 (0.25 paise) | USD 1,000 |
+| EUR/INR | INR per EUR | 0.01 | 0.0025 | EUR 1,000 |
+| GBP/INR | INR per GBP | 0.01 | 0.0025 | GBP 1,000 |
+| JPY/INR | INR per **100** JPY | 0.01 | 0.0025 | JPY 100,000 |
+| EUR/USD | USD per EUR | 0.0001 | 0.0001 | EUR 1,000 |
+| GBP/USD | USD per GBP | 0.0001 | 0.0001 | GBP 1,000 |
+| USD/JPY | JPY per USD | 0.01 | 0.01 | USD 1,000 |
+
+Choose them with `ARBEX_SYMBOLS` in `.env`. It takes a comma-separated list or
+a preset: `all` (the seven above), `inr` (the four INR pairs) or `cross`
+(EUR/USD, GBP/USD, USD/JPY). Unset means `USDINR`, the original behaviour.
 
 ```bash
-ARBEX_SYMBOLS=USDINR,EURINR python -m backend.server.run
+ARBEX_SYMBOLS=all python -m backend.server.run
+python research/check_live_feeds.py --symbols all     # pre-flight every pair
 ```
 
-A typo (`USDINR,GOLD`) stops the server at startup. Pairs the current feed
-cannot produce yet are skipped with a warning in the log, and listed under
-`unsupported` in `GET /symbols` and `unsupported_symbols` in `GET /feeds/mode`.
-Today both the synthetic generator and the NSE/BSE live legs produce USDINR
-only; adding EURINR/GBPINR/JPYINR legs is the next step.
+- **Live:** each pair gets its own legs (`upstox_nse_eurinr`, `kite_bse_usdjpy`,
+  …) on its own common expiry. Each provider still makes **one** request
+  covering every leg of every pair, so all legs share one observation
+  timestamp. A pair that is not listed on two venues is skipped with the reason
+  (`/live/status` → `skipped_feeds`, and the pre-flight output); the others run.
+- **Synthetic:** six session × provider feeds per pair (`bloomberg_tokyo_eurinr`,
+  …), each pair with its own reference price, seeded from the day's ECB rate
+  when reachable (else a fixed level from the registry).
+- **Replay:** recordings carry the pair, so a multi-pair session replays as
+  multi-pair. Older USDINR-only recordings still replay.
+- **Detection:** the live engine requires a crossed book of at least **one
+  exchange tick of that pair** (0.25 paise for INR pairs, 1 pip for EUR/USD
+  futures), not one global pip value. Pairs are never compared with each other.
+- **Units:** INR pairs report spreads in paise and the others in pips,
+  everywhere (`/live`, the dashboard, opportunity cards).
+- **Dashboard:** a pair picker appears in the header when more than one pair is
+  running. The ticker, venue/session charts and depth panel follow the chosen
+  pair. The arbitrage feed and leaderboard show every pair, each card labelled.
+  Pairs requested but missing from the current feed are listed in amber.
+- **`/live`:** pair buttons at the top show each pair's live best spread
+  (green when crossed); the page below follows the selected pair.
 
-The live `min_profit_pips` (0.25 = one USDINR tick) is still a single global
-value, not per pair.
+Expect thin books on the cross-currency futures and on BSE. Run the pre-flight
+during market hours to see which pairs actually have two-sided books on both
+venues; that availability is itself a result worth reporting.
+
+### Pip sizes: one source of truth
+
+Pip size, exchange tick, decimals, contract size and futures specs for every
+pair live in `backend/core/instruments.py`. All pip calculations (engine,
+diagnostics, broker simulator, state store, `/live/status`, research endpoints)
+read it. Adding a pair is one registry line. Unregistered six-letter pairs fall
+back by quote currency (JPY/INR → 0.01, else 0.0001). A typo in `ARBEX_SYMBOLS`
+(`USDINR,GOLD`) stops the server at startup. `GET /symbols` and
+`GET /feeds/mode` list the running pairs, any requested pairs the feed cannot
+serve, and each pair's display conventions.

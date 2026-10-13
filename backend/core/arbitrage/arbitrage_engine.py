@@ -22,7 +22,7 @@ from datetime import datetime
 
 from backend.core.arbitrage.tick_aligner import AlignedTickWindow
 from backend.core.interfaces.normalized_tick import NormalizedTick
-from backend.core.instruments import pip_size
+from backend.core.instruments import get_instrument, pip_size
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,9 @@ class ArbitrageConfig:
     
     Attributes:
         min_profit_pips: Minimum profit in pips to consider an opportunity
+        min_profit_ticks: If set, the minimum profit is this many exchange
+            ticks of each pair instead (one USDINR tick = 0.25 pips, one
+            EURUSD futures tick = 1 pip), so one setting fits every pair
         min_confidence: Minimum confidence score (0.0 to 1.0)
         max_latency_risk_ms: Maximum acceptable latency risk
         enable_cross_source: Enable cross-source arbitrage detection
@@ -124,6 +127,7 @@ class ArbitrageConfig:
         source_reliabilities: Reliability scores for each source (0.0 to 1.0)
     """
     min_profit_pips: float = 0.1  # 0.1 pip minimum
+    min_profit_ticks: Optional[float] = None
     min_confidence: float = 0.5
     max_latency_risk_ms: float = 100.0
     enable_cross_source: bool = True
@@ -132,6 +136,12 @@ class ArbitrageConfig:
     enable_latency_arbitrage: bool = True
     source_latencies: Dict[str, float] = field(default_factory=dict)
     source_reliabilities: Dict[str, float] = field(default_factory=dict)
+
+    def min_profit_for(self, symbol: str) -> float:
+        """Minimum profit in pips for one pair."""
+        if self.min_profit_ticks is None:
+            return self.min_profit_pips
+        return self.min_profit_ticks * get_instrument(symbol).min_executable_pips()
 
 
 class ArbitrageEngine:
@@ -223,7 +233,7 @@ class ArbitrageEngine:
             if opp.confidence_score >= self.config.min_confidence
             # tolerance: a one-tick cross (e.g. 95.4525 - 95.4500) is 0.2499999... pips
             # in binary floating point and must not fall below a one-tick threshold
-            and opp.estimated_profit_pips >= self.config.min_profit_pips - 1e-9
+            and opp.estimated_profit_pips >= self.config.min_profit_for(window.symbol) - 1e-9
             and opp.latency_risk_ms <= self.config.max_latency_risk_ms
         ]
         

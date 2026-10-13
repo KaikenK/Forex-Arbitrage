@@ -204,3 +204,24 @@ class TestLiveExchangeMode:
         opps = self._engine().detect(window)
         assert len(opps) == 1
         assert opps[0].estimated_profit_pips == pytest.approx(0.25)
+
+    def test_one_tick_threshold_scales_to_each_pair(self):
+        # min_profit_ticks=1: a USDINR cross needs 0.25 pips (one 0.0025 tick),
+        # an EURUSD futures cross needs 1 pip (one 0.0001 tick).
+        engine = self._engine(min_profit_ticks=1.0)
+        eurusd_half_tick = make_window("EURUSD", {
+            "upstox_nse_eurusd": make_tick("EURUSD", 1.16000, 1.16010, "upstox_nse_eurusd"),
+            "upstox_bse_eurusd": make_tick("EURUSD", 1.16015, 1.16030, "upstox_bse_eurusd"),
+        }, window_size_ms=500)
+        assert engine.detect(eurusd_half_tick) == []          # 0.5 pip < one tick
+        eurusd_two_ticks = make_window("EURUSD", {
+            "upstox_nse_eurusd": make_tick("EURUSD", 1.16000, 1.16010, "upstox_nse_eurusd"),
+            "upstox_bse_eurusd": make_tick("EURUSD", 1.16030, 1.16040, "upstox_bse_eurusd"),
+        }, window_size_ms=500)
+        opps = engine.detect(eurusd_two_ticks)
+        assert len(opps) == 1 and opps[0].estimated_profit_pips == pytest.approx(2.0)
+        usdinr_one_tick = make_window("USDINR", {
+            "upstox_nse_usdinr": make_tick("USDINR", 95.4475, 95.4500, "upstox_nse_usdinr"),
+            "upstox_bse_usdinr": make_tick("USDINR", 95.4525, 95.4600, "upstox_bse_usdinr"),
+        }, window_size_ms=500)
+        assert len(engine.detect(usdinr_one_tick)) == 1

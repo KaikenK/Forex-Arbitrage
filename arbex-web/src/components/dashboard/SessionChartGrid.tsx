@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, LineSeries } from 'lightweight-charts';
 import { useArbexStore } from '@/lib/store';
-import { sourceLabel } from '@/lib/sources';
+import { sourceLabel, sourceSymbol } from '@/lib/sources';
+import { useInstrument } from '@/hooks/useInstrument';
 
 const SESSIONS = [
   { id: 'tokyo', label: 'Tokyo (TYO)' },
@@ -24,18 +25,28 @@ const CHART_OPTIONS = {
   handleScale: false,
 } as const;
 
+// Price axis for a pair: enough decimals to see a one-tick gap between feeds.
+function priceFormat(decimals: number, tick: number) {
+  return { type: 'price' as const, precision: decimals, minMove: Math.min(tick, Math.pow(10, -decimals)) };
+}
+
+/** Charts for the selected pair (the parent remounts this when the pair changes). */
 export function SessionChartGrid({ venueMode = false }: { venueMode?: boolean }) {
-  if (venueMode) return <VenueChart />;
+  const { symbol, price_decimals, tick_size } = useInstrument();
+  const format = priceFormat(price_decimals, tick_size);
+  if (venueMode) return <VenueChart symbol={symbol} format={format} />;
   return (
     <div className="flex flex-col gap-3 pb-10">
       {SESSIONS.map((session) => (
-        <SessionChart key={session.id} sessionId={session.id} label={session.label} />
+        <SessionChart key={session.id} sessionId={session.id} label={session.label} symbol={symbol} format={format} />
       ))}
     </div>
   );
 }
 
-function SessionChart({ sessionId, label }: { sessionId: string; label: string }) {
+type PriceFormat = ReturnType<typeof priceFormat>;
+
+function SessionChart({ sessionId, label, symbol, format }: { sessionId: string; label: string; symbol: string; format: PriceFormat }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   
@@ -59,8 +70,8 @@ function SessionChart({ sessionId, label }: { sessionId: string; label: string }
     });
 
     // 2. Add HFT Series
-    const bbgSeries = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 1, title: 'BBG' }); // Orange
-    const rtSeries = chart.addSeries(LineSeries, { color: '#06b6d4', lineWidth: 1, title: 'RT' }); // Cyan
+    const bbgSeries = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 1, title: 'BBG', priceFormat: format }); // Orange
+    const rtSeries = chart.addSeries(LineSeries, { color: '#06b6d4', lineWidth: 1, title: 'RT', priceFormat: format }); // Cyan
 
     chartRef.current = chart;
     bloombergSeriesRef.current = bbgSeries;
@@ -79,8 +90,8 @@ function SessionChart({ sessionId, label }: { sessionId: string; label: string }
     // Every time a new tick hits, we directly mutate the canvas.
     const unsubscribe = useArbexStore.subscribe(
       (state) => ({
-        bbg: state.activePairs[`bloomberg_${sessionId}_usdinr`],
-        rt: state.activePairs[`reuters_${sessionId}_usdinr`]
+        bbg: state.activePairs[`bloomberg_${sessionId}_${symbol.toLowerCase()}`],
+        rt: state.activePairs[`reuters_${sessionId}_${symbol.toLowerCase()}`]
       }),
       (pairs) => {
         // Use Math.floor to ensure time is a valid lightweight-charts integer
@@ -109,7 +120,8 @@ function SessionChart({ sessionId, label }: { sessionId: string; label: string }
         chartRef.current.remove();
       }
     };
-  }, [sessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, symbol]);
 
   return (
     <div className="bg-[#141620] border border-[#1e2235] rounded-lg p-2 flex flex-col h-[280px]">
@@ -138,7 +150,7 @@ function SessionChart({ sessionId, label }: { sessionId: string; label: string }
  * second provider...) get a line each, created on first sight, so no source id
  * is hardcoded here.
  */
-function VenueChart() {
+function VenueChart({ symbol, format }: { symbol: string; format: PriceFormat }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [legend, setLegend] = useState<{ id: string; color: string }[]>([]);
 
@@ -160,6 +172,7 @@ function VenueChart() {
         const time = Math.floor(Date.now() / 1000) as import('lightweight-charts').Time;
         let added = false;
         for (const id of Object.keys(pairs).sort()) {
+          if (sourceSymbol(id) !== symbol) continue;
           const p = pairs[id];
           if (!(p.bid > 0 && p.ask > 0)) continue;   // only two-sided quotes are plotted
           let line = series.get(id);
@@ -168,8 +181,8 @@ function VenueChart() {
               color: VENUE_COLORS[series.size % VENUE_COLORS.length],
               lineWidth: 2,
               title: sourceLabel(id),
-              // USD/INR futures tick is 0.0025: two decimals would hide the venue gap
-              priceFormat: { type: 'price', precision: 4, minMove: 0.0025 },
+              // e.g. USD/INR futures tick is 0.0025: two decimals would hide the venue gap
+              priceFormat: format,
             });
             series.set(id, line);
             added = true;
@@ -188,7 +201,8 @@ function VenueChart() {
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
 
   return (
     <div className="bg-[#141620] border border-[#1e2235] rounded-lg p-2 flex flex-col h-[420px]">

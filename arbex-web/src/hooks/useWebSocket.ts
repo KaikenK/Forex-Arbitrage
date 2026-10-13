@@ -6,7 +6,8 @@ import { parseSourceId } from '@/lib/sources';
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_ARBEX_WS_BASE_URL || 'ws://127.0.0.1:8000';
 const ARBITRAGE_WS_URL = `${WS_BASE_URL}/ws/arbitrage`;
-const SOURCES_WS_URL = `${WS_BASE_URL}/ws/sources/USDINR`;
+// one price stream per active pair: /ws/sources/{SYMBOL}
+const sourcesWsUrl = (symbol: string) => `${WS_BASE_URL}/ws/sources/${symbol}`;
 const DASHBOARD_WS_URL = `${WS_BASE_URL}/ws/dashboard`;
 
 interface SourceComparisonPayload {
@@ -71,8 +72,9 @@ export function useWebSocket() {
 
   useEffect(() => {
     let arbWs: WebSocket | null = null;
-    let srcWs: WebSocket | null = null;
     let dashWs: WebSocket | null = null;
+    const srcSockets = new Map<string, WebSocket>();   // symbol -> price stream
+    let closed = false;
     let flushInterval: NodeJS.Timeout;
 
     // A feed switch (synthetic <-> live <-> replay) empties the store and bumps
@@ -82,16 +84,78 @@ export function useWebSocket() {
       () => { opportunitiesBuffer.current = []; }
     );
 
+    // ------------------------------------------------------
+    // Ticker Tape Streams (Direct State Ingestion), one per pair
+    // ------------------------------------------------------
+    const onSourcesMessage = (event: MessageEvent) => {
+      if (event.data === 'ping') return;
+      try {
+        const data = JSON.parse(event.data) as SourceComparisonPayload;
+
+        // The python backend's `broadcast_source_comparison` payload wraps sources in an array
+        if (data.sources && Array.isArray(data.sources)) {
+          data.sources.forEach((src) => {
+            // Group from the source_id: session for synthetic ('bloomberg_tokyo_usdinr' -> 'TOKYO'),
+            // exchange for live/replay ('upstox_nse_usdinr' -> 'NSE')
+            if (!src.session && src.source_id) {
+              src.session = parseSourceId(src.source_id).group;
+            }
+            updateMarketData(src);
+          });
+        } else if (
+          data.source_id &&
+          typeof data.bid === 'number' &&
+          typeof data.ask === 'number'
+        ) {
+          updateMarketData({
+            source_id: data.source_id,
+            session: data.session,
+            bid: data.bid,
+            ask: data.ask,
+            drift: data.drift,
+          });
+        }
+      } catch (e) {
+        console.error('[Arbex] Source Parse Error:', e);
+      }
+    };
+
+    const openSources = (symbol: string) => {
+      const ws = new WebSocket(sourcesWsUrl(symbol));
+      ws.onmessage = onSourcesMessage;
+      ws.onclose = () => {
+        // reconnect while the pair is still active
+        if (srcSockets.get(symbol) !== ws || closed) return;
+        srcSockets.delete(symbol);
+        setTimeout(() => { if (!closed) syncSources(); }, 3000);
+      };
+      srcSockets.set(symbol, ws);
+    };
+
+    // Open/close price streams to match the pairs the backend is running.
+    const syncSources = () => {
+      const wanted = new Set(useArbexStore.getState().feedStatus?.symbols ?? ['USDINR']);
+      for (const [symbol, ws] of srcSockets) {
+        if (!wanted.has(symbol)) { srcSockets.delete(symbol); ws.close(); }
+      }
+      for (const symbol of wanted) if (!srcSockets.has(symbol)) openSources(symbol);
+    };
+
+    const unsubscribeSymbols = useArbexStore.subscribe(
+      (state) => (state.feedStatus?.symbols ?? []).join(','),
+      () => syncSources()
+    );
+
     const connect = () => {
       arbWs = new WebSocket(ARBITRAGE_WS_URL);
-      srcWs = new WebSocket(SOURCES_WS_URL);
       dashWs = new WebSocket(DASHBOARD_WS_URL);
+      syncSources();
 
       arbWs.onopen = () => setConnectionStatus(true);
       arbWs.onclose = () => {
         setConnectionStatus(false);
         // Retry connection roughly every 3 seconds if Python server drops
-        setTimeout(connect, 3000);
+        if (!closed) setTimeout(connect, 3000);
       };
       
       dashWs.onmessage = (event) => {
@@ -128,42 +192,6 @@ export function useWebSocket() {
              }
           }
         } catch {}
-      };
-
-      // ------------------------------------------------------
-      // Ticker Tape Stream (Direct State Ingestion)
-      // ------------------------------------------------------
-      srcWs.onmessage = (event) => {
-        if (event.data === 'ping') return;
-        try {
-          const data = JSON.parse(event.data) as SourceComparisonPayload;
-          
-          // The python backend's `broadcast_source_comparison` payload wraps sources in an array
-          if (data.sources && Array.isArray(data.sources)) {
-            data.sources.forEach((src) => {
-              // Group from the source_id: session for synthetic ('bloomberg_tokyo_usdinr' -> 'TOKYO'),
-              // exchange for live/replay ('upstox_nse_usdinr' -> 'NSE')
-              if (!src.session && src.source_id) {
-                src.session = parseSourceId(src.source_id).group;
-              }
-              updateMarketData(src);
-            });
-          } else if (
-            data.source_id &&
-            typeof data.bid === 'number' &&
-            typeof data.ask === 'number'
-          ) {
-            updateMarketData({
-              source_id: data.source_id,
-              session: data.session,
-              bid: data.bid,
-              ask: data.ask,
-              drift: data.drift,
-            });
-          }
-        } catch (e) {
-          console.error('[Arbex] Source Parse Error:', e);
-        }
       };
 
       // ------------------------------------------------------
@@ -250,10 +278,13 @@ export function useWebSocket() {
     connect();
 
     return () => {
+      closed = true;
       unsubscribeEpoch();
+      unsubscribeSymbols();
       clearInterval(flushInterval);
       if (arbWs) arbWs.close();
-      if (srcWs) srcWs.close();
+      for (const ws of srcSockets.values()) ws.close();
+      srcSockets.clear();
       if (dashWs) dashWs.close();
     };
   }, [setConnectionStatus, updateMarketData, flushOpportunities, updateOrderbook]);

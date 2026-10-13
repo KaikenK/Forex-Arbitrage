@@ -59,7 +59,7 @@ from backend.config import (
 
 # NEW: Data source plugin architecture
 from backend.core.interfaces.data_source import DataSourceConfig
-from backend.core.instruments import resolve_symbols, to_pips
+from backend.core.instruments import get_instrument, resolve_symbols, to_pips
 from backend.core.data_sources.synthetic_data_source import SyntheticDataSource, SyntheticConfig
 
 # NEW: Session-aware synthetic sources for research
@@ -137,29 +137,50 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================================
 
-# Determine symbols based on mode: ARBEX_SYMBOLS, narrowed to what the feed supports
-REQUESTED_SYMBOLS = configured_symbols() if os.environ.get("ARBEX_SYMBOLS", "").strip() else None
+# Pairs: ARBEX_SYMBOLS, narrowed to what the running feed can produce. These
+# lists are updated in place on every feed switch (live legs depend on what the
+# exchanges list today), so other modules holding a reference stay current.
+DEFAULT_SYMBOLS: List[str] = []
+UNSUPPORTED_SYMBOLS: List[str] = []
+REQUESTED_SYMBOLS: List[str] = []
+
+
+def _set_symbols(mode: Optional[str] = None, live_setup=None) -> None:
+    """Recompute the active pairs for `mode` ('synthetic' | 'live' | 'replay')."""
+    requested = configured_symbols()
+    if mode is None:
+        mode = "synthetic" if is_synthetic_mode() else ("live" if is_live_exchange_mode() else "mt5")
+    if mode == "synthetic":
+        active, unsupported = resolve_symbols(requested, SYNTHETIC_SUPPORTED_SYMBOLS, [RESEARCH_SYMBOL])
+    elif live_setup is not None:
+        # live / replay: the pairs that actually got legs
+        have = {s.symbol for s in live_setup.sources}
+        active = [s for s in requested if s in have] or sorted(have)
+        unsupported = [s for s in requested if s not in have]
+    elif mode in ("live", "replay"):
+        active, unsupported = resolve_symbols(requested, LIVE_EXCHANGE_SUPPORTED_SYMBOLS, [RESEARCH_SYMBOL])
+    else:
+        active = requested if os.environ.get("ARBEX_SYMBOLS", "").strip() else list(LEGACY_DEFAULT_SYMBOLS)
+        unsupported = []
+    REQUESTED_SYMBOLS[:] = requested
+    DEFAULT_SYMBOLS[:] = active
+    UNSUPPORTED_SYMBOLS[:] = unsupported
+    if unsupported:
+        logger.warning(f"ARBEX_SYMBOLS: {', '.join(unsupported)} not available from the {mode} feed; "
+                       f"running {', '.join(active)}")
+    logger.info(f"Active pairs ({mode}): {', '.join(active)}")
+
+
+_set_symbols()
 if is_synthetic_mode():
-    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = resolve_symbols(
-        REQUESTED_SYMBOLS or [RESEARCH_SYMBOL], SYNTHETIC_SUPPORTED_SYMBOLS, SYNTHETIC_SUPPORTED_SYMBOLS)
     logger.info("=" * 60)
-    logger.info("RESEARCH MODE: SYNTHETIC_USDINR_ONLY")
-    logger.info(f"Symbol: {RESEARCH_SYMBOL}")
+    logger.info("RESEARCH MODE: SYNTHETIC (session x provider feeds per pair)")
     logger.info("MT5 and live data sources are DISABLED")
     logger.info("=" * 60)
 elif is_live_exchange_mode():
-    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = resolve_symbols(  # NSE + BSE futures
-        REQUESTED_SYMBOLS or [RESEARCH_SYMBOL], LIVE_EXCHANGE_SUPPORTED_SYMBOLS,
-        LIVE_EXCHANGE_SUPPORTED_SYMBOLS)
     logger.info("=" * 60)
-    logger.info("LIVE MODE: LIVE_USDINR_EXCHANGES (NSE/BSE USD/INR futures)")
+    logger.info("LIVE MODE: LIVE_USDINR_EXCHANGES (NSE/BSE currency futures)")
     logger.info("=" * 60)
-else:
-    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = REQUESTED_SYMBOLS or list(LEGACY_DEFAULT_SYMBOLS), []
-if UNSUPPORTED_SYMBOLS:
-    logger.warning(
-        f"ARBEX_SYMBOLS: {', '.join(UNSUPPORTED_SYMBOLS)} not available from the "
-        f"{DATA_MODE.value} feed yet; running {', '.join(DEFAULT_SYMBOLS)}")
 
 # Default intervals for candles (including micro-candles)
 DEFAULT_INTERVALS = ["100ms", "500ms", "1s", "5s", "15s", "1m"]
@@ -317,10 +338,10 @@ def _reset_market_caches() -> None:
     live_opportunities.clear()
 
 
-async def _start_orderbook_service() -> None:
+async def _start_orderbook_service(symbols: Optional[List[str]] = None) -> None:
     global orderbook_service
     orderbook_service = OrderbookService(redis_client=redis_client)
-    orderbook_service.register_adapter(SyntheticStreamAdapter())
+    orderbook_service.register_adapter(SyntheticStreamAdapter(symbols))
     orderbook_service.register_adapter(TradingViewStreamAdapter())
     orderbook_service.register_adapter(MT5StreamAdapter())
     await orderbook_service.start()
@@ -335,18 +356,19 @@ async def _prepare_feed(mode: str, replay_path: Optional[str] = None):
             replay_path, speed=float(os.environ.get("ARBEX_REPLAY_SPEED", "1.0")),
             loop=os.environ.get("ARBEX_REPLAY_LOOP", "1") != "0")
     # Network calls (instrument masters) run off the event loop.
-    return await asyncio.to_thread(build_live_exchange_sources)
+    symbols, _ = resolve_symbols(configured_symbols(), LIVE_EXCHANGE_SUPPORTED_SYMBOLS, [RESEARCH_SYMBOL])
+    return await asyncio.to_thread(build_live_exchange_sources, symbols=symbols)
 
 
 async def _start_synthetic() -> None:
     global multi_source_streamer, synthetic_sources
-    logger.info("Initializing Synthetic USD/INR Research Pipeline")
+    logger.info(f"Initializing Synthetic Research Pipeline: {', '.join(DEFAULT_SYMBOLS)}")
     reset_synthetic_state(seed=42)  # reproducible session
     arbitrage_config = ArbitrageConfig(
         min_profit_pips=ARBITRAGE_RESEARCH_CONFIG.min_profit_pips,
         min_confidence=ARBITRAGE_RESEARCH_CONFIG.min_confidence,
         enable_cross_source=True,       # Cross-provider detection
-        enable_triangular=False,        # Not applicable for single pair
+        enable_triangular=False,        # Cross-source only: one pair per window
         enable_session_analysis=True,   # Session inefficiency detection
     )
     multi_source_streamer = MultiSourceStreamer(
@@ -356,13 +378,13 @@ async def _start_synthetic() -> None:
         ranking_config=RankingConfig(min_composite_score=20.0, max_results=100),
         alignment_window_ms=ARBITRAGE_RESEARCH_CONFIG.alignment_window_ms,
     )
-    synthetic_sources = create_synthetic_sources()
+    synthetic_sources = create_synthetic_sources(DEFAULT_SYMBOLS)
     for source in synthetic_sources:
         multi_source_streamer.add_source(source)
         logger.info(f"Added synthetic source: {source.source_id} "
                     f"(session={source.session.value}, provider={source.provider.value})")
     await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
-    await _start_orderbook_service()   # synthetic depth for the orderbook panel
+    await _start_orderbook_service(DEFAULT_SYMBOLS)   # synthetic depth for the orderbook panel
     logger.info(f"Synthetic research pipeline initialized with {len(synthetic_sources)} data sources")
 
 
@@ -373,6 +395,7 @@ async def _start_live(setup) -> None:
         logger.info(f"  {line}")
     arbitrage_config = ArbitrageConfig(
         min_profit_pips=LIVE_EXCHANGE_CONFIG.min_profit_pips,
+        min_profit_ticks=LIVE_EXCHANGE_CONFIG.min_profit_ticks,   # one tick of each pair
         min_confidence=LIVE_EXCHANGE_CONFIG.min_confidence,
         max_latency_risk_ms=LIVE_EXCHANGE_CONFIG.max_latency_risk_ms,
         enable_cross_source=True,         # crossed books between legs
@@ -403,15 +426,15 @@ async def _start_live(setup) -> None:
 
     # Real depth to the dashboard's orderbook panel (hubs poll on their own threads).
     loop = asyncio.get_running_loop()
-    by_key = {s.contract.instrument_key: s.source_id for s in setup.sources}
+    by_key = {s.contract.instrument_key: s for s in setup.sources}
 
     def _publish_depth(hub_name, quotes):
         for key, q in quotes.items():
-            source_id = by_key.get(key)
-            if source_id is None:
+            leg = by_key.get(key)
+            if leg is None:
                 continue
             msg = json.dumps({"type": "orderbook", "data": {
-                "symbol": "USDINR", "source": source_id, "timestamp": q.recv_ts_ms,
+                "symbol": leg.symbol, "source": leg.source_id, "timestamp": q.recv_ts_ms,
                 "bids": [{"price": lv["price"], "volume": lv["qty"]} for lv in q.depth.get("bids", [])],
                 "asks": [{"price": lv["price"], "volume": lv["qty"]} for lv in q.depth.get("asks", [])],
             }}) + "\n"
@@ -458,6 +481,7 @@ async def switch_feed(mode: str, *, replay_path: Optional[str] = None,
         setup = prepared if prepared is not None else (
             None if mode == "synthetic" else await _prepare_feed(mode, replay_path))
         await _stop_feed()
+        _set_symbols(mode, setup)
         _reset_market_caches()
         config_module.DATA_MODE = (DataMode.SYNTHETIC_USDINR_ONLY if mode == "synthetic"
                                    else DataMode.LIVE_USDINR_EXCHANGES)
@@ -1039,14 +1063,22 @@ async def get_sentiment_bias(
     )
 
 
+def _instrument_info(symbol: str) -> Dict[str, Any]:
+    spec = get_instrument(symbol)
+    return {"display": spec.display, "pip_size": spec.pip_size, "price_decimals": spec.price_decimals,
+            "tick_size": spec.futures.tick_size if spec.futures else spec.tick_size,
+            "quote_unit": spec.quote_unit, "exchange_listed": spec.futures is not None}
+
+
 @app.get("/symbols")
 async def get_symbols():
     """Get list of available symbols."""
     return {
         "symbols": DEFAULT_SYMBOLS,
         "active": DEFAULT_SYMBOLS,
-        "requested": REQUESTED_SYMBOLS or DEFAULT_SYMBOLS,
+        "requested": REQUESTED_SYMBOLS,
         "unsupported": UNSUPPORTED_SYMBOLS,
+        "instruments": {s: _instrument_info(s) for s in DEFAULT_SYMBOLS},
     }
 
 
@@ -1221,6 +1253,7 @@ def _feed_status() -> Dict[str, Any]:
         "sources": sources,
         "symbols": DEFAULT_SYMBOLS,
         "unsupported_symbols": UNSUPPORTED_SYMBOLS,
+        "instruments": {s: _instrument_info(s) for s in DEFAULT_SYMBOLS},
         "available": feed_availability(),
     }
 
@@ -1285,6 +1318,7 @@ async def get_live_status():
         quotes[src.source_id] = q
         legs.append({
             "id": src.source_id,
+            "symbol": src.symbol,
             "exchange": src.contract.exchange,
             "provider": src.contract.provider,
             "contract": src.contract.trading_symbol,
@@ -1293,7 +1327,10 @@ async def get_live_status():
             "ask": q.ask if q else None,
             "bid_qty": q.bid_qty if q else None,
             "ask_qty": q.ask_qty if q else None,
-            "spread_paise": round(to_pips(q.ask - q.bid, src.symbol), 4) if q and q.two_sided else None,
+            # in pips of the pair; for INR pairs a pip is one paisa
+            "spread_pips": round(to_pips(q.ask - q.bid, src.symbol), 4) if q and q.two_sided else None,
+            "spread_paise": (round(to_pips(q.ask - q.bid, src.symbol), 4)
+                             if q and q.two_sided and src.symbol.endswith("INR") else None),
             "age_ms": now_ms - q.recv_ts_ms if q else None,
             "recv_ts_ms": q.recv_ts_ms if q else None,
             "last": q.last if q else None,
@@ -1307,7 +1344,9 @@ async def get_live_status():
         # a looping replay re-detects the same recorded opportunities each pass
         "replay_loops": getattr(live_feed_setup.hubs.get("replay"), "loops", None),
         "legs": legs,
-        "cross_spreads": cross_spreads(quotes),
+        "symbols": list(DEFAULT_SYMBOLS),
+        "instruments": {sym: _instrument_info(sym) for sym in DEFAULT_SYMBOLS},
+        "cross_spreads": cross_spreads(quotes, {s.source_id: s.symbol for s in live_feed_setup.sources}),
         "opportunities_seen": len(live_opportunities),
         "recent_opportunities": list(live_opportunities)[-20:],
         "hubs": {name: hub.stats() for name, hub in live_feed_setup.hubs.items()},
@@ -1409,7 +1448,8 @@ async def get_research_config():
     
     return {
         "mode": current_data_mode().value,
-        "symbol": RESEARCH_SYMBOL,
+        "symbol": DEFAULT_SYMBOLS[0] if DEFAULT_SYMBOLS else RESEARCH_SYMBOL,
+        "symbols": list(DEFAULT_SYMBOLS),
         "sessions": {
             session.value: {
                 "volatility_multiplier": cfg.volatility_multiplier,
@@ -1480,6 +1520,7 @@ async def get_research_sources():
         stats = source.get_stats()
         sources_info.append({
             "source_id": source.source_id,
+            "symbol": source.symbol,
             "session": source.session.value,
             "provider": source.provider.value,
             "connected": source.is_connected,
@@ -1506,28 +1547,33 @@ async def get_research_sources():
 
 
 @app.get("/research/price-comparison")
-async def get_research_price_comparison():
+async def get_research_price_comparison(symbol: Optional[str] = None):
     """
     Get current prices from all sources for cross-session/cross-provider comparison.
     
-    Returns price matrix organized by session and provider.
+    Returns price matrix organized by session and provider, for one pair
+    (`?symbol=EURINR`; default: the first active pair).
     """
     if not is_synthetic_mode():
         return {"error": "Research endpoints only available in SYNTHETIC_USDINR_ONLY mode"}
+    symbol = (symbol or (DEFAULT_SYMBOLS[0] if DEFAULT_SYMBOLS else RESEARCH_SYMBOL)).upper()
+    if symbol not in DEFAULT_SYMBOLS:
+        return {"error": f"{symbol} is not an active pair; active: {DEFAULT_SYMBOLS}"}
+    decimals = get_instrument(symbol).price_decimals
     
     # Get reference price
     from backend.core.data_sources.session_synthetic_source import SharedReferencePrice
-    ref_price = SharedReferencePrice().get_price()
+    ref_price = SharedReferencePrice(symbol).get_price()
     
     # Build comparison matrix
     comparison = {
-        "reference_price": round(ref_price, 4),
-        "symbol": RESEARCH_SYMBOL,
+        "reference_price": round(ref_price, decimals),
+        "symbol": symbol,
         "timestamp_ms": int(time.time() * 1000),
         "sessions": {},
     }
     
-    for source in synthetic_sources:
+    for source in (s for s in synthetic_sources if s.symbol == symbol):
         session = source.session.value
         provider = source.provider.value
         stats = source.get_stats()
@@ -1539,8 +1585,8 @@ async def get_research_price_comparison():
             "bid": stats.get("current_bid"),
             "ask": stats.get("current_ask"),
             "mid": stats.get("current_price"),
-            "drift_from_ref": round(stats.get("current_price", 0) - ref_price, 4),
-            "spread_pips": round(to_pips(stats.get("current_ask", 0) - stats.get("current_bid", 0), RESEARCH_SYMBOL), 2),
+            "drift_from_ref": round(stats.get("current_price", 0) - ref_price, decimals),
+            "spread_pips": round(to_pips(stats.get("current_ask", 0) - stats.get("current_bid", 0), symbol), 2),
         }
     
     # Calculate cross-session spreads
@@ -1551,7 +1597,7 @@ async def get_research_price_comparison():
             # Compare Bloomberg prices across sessions
             if "Bloomberg" in comparison["sessions"][s1] and "Bloomberg" in comparison["sessions"][s2]:
                 diff = comparison["sessions"][s1]["Bloomberg"]["mid"] - comparison["sessions"][s2]["Bloomberg"]["mid"]
-                cross_session[f"{s1}_vs_{s2}_bloomberg"] = round(to_pips(diff, RESEARCH_SYMBOL), 2)
+                cross_session[f"{s1}_vs_{s2}_bloomberg"] = round(to_pips(diff, symbol), 2)
     
     comparison["cross_session_diff_pips"] = cross_session
     
@@ -1930,7 +1976,7 @@ async def get_context_analysis():
         session = SessionContext.OFF_HOURS
     
     # Use appropriate symbol based on mode
-    analysis_symbol = RESEARCH_SYMBOL if is_synthetic_mode() else "EURUSD"
+    analysis_symbol = DEFAULT_SYMBOLS[0] if DEFAULT_SYMBOLS else RESEARCH_SYMBOL
     
     # Perform analysis
     context_input = ContextInput(

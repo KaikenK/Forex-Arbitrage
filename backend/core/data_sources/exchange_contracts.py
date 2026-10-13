@@ -1,5 +1,5 @@
 """
-Exchange-listed USD/INR futures contracts: selection helpers.
+Exchange-listed currency futures contracts (NSE/BSE): selection helpers.
 
 Cross-exchange arbitrage (NSE vs BSE) is only meaningful when both legs are the
 *same* contract — same underlying, same contract size and, crucially, the same
@@ -24,9 +24,10 @@ class FutureContract:
     trading_symbol: str
     expiry: date
     lot_size: int
-    contract_size: float     # USD per lot (1000 for USDINR)
+    contract_size: float     # base currency per lot (1000 for USDINR)
     weekly: bool = False
     provider: str = ""
+    symbol: str = "USDINR"   # underlying pair
 
     def to_dict(self) -> dict:
         return {
@@ -38,6 +39,7 @@ class FutureContract:
             "contract_size": self.contract_size,
             "weekly": self.weekly,
             "provider": self.provider,
+            "symbol": self.symbol,
         }
 
 
@@ -63,7 +65,7 @@ def pick_near_month(
     """Nearest unexpired contract; monthly preferred over weekly when present."""
     live = _live(contracts, as_of, min_days_to_expiry)
     if not live:
-        raise LookupError(f"no USDINR future with >= {min_days_to_expiry} days to expiry as of {as_of}")
+        raise LookupError(f"no future with >= {min_days_to_expiry} days to expiry as of {as_of}")
     if prefer_monthly:
         monthly = [c for c in live if not c.weekly]
         if monthly:
@@ -94,7 +96,7 @@ def select_common_expiry(
         shared = set(expiries) if shared is None else shared & set(expiries)
     if not shared:
         detail = {ex: sorted(e.isoformat() for e in exps) for ex, exps in live.items()}
-        raise NoCommonExpiryError(f"no common monthly USDINR expiry across exchanges: {detail}")
+        raise NoCommonExpiryError(f"no common monthly expiry across exchanges: {detail}")
 
     expiry = min(shared)
     return {exchange: live[exchange][expiry] for exchange in live}

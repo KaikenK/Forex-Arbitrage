@@ -50,3 +50,11 @@ def test_quotes_parse_depth_and_ist_trade_time():
     # 10:30 IST == 05:00 UTC
     assert q.exchange_ts_ms == 1791522000000
     assert q.two_sided
+
+
+def test_instruments_return_every_requested_pair_with_lot_sizes():
+    contracts = parse_kite_instruments(INSTRUMENTS_CSV, exchange="NSE", symbols=["USDINR", "EURINR"])
+    eur = [c for c in contracts if c.symbol == "EURINR"]
+    assert [c.trading_symbol for c in eur] == ["EURINR26OCTFUT"]
+    assert eur[0].weekly is False and eur[0].contract_size == 1000
+    assert {c.symbol for c in contracts} == {"USDINR", "EURINR"}

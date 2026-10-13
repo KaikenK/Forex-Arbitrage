@@ -3,12 +3,15 @@ Pre-flight check for live mode: run this on your machine before a demo.
 
     python research/check_live_feeds.py                 # Upstox (+ Kite if creds set)
     python research/check_live_feeds.py --providers upstox
+    python research/check_live_feeds.py --symbols all   # every NSE/BSE-listed pair
 
-For each provider and exchange it resolves the USD/INR futures, picks the
-common expiry, fetches ONE quote for every leg in a single request, and prints
-the books plus the executable cross-spread. If an exchange resolves no
-contracts it prints the segments that mention USDINR in the master, which is
-how to fix a wrong segment code (BSE currency futures are expected as BCD_FO).
+For each provider, exchange and pair it resolves the futures, picks the common
+expiry per pair, fetches ONE quote for every leg in a single request per
+provider, and prints the books plus the executable cross-spread per pair. Pairs
+that cannot be set up are listed with the reason (e.g. not listed on BSE). If
+an exchange resolves no contracts it prints the segments that mention each pair
+in the master, which is how to fix a wrong segment code (BSE currency futures
+are expected as BCD_FO). --symbols defaults to ARBEX_SYMBOLS, else USDINR.
 
 Reads credentials from the environment / .env (UPSTOX_ACCESS_TOKEN,
 KITE_API_KEY, KITE_ACCESS_TOKEN). Never places orders.
@@ -29,14 +32,16 @@ try:
 except ImportError:
     pass
 
+from backend.config import configured_symbols  # noqa: E402
 from backend.core.data_sources.live_feeds import (  # noqa: E402
     LiveFeedUnavailable,
     build_live_exchange_sources,
     cross_spreads,
 )
+from backend.core.instruments import parse_symbol_list  # noqa: E402
 
 
-def _diagnose_upstox_segments(exchange: str) -> None:
+def _diagnose_upstox_segments(exchange: str, symbols) -> None:
     import gzip
     import json
     from backend.core.data_sources.upstox_feed import _CACHE_DIR
@@ -48,9 +53,10 @@ def _diagnose_upstox_segments(exchange: str) -> None:
         rows = json.loads(gzip.decompress(raw))
     except OSError:
         rows = json.loads(raw)
-    segs = sorted({(r.get("segment"), r.get("instrument_type")) for r in rows
-                   if "USDINR" in str(r.get("name")) + str(r.get("trading_symbol"))})
-    print(f"    USDINR rows in Upstox {exchange} master by (segment, type): {segs or 'none'}")
+    for sym in symbols:
+        segs = sorted({(r.get("segment"), r.get("instrument_type")) for r in rows
+                       if sym in str(r.get("name")) + str(r.get("trading_symbol"))})
+        print(f"    {sym} rows in Upstox {exchange} master by (segment, type): {segs or 'none'}")
 
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -77,17 +83,20 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--providers", default="upstox,kite")
     ap.add_argument("--exchanges", default="NSE,BSE")
+    ap.add_argument("--symbols", default=None, help='e.g. "USDINR,EURINR" or "all" (default: ARBEX_SYMBOLS)')
     args = ap.parse_args()
+    symbols = parse_symbol_list(args.symbols) if args.symbols else configured_symbols()
+    print(f"Pairs: {', '.join(symbols)}")
 
     try:
         setup = build_live_exchange_sources(
-            providers=args.providers.split(","), exchanges=args.exchanges.split(","),
+            symbols=symbols, providers=args.providers.split(","), exchanges=args.exchanges.split(","),
             as_of=date.today(), record_dir="off")
     except LiveFeedUnavailable as e:
         print(f"FAIL: {e}")
         if "upstox" in args.providers:
             for ex in args.exchanges.split(","):
-                _diagnose_upstox_segments(ex)
+                _diagnose_upstox_segments(ex, symbols)
         return 1
 
     print("Legs:")
@@ -112,9 +121,15 @@ def main() -> int:
                     else f"NO two-sided book (last {q.last if q else None})")
             print(f"  {s.source_id:22s} {book}")
 
-    print("\nExecutable cross-spread (paise; > 0 means crossed = arbitrage before costs):")
-    for row in cross_spreads(quotes) or [{"note": "fewer than two two-sided books right now"}]:
-        print(f"  {row}")
+    print("\nExecutable cross-spread per pair (INR pairs in paise, others in pips;"
+          " > 0 means crossed = arbitrage before costs):")
+    rows = cross_spreads(quotes, {s.source_id: s.symbol for s in setup.sources})
+    for sym in symbols:
+        mine = [r for r in rows if r["symbol"] == sym]
+        if sym in setup.skipped and not mine:
+            print(f"  {sym}: skipped - {setup.skipped[sym]}")
+        for row in mine or ([] if sym in setup.skipped else [{"note": "fewer than two two-sided books right now"}]):
+            print(f"  {sym}: {row}")
     print("\n" + _verdict(quotes, datetime.now(IST)))
     return 0
 

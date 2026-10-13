@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { InstrumentInfo } from '@/lib/instruments';
 
 // --------------------------------------------------------
 // Interfaces matching the Python Backend Payloads
@@ -107,6 +108,9 @@ export interface FeedStatus {
   replay_session: string | null;
   last_error: string | null;
   sources: string[];
+  symbols?: string[];                 // pairs the running feed produces
+  unsupported_symbols?: string[];     // requested in ARBEX_SYMBOLS but not available
+  instruments?: Record<string, InstrumentInfo>;
   available: {
     switchable: boolean;
     synthetic: FeedModeAvailability;
@@ -139,6 +143,9 @@ interface ArbexState {
   // charts and buffers can drop data from the previous feed.
   feedStatus: FeedStatus | null;
   feedEpoch: number;
+
+  // Currency pair shown in the price, depth and venue panels
+  selectedSymbol: string;
   
   // Actions
   setConnectionStatus: (status: boolean) => void;
@@ -148,7 +155,10 @@ interface ArbexState {
   setMetrics: (totalTicks: number, detectionRate: number) => void;
   setFeedStatus: (status: FeedStatus) => void;
   resetMarketData: () => void;
+  setSelectedSymbol: (symbol: string) => void;
 }
+
+export const SYMBOL_KEY = 'arbex-selected-symbol';
 
 const emptyMarket = {
   activePairs: {},
@@ -174,6 +184,8 @@ export const useArbexStore = create<ArbexState>()(
     topCompositeScore: 0,
     feedStatus: null,
     feedEpoch: 0,
+    // restored from localStorage after mount (PairPicker), so server and client render alike
+    selectedSymbol: 'USDINR',
     
     // Writers
     setConnectionStatus: (status) => set({ isConnected: status }),
@@ -211,10 +223,19 @@ export const useArbexStore = create<ArbexState>()(
 
     setFeedStatus: (status) => set((state) => {
       const changed = state.feedStatus?.mode != null && state.feedStatus.mode !== status.mode;
+      // keep the chosen pair if the feed still has it, else fall back to its first pair
+      const symbols = status.symbols ?? [];
+      const selectedSymbol = symbols.length && !symbols.includes(state.selectedSymbol)
+        ? symbols[0] : state.selectedSymbol;
       return changed
-        ? { feedStatus: status, ...emptyMarket, feedEpoch: state.feedEpoch + 1 }
-        : { feedStatus: status };
+        ? { feedStatus: status, selectedSymbol, ...emptyMarket, feedEpoch: state.feedEpoch + 1 }
+        : { feedStatus: status, selectedSymbol };
     }),
+
+    setSelectedSymbol: (symbol) => {
+      try { window.localStorage.setItem(SYMBOL_KEY, symbol); } catch {}
+      set({ selectedSymbol: symbol });
+    },
 
     resetMarketData: () => set((state) => ({ ...emptyMarket, feedEpoch: state.feedEpoch + 1 })),
   }))

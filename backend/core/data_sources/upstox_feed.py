@@ -1,5 +1,6 @@
 """
-Upstox (API v2) feed — NSE and BSE USD/INR currency futures. Free.
+Upstox (API v2) feed — NSE and BSE currency futures (USDINR, EURINR, GBPINR,
+JPYINR and the EURUSD/GBPUSD/USDJPY cross-currency futures). Free.
 
 Ported from the `arbex-pivot` branch (`upstox_instruments.py`,
 `upstox_data_source.py`, verified live there on 2026-08-31) and generalised:
@@ -40,11 +41,12 @@ from typing import Dict, List, Optional
 
 from backend.core.data_sources.exchange_contracts import FutureContract
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote, QuoteAuthError
+from backend.core.instruments import futures_lot_units
 
 logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
-UNDERLYING = "USDINR"
+UNDERLYING = "USDINR"   # default when no symbols are requested
 QUOTE_URL = "https://api.upstox.com/v2/market-quote/quotes"
 MASTER_URL = "https://assets.upstox.com/market-quote/instruments/exchange/{exchange}.json.gz"
 SEGMENTS = {"NSE": "NCD_FO", "BSE": "BCD_FO"}
@@ -71,14 +73,18 @@ def _as_int(v) -> Optional[int]:
 
 # -- instrument master -------------------------------------------------------
 
-def parse_upstox_master(rows: List[dict], *, exchange: str) -> List[FutureContract]:
-    """USDINR futures for one exchange from an Upstox instrument-master array."""
+def parse_upstox_master(rows: List[dict], *, exchange: str,
+                        symbols: Optional[List[str]] = None) -> List[FutureContract]:
+    """Currency futures on `symbols` (default USDINR) for one exchange, from an
+    Upstox instrument-master array."""
     segment = SEGMENTS[exchange]
+    wanted = set(symbols or [UNDERLYING])
     out: List[FutureContract] = []
     for r in rows:
         if r.get("segment") != segment or r.get("instrument_type") != "FUT":
             continue
-        if UNDERLYING not in (r.get("name"), r.get("underlying_symbol")):
+        underlying = next((n for n in (r.get("underlying_symbol"), r.get("name")) if n in wanted), None)
+        if underlying is None:
             continue
         ms = _as_int(r.get("expiry"))
         if ms is None:
@@ -89,14 +95,17 @@ def parse_upstox_master(rows: List[dict], *, exchange: str) -> List[FutureContra
             trading_symbol=str(r.get("trading_symbol", "")),
             expiry=datetime.fromtimestamp(ms / 1000, tz=IST).date(),
             lot_size=int(r.get("lot_size") or 1),
-            contract_size=float(r.get("qty_multiplier") or 1000.0),
+            contract_size=float(r.get("qty_multiplier") or futures_lot_units(underlying)),
             weekly=bool(r.get("weekly", False)),
             provider="upstox",
+            symbol=underlying,
         ))
-    return sorted(out, key=lambda c: c.expiry)
+    return sorted(out, key=lambda c: (c.symbol, c.expiry))
 
 
-def load_upstox_contracts(exchange: str, *, force: bool = False) -> List[FutureContract]:
+
+def load_upstox_contracts(exchange: str, symbols: Optional[List[str]] = None, *,
+                          force: bool = False) -> List[FutureContract]:
     """Download (12 h cache) the public instrument master and parse it. No auth needed."""
     cache = _CACHE_DIR / f"upstox_{exchange.lower()}_instruments.json.gz"
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +119,7 @@ def load_upstox_contracts(exchange: str, *, force: bool = False) -> List[FutureC
         rows = json.loads(gzip.decompress(raw))
     except OSError:
         rows = json.loads(raw)
-    return parse_upstox_master(rows, exchange=exchange)
+    return parse_upstox_master(rows, exchange=exchange, symbols=symbols)
 
 
 # -- quotes ------------------------------------------------------------------

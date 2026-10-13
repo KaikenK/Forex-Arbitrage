@@ -11,6 +11,8 @@ import { GlobalRanking } from '@/components/dashboard/GlobalRanking';
 import { ExecutionPanel } from '@/components/dashboard/ExecutionPanel';
 import { SentimentWorkbench } from '@/components/dashboard/SentimentWorkbench';
 import { FeedModeToggle } from '@/components/dashboard/FeedModeToggle';
+import { PairPicker } from '@/components/dashboard/PairPicker';
+import { useInstrument } from '@/hooks/useInstrument';
 
 export default function ArbexDashboard() {
   // Initialize the Buffered WebSocket Connection
@@ -20,6 +22,7 @@ export default function ArbexDashboard() {
   const feedMode = useArbexStore((state) => state.feedStatus?.mode ?? null);
   const feedEpoch = useArbexStore((state) => state.feedEpoch);
   const venueMode = feedMode === 'live' || feedMode === 'replay';
+  const instrument = useInstrument();
 
   return (
     <div className="bg-[#08090d] text-[#e8ecf4] min-h-screen font-sans overflow-hidden flex flex-col">
@@ -33,6 +36,7 @@ export default function ArbexDashboard() {
           <div className="ml-2">
             <FeedModeToggle />
           </div>
+          <PairPicker />
         </div>
 
         <div className="flex items-center gap-4">
@@ -45,7 +49,7 @@ export default function ArbexDashboard() {
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
           <div className="text-[11px] text-slate-400 font-mono tracking-widest">
-            {venueMode ? 'USD/INR FUT · NSE / BSE' : 'SYNTHETIC USD/INR'}
+            {venueMode ? `${instrument.display} FUT · NSE / BSE` : `SYNTHETIC ${instrument.display}`}
           </div>
         </div>
       </header>
@@ -72,7 +76,7 @@ export default function ArbexDashboard() {
           </header>
           <div className="flex-1 overflow-y-auto p-2.5 custom-scrollbar">
             {/* remount on every feed switch so no line carries over from the previous feed */}
-            <SessionChartGrid key={feedEpoch} venueMode={venueMode} />
+            <SessionChartGrid key={`${feedEpoch}-${instrument.symbol}`} venueMode={venueMode} />
           </div>
         </section>
 

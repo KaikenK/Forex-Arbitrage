@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useArbexStore, RankedOpportunity } from '@/lib/store';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { spreadUnit } from '@/lib/instruments';
 
 const getConfidenceColor = (score: number) => {
   if (score >= 90) return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
@@ -53,7 +54,7 @@ const OpportunityCard = ({ rankObj }: { rankObj: RankedOpportunity }) => {
 
           <div className="flex flex-col items-end">
              <span className="text-[14px] font-mono text-emerald-400 font-bold tracking-tight">
-               +{opportunity.estimated_profit_pips.toFixed(1)} PIPS
+               +{opportunity.estimated_profit_pips.toFixed(2)} {spreadUnit(opportunity.symbols[0] ?? '')}
              </span>
              <span className="text-[9px] text-slate-500 font-mono tracking-widest">
                {rankObj.duration_ms}ms TTL

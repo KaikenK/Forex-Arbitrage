@@ -5,8 +5,8 @@ import { FeedMode } from '@/lib/store';
 import { useFeedMode } from '@/hooks/useFeedMode';
 
 const MODES: { mode: FeedMode; label: string; title: string }[] = [
-  { mode: 'synthetic', label: 'Synthetic', title: 'Six generated Bloomberg/Reuters x session feeds' },
-  { mode: 'live', label: 'Live', title: 'Real NSE/BSE USD/INR futures books (Upstox / Kite)' },
+  { mode: 'synthetic', label: 'Synthetic', title: 'Generated Bloomberg/Reuters x session feeds (six per pair)' },
+  { mode: 'live', label: 'Live', title: 'Real NSE/BSE currency futures books (Upstox / Kite)' },
   { mode: 'replay', label: 'Replay', title: 'Replay a recorded live session' },
 ];
 

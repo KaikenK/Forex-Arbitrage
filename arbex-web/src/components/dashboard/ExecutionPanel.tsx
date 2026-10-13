@@ -3,6 +3,7 @@
 import React from 'react';
 import { useArbexStore } from '@/lib/store';
 import { Card } from '@/components/ui/card';
+import { spreadUnit } from '@/lib/instruments';
 
 const MetricBadge = ({ label, value, unit, color }: { label: string, value: string | number, unit: string, color?: string }) => (
   <div className="flex flex-col bg-[#141620] p-2 rounded border border-[#1e2235]">
@@ -68,8 +69,8 @@ export function ExecutionPanel() {
         <div className="grid grid-cols-2 gap-2">
            <MetricBadge 
              label="Net Profit" 
-             value={opportunity.estimated_profit_pips.toFixed(1)} 
-             unit="PIPS" 
+             value={opportunity.estimated_profit_pips.toFixed(2)} 
+             unit={spreadUnit(opportunity.symbols[0] ?? '')} 
              color="text-emerald-400 font-bold" 
            />
            <MetricBadge 

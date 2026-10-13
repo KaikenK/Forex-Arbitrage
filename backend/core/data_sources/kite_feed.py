@@ -1,5 +1,6 @@
 """
-Zerodha Kite Connect feed — NSE (CDS) and BSE (BCD) USD/INR currency futures.
+Zerodha Kite Connect feed — NSE (CDS) and BSE (BCD) currency futures (USDINR,
+EURINR, GBPINR, JPYINR, EURUSD, GBPUSD, USDJPY).
 
 The low-cost showcase provider: Kite Connect market data costs ₹500/month,
 versus institutional terminals at thousands of dollars. It is a second,
@@ -35,14 +36,15 @@ from typing import Dict, List, Optional
 
 from backend.core.data_sources.exchange_contracts import FutureContract
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote, QuoteAuthError
+from backend.core.instruments import futures_lot_units
 
 logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 API_ROOT = "https://api.kite.trade"
 EXCHANGE_CODES = {"NSE": "CDS", "BSE": "BCD"}
-UNDERLYING = "USDINR"
-_MONTHLY_SYMBOL = re.compile(r"^USDINR\d{2}[A-Z]{3}FUT$")   # weekly: USDINR26O16FUT
+UNDERLYING = "USDINR"   # default when no symbols are requested
+_MONTHLY_SYMBOL = re.compile(r"^[A-Z]{6}\d{2}[A-Z]{3}FUT$")   # weekly: USDINR26O16FUT
 
 
 def _headers(api_key: str, access_token: str) -> Dict[str, str]:
@@ -68,11 +70,13 @@ def _ist_to_ms(text) -> Optional[int]:
 
 # -- instruments -------------------------------------------------------------
 
-def parse_kite_instruments(csv_text: str, *, exchange: str) -> List[FutureContract]:
+def parse_kite_instruments(csv_text: str, *, exchange: str,
+                           symbols: Optional[List[str]] = None) -> List[FutureContract]:
     code = EXCHANGE_CODES[exchange]
+    wanted = set(symbols or [UNDERLYING])
     out: List[FutureContract] = []
     for row in csv.DictReader(io.StringIO(csv_text)):
-        if row.get("name") != UNDERLYING or row.get("instrument_type") != "FUT":
+        if row.get("name") not in wanted or row.get("instrument_type") != "FUT":
             continue
         if row.get("exchange") != code or not row.get("expiry"):
             continue
@@ -83,14 +87,17 @@ def parse_kite_instruments(csv_text: str, *, exchange: str) -> List[FutureContra
             trading_symbol=symbol,
             expiry=date.fromisoformat(row["expiry"]),
             lot_size=int(float(row.get("lot_size") or 1)),
-            contract_size=1000.0,       # 1 lot = USD 1,000 on both NSE and BSE
+            contract_size=futures_lot_units(row["name"]),   # e.g. USD 1,000 per USDINR lot
             weekly=not _MONTHLY_SYMBOL.match(symbol),
             provider="kite",
+            symbol=row["name"],
         ))
-    return sorted(out, key=lambda c: c.expiry)
+    return sorted(out, key=lambda c: (c.symbol, c.expiry))
 
 
-def load_kite_contracts(exchange: str, *, api_key: Optional[str] = None,
+
+def load_kite_contracts(exchange: str, symbols: Optional[List[str]] = None, *,
+                        api_key: Optional[str] = None,
                         access_token: Optional[str] = None) -> List[FutureContract]:
     api_key = api_key or os.environ.get("KITE_API_KEY", "")
     access_token = access_token or os.environ.get("KITE_ACCESS_TOKEN", "")
@@ -98,7 +105,7 @@ def load_kite_contracts(exchange: str, *, api_key: Optional[str] = None,
                                  headers=_headers(api_key, access_token))
     with urllib.request.urlopen(req, timeout=30) as resp:
         text = resp.read().decode("utf-8")
-    return parse_kite_instruments(text, exchange=exchange)
+    return parse_kite_instruments(text, exchange=exchange, symbols=symbols)
 
 
 # -- quotes ------------------------------------------------------------------

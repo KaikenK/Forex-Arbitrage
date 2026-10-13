@@ -3,6 +3,7 @@ import logging
 from backend.core.streaming.adapters.base import BaseStreamAdapter
 from backend.core.streaming.models import TickUpdate, OrderbookUpdate, OrderbookLevel
 from backend.core.data_sources.session_synthetic_source import create_synthetic_sources
+from backend.core.instruments import get_instrument
 
 logger = logging.getLogger(__name__)
 
@@ -11,13 +12,14 @@ class SyntheticStreamAdapter(BaseStreamAdapter):
     Wraps the existing SessionAwareSyntheticSource logic to fit the new
     streaming adapter pattern. Simulates both Tick data and L2 Orderbook data.
     """
-    def __init__(self):
+    def __init__(self, symbols=None):
         super().__init__("Synthetic")
+        self._symbols = symbols
         self._sources = []
 
     async def connect(self):
         logger.info("Initializing Synthetic Stream Adapter sources...")
-        self._sources = create_synthetic_sources()
+        self._sources = create_synthetic_sources(self._symbols)
         for src in self._sources:
             src.connect()
         self._is_running = True
@@ -35,7 +37,7 @@ class SyntheticStreamAdapter(BaseStreamAdapter):
         logger.info("Started Synthetic Stream Adapter loop.")
         while self._is_running:
             for src in self._sources:
-                raw_tick = src.get_tick("USDINR")
+                raw_tick = src.get_tick(src.symbol)
                 if raw_tick:
                     # 1. Emit Tick
                     tick = TickUpdate(
@@ -56,11 +58,12 @@ class SyntheticStreamAdapter(BaseStreamAdapter):
                     # so that different sources look visibly different in the UI
                     vol_multiplier = 1.0 + ((len(raw_tick.source_id) + int(raw_tick.timestamp_ms)) % 5) * 0.2
                     
+                    spec = get_instrument(raw_tick.symbol)
                     for i in range(5):
-                        price_offset = i * 0.005 # 0.5 pip steps
+                        price_offset = i * 0.5 * spec.pip_size  # 0.5 pip steps
                         vol = int((10 - i) * 1000 * vol_multiplier) # Decreasing volume at depth
-                        bids.append(OrderbookLevel(price=round(raw_tick.bid - price_offset, 4), volume=vol))
-                        asks.append(OrderbookLevel(price=round(raw_tick.ask + price_offset, 4), volume=vol))
+                        bids.append(OrderbookLevel(price=round(raw_tick.bid - price_offset, spec.price_decimals), volume=vol))
+                        asks.append(OrderbookLevel(price=round(raw_tick.ask + price_offset, spec.price_decimals), volume=vol))
                         
                     ob = OrderbookUpdate(
                         symbol=raw_tick.symbol,

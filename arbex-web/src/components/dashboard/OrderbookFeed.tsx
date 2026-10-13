@@ -2,21 +2,27 @@
 
 import React, { useMemo } from 'react';
 import { useArbexStore } from '@/lib/store';
-import { sourceLabel } from '@/lib/sources';
+import { sourceLabel, sourceSymbol } from '@/lib/sources';
+import { spreadUnit } from '@/lib/instruments';
+import { useInstrument } from '@/hooks/useInstrument';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
 export function OrderbookFeed() {
   const orderbookData = useArbexStore((state) => state.orderbookData);
+  const { symbol, price_decimals: d, pip_size } = useInstrument();
 
   const [selectedSource, setSelectedSource] = React.useState<string | null>(null);
 
-  const availableSources = useMemo(() => Object.keys(orderbookData), [orderbookData]);
+  // books of the selected pair only
+  const availableSources = useMemo(
+    () => Object.keys(orderbookData).filter((src) => sourceSymbol(src) === symbol).sort(),
+    [orderbookData, symbol],
+  );
 
   const activeOrderbook = useMemo(() => {
     if (availableSources.length === 0) return null;
-    if (selectedSource && orderbookData[selectedSource]) return orderbookData[selectedSource];
-    if (orderbookData['bloomberg_tokyo_usdinr']) return orderbookData['bloomberg_tokyo_usdinr'];
+    if (selectedSource && availableSources.includes(selectedSource)) return orderbookData[selectedSource];
     return orderbookData[availableSources[0]];
   }, [orderbookData, selectedSource, availableSources]);
 
@@ -73,7 +79,7 @@ export function OrderbookFeed() {
                   style={{ width: `${widthPct}%` }}
                 />
                 <span className="text-slate-400 z-10 pl-1">{ask.volume.toLocaleString()}</span>
-                <span className="text-red-400 z-10 pr-1">{ask.price.toFixed(4)}</span>
+                <span className="text-red-400 z-10 pr-1">{ask.price.toFixed(d)}</span>
               </div>
             );
           })}
@@ -83,7 +89,7 @@ export function OrderbookFeed() {
         <div className="flex justify-center items-center py-1 bg-black/20 border-y border-[#1e2235]/50 mb-2">
           <span className="text-slate-500 text-[9px] tracking-widest">
              {activeOrderbook.asks.length && activeOrderbook.bids.length
-               ? `SPREAD: ${((activeOrderbook.asks[0].price - activeOrderbook.bids[0].price) * 100).toFixed(2)} PAISE`
+               ? `SPREAD: ${((activeOrderbook.asks[0].price - activeOrderbook.bids[0].price) / pip_size).toFixed(2)} ${spreadUnit(symbol)}`
                : !activeOrderbook.asks.length && !activeOrderbook.bids.length
                  ? 'EMPTY BOOK · NO ORDERS'
                  : `ONE-SIDED BOOK · NO ${activeOrderbook.asks.length ? 'BIDS' : 'ASKS'}`}
@@ -101,7 +107,7 @@ export function OrderbookFeed() {
                   style={{ width: `${widthPct}%` }}
                 />
                 <span className="text-slate-400 z-10 pl-1">{bid.volume.toLocaleString()}</span>
-                <span className="text-emerald-400 z-10 pr-1">{bid.price.toFixed(4)}</span>
+                <span className="text-emerald-400 z-10 pr-1">{bid.price.toFixed(d)}</span>
               </div>
             );
           })}

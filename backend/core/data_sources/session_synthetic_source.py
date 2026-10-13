@@ -1,11 +1,11 @@
 """
-Session-Aware Synthetic USD/INR Data Source
+Session-Aware Synthetic FX Data Source
 
-Generates synthetic USD/INR tick data with session-specific and provider-specific
+Generates synthetic tick data for USD/INR (and any other pair in ARBEX_SYMBOLS) with session-specific and provider-specific
 characteristics for research-grade arbitrage detection testing.
 
 This module implements a sophisticated synthetic data generation pipeline that:
-1. Maintains a shared reference USD/INR price across all sources
+1. Maintains one shared reference price per currency pair across all sources
 2. Applies session-dependent drift and volatility (Tokyo, London, New York)
 3. Applies provider-specific noise and latency (Bloomberg vs Reuters)
 4. Introduces realistic bid/ask discrepancies for arbitrage detection
@@ -20,10 +20,11 @@ Design Decisions:
 import random
 import time
 import math
+import zlib
 import logging
 import threading
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from backend.core.interfaces.data_source import (
@@ -31,7 +32,7 @@ from backend.core.interfaces.data_source import (
     DataSourceConfig,
     RawTick,
 )
-from backend.core.instruments import pip_size
+from backend.core.instruments import get_instrument, normalize_symbol, pip_size
 from backend.config import (
     TradingSession,
     DataProvider,
@@ -42,14 +43,26 @@ from backend.config import (
     PROVIDER_CONFIGS,
     USDINR_BASE_PRICE,
     SYNTHETIC_GENERATION_CONFIG,
+    RESEARCH_SYMBOL,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _fetch_live_rate(symbol: str) -> Optional[float]:
+    """Today's reference rate for a pair from api.frankfurter.dev (ECB), or None."""
+    import urllib.request, json
+    spec = get_instrument(symbol)
+    url = f"https://api.frankfurter.dev/v1/latest?base={spec.base}&symbols={spec.quote}"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    resp = urllib.request.urlopen(req, timeout=5)
+    rate = json.loads(resp.read()).get("rates", {}).get(spec.quote)
+    return float(rate) * spec.quote_unit if rate else None
+
+
 class SharedReferencePrice:
     """
-    Thread-safe shared reference price for USD/INR.
+    Thread-safe shared reference price for one currency pair (default USD/INR).
     
     All synthetic sources track this reference price with their own
     session-specific and provider-specific modifications. This ensures
@@ -59,50 +72,61 @@ class SharedReferencePrice:
     prevent unbounded drift during long research sessions.
     """
     
-    _instance = None
+    _instances: Dict[str, "SharedReferencePrice"] = {}
     _lock = threading.Lock()
     
-    def __new__(cls):
-        """Singleton pattern for shared reference."""
-        if cls._instance is None:
+    def __new__(cls, symbol: str = RESEARCH_SYMBOL):
+        """One shared reference per pair (singleton per symbol)."""
+        symbol = normalize_symbol(symbol)
+        if symbol not in cls._instances:
             with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
+                if symbol not in cls._instances:
+                    inst = super().__new__(cls)
+                    inst._initialized = False
+                    cls._instances[symbol] = inst
+        return cls._instances[symbol]
     
-    def __init__(self):
+    @classmethod
+    def all(cls) -> List["SharedReferencePrice"]:
+        return list(cls._instances.values())
+    
+    def __init__(self, symbol: str = RESEARCH_SYMBOL):
         if self._initialized:
             return
+        self.symbol = normalize_symbol(symbol)
+        spec = get_instrument(self.symbol)
+        fallback = USDINR_BASE_PRICE if self.symbol == "USDINR" else (spec.ref_price or 1.0)
             
-        # Fetch live USD/INR rate from Frankfurter API
-        live_rate = USDINR_BASE_PRICE
+        # Seed from today's live rate (Frankfurter / ECB) when reachable
+        live_rate = fallback
         try:
-            import urllib.request, json
-            req = urllib.request.Request("https://api.frankfurter.dev/v1/latest?base=USD&symbols=INR", headers={'User-Agent': 'Mozilla/5.0'})
-            resp = urllib.request.urlopen(req, timeout=5)
-            data = json.loads(resp.read())
-            live_rate = data.get("rates", {}).get("INR", USDINR_BASE_PRICE)
-            logger.info(f"Live USD/INR rate fetched from api.frankfurter.dev: {live_rate}")
+            live_rate = _fetch_live_rate(self.symbol) or fallback
+            logger.info(f"Live {spec.display} rate fetched from api.frankfurter.dev: {live_rate}")
         except Exception as e:
-            logger.warning(f"Failed to fetch live USD/INR rate, falling back to config base price {USDINR_BASE_PRICE}: {e}")
+            logger.warning(f"Failed to fetch live {spec.display} rate, falling back to {fallback}: {e}")
 
         self._price = live_rate
         self._base_price = live_rate
         self._last_update_ms = 0
         self._price_lock = threading.Lock()
-        self._rng = random.Random(SYNTHETIC_GENERATION_CONFIG.random_seed)
+        self._rng = random.Random(self._seed_for(SYNTHETIC_GENERATION_CONFIG.random_seed))
         
         # Mean-reversion parameters
         self._mean_reversion_strength = 0.001  # Gentle pull back to base
-        self._volatility = 0.0002  # Base volatility for INR pairs
+        self._volatility = 0.0002  # Relative per-update volatility
         
         # Track price history for analysis
         self._price_history: List[tuple] = []  # (timestamp_ms, price)
         self._max_history_size = 10000
         
         self._initialized = True
-        logger.info(f"SharedReferencePrice initialized at {self._price}")
+        logger.info(f"SharedReferencePrice[{self.symbol}] initialized at {self._price}")
+    
+    def _seed_for(self, seed: Optional[int]) -> Optional[int]:
+        """Distinct but reproducible random path per pair (USDINR keeps the base seed)."""
+        if seed is None or self.symbol == RESEARCH_SYMBOL:
+            return seed
+        return seed + zlib.crc32(self.symbol.encode()) % 10_000
     
     def get_price(self) -> float:
         """Get current reference price."""
@@ -162,8 +186,8 @@ class SharedReferencePrice:
             self._price_history.clear()
             self._last_update_ms = 0
             if seed is not None:
-                self._rng = random.Random(seed)
-            logger.info(f"SharedReferencePrice reset to {self._price}")
+                self._rng = random.Random(self._seed_for(seed))
+            logger.info(f"SharedReferencePrice[{self.symbol}] reset to {self._price}")
     
     def get_history(self) -> List[tuple]:
         """Get price history for analysis."""
@@ -226,8 +250,10 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         self._session_config = SESSION_CONFIGS[session]
         self._provider_config = PROVIDER_CONFIGS[provider]
         
-        # Shared reference price singleton
-        self._reference = SharedReferencePrice()
+        # This source's pair, and that pair's shared reference price
+        self._symbol = normalize_symbol((config.symbols or [RESEARCH_SYMBOL])[0])
+        self._decimals = get_instrument(self._symbol).price_decimals
+        self._reference = SharedReferencePrice(self._symbol)
         
         # Local price state (tracks reference with modifications)
         self._local_price: float = 0.0
@@ -260,6 +286,10 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         )
     
     @property
+    def symbol(self) -> str:
+        return self._symbol
+    
+    @property
     def session(self) -> TradingSession:
         """Get the trading session."""
         return self._session
@@ -282,7 +312,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
             self._ema_price = self._local_price
             
             # Calculate initial spread
-            pip_value = pip_size("USDINR")
+            pip_value = pip_size(self._symbol)
             half_spread = (self._session_config.spread_pips * pip_value) / 2
             
             self._local_bid = self._local_price - half_spread
@@ -292,7 +322,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
             
             logger.info(
                 f"[{self.source_id}] Connected - "
-                f"Initial price: {self._local_price:.4f}, "
+                f"Initial price: {self._local_price:.{self._decimals}f}, "
                 f"Spread: {self._session_config.spread_pips} pips"
             )
             return True
@@ -309,7 +339,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
     
     def get_tick(self, symbol: str) -> Optional[RawTick]:
         """
-        Get the next synthetic tick for USD/INR.
+        Get the next synthetic tick for this source's pair.
         
         Generates a tick with:
         - Session-specific volatility and spread
@@ -319,7 +349,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         Rate limited by SYNTHETIC_GENERATION_CONFIG.tick_interval_ms
         
         Args:
-            symbol: Currency pair symbol (must be USDINR)
+            symbol: Currency pair symbol (must be this source's pair)
         
         Returns:
             RawTick with synthetic price data, or None if too soon
@@ -327,9 +357,8 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         if not self._is_connected:
             return None
         
-        symbol = symbol.upper()
-        if symbol != "USDINR":
-            logger.warning(f"[{self.source_id}] Only USDINR supported, got {symbol}")
+        symbol = normalize_symbol(symbol)
+        if symbol != self._symbol:
             return None
         
         # Rate limit: only generate new tick if enough time has passed
@@ -483,8 +512,8 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         # ============================================================
         raw_tick = RawTick(
             symbol=symbol,
-            bid=round(bid, 4),
-            ask=round(ask, 4),
+            bid=round(bid, self._decimals),
+            ask=round(ask, self._decimals),
             timestamp_ms=tick_time_ms,
             source_id=self.source_id,
             volume=self._rng.randint(100, 10000),  # Synthetic volume
@@ -511,8 +540,8 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         return self._is_connected
     
     def get_supported_symbols(self) -> List[str]:
-        """Get list of supported symbols (USDINR only)."""
-        return ["USDINR"]
+        """The one pair this source generates."""
+        return [self._symbol]
     
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics for synthetic data source."""
@@ -521,11 +550,12 @@ class SessionAwareSyntheticSource(DataSourceInterface):
             "session": self._session.value,
             "provider": self._provider.value,
             "generated_count": self._generated_count,
-            "current_price": round(self._local_price, 4),
-            "current_bid": round(self._local_bid, 4),
-            "current_ask": round(self._local_ask, 4),
-            "session_drift": round(self._session_drift, 4),
-            "reference_price": round(self._reference.get_price(), 4),
+            "symbol": self._symbol,
+            "current_price": round(self._local_price, self._decimals),
+            "current_bid": round(self._local_bid, self._decimals),
+            "current_ask": round(self._local_ask, self._decimals),
+            "session_drift": round(self._session_drift, self._decimals),
+            "reference_price": round(self._reference.get_price(), self._decimals),
             "session_config": {
                 "volatility_multiplier": self._session_config.volatility_multiplier,
                 "spread_pips": self._session_config.spread_pips,
@@ -538,11 +568,30 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         return base_stats
 
 
-def create_synthetic_sources() -> List[SessionAwareSyntheticSource]:
+def synthetic_feeds_for(symbol: str) -> List[SyntheticFeedConfig]:
+    """The six session x provider feeds for one pair.
+
+    USDINR keeps the configured ids (bloomberg_tokyo_usdinr, ...); other pairs
+    get the same feeds with their own suffix (bloomberg_tokyo_eurinr, ...).
     """
-    Factory function to create all six USD/INR synthetic sources.
+    from backend.config import SYNTHETIC_FEEDS
+    symbol = normalize_symbol(symbol)
+    if symbol == RESEARCH_SYMBOL:
+        return list(SYNTHETIC_FEEDS)
+    display = get_instrument(symbol).display
+    return [
+        replace(f, symbol=symbol,
+                source_id=f.source_id.rsplit("_", 1)[0] + "_" + symbol.lower(),
+                display_name=f.display_name.replace("USD/INR", display))
+        for f in SYNTHETIC_FEEDS
+    ]
+
+
+def create_synthetic_sources(symbols: Optional[List[str]] = None) -> List[SessionAwareSyntheticSource]:
+    """
+    Six synthetic sources (3 sessions x 2 providers) per currency pair.
     
-    Creates:
+    For USDINR (the default):
     - bloomberg_tokyo_usdinr
     - reuters_tokyo_usdinr
     - bloomberg_london_usdinr
@@ -550,42 +599,44 @@ def create_synthetic_sources() -> List[SessionAwareSyntheticSource]:
     - bloomberg_newyork_usdinr
     - reuters_newyork_usdinr
     
+    Args:
+        symbols: Pairs to generate (default: USDINR only)
+    
     Returns:
         List of configured SessionAwareSyntheticSource instances
     """
-    from backend.config import SYNTHETIC_FEEDS
-    
     sources = []
     
-    for feed_cfg in SYNTHETIC_FEEDS:
-        # Get provider config for latency/reliability
-        provider_cfg = PROVIDER_CONFIGS[feed_cfg.provider]
-        
-        # Create data source config
-        ds_config = DataSourceConfig(
-            source_id=feed_cfg.source_id,
-            source_type="synthetic_session",
-            display_name=feed_cfg.display_name,
-            priority=feed_cfg.priority,
-            latency_estimate_ms=provider_cfg.latency_ms,
-            reliability_score=provider_cfg.reliability_score,
-            symbols=[feed_cfg.symbol],
-            extra_config={
-                "session": feed_cfg.session.value,
-                "provider": feed_cfg.provider.value,
-            }
-        )
-        
-        # Create synthetic source
-        source = SessionAwareSyntheticSource(
-            config=ds_config,
-            session=feed_cfg.session,
-            provider=feed_cfg.provider,
-            feed_config=feed_cfg,
-        )
-        
-        sources.append(source)
-        logger.info(f"Created synthetic source: {feed_cfg.source_id}")
+    for symbol in symbols or [RESEARCH_SYMBOL]:
+        for feed_cfg in synthetic_feeds_for(symbol):
+            # Get provider config for latency/reliability
+            provider_cfg = PROVIDER_CONFIGS[feed_cfg.provider]
+            
+            # Create data source config
+            ds_config = DataSourceConfig(
+                source_id=feed_cfg.source_id,
+                source_type="synthetic_session",
+                display_name=feed_cfg.display_name,
+                priority=feed_cfg.priority,
+                latency_estimate_ms=provider_cfg.latency_ms,
+                reliability_score=provider_cfg.reliability_score,
+                symbols=[feed_cfg.symbol],
+                extra_config={
+                    "session": feed_cfg.session.value,
+                    "provider": feed_cfg.provider.value,
+                }
+            )
+            
+            # Create synthetic source
+            source = SessionAwareSyntheticSource(
+                config=ds_config,
+                session=feed_cfg.session,
+                provider=feed_cfg.provider,
+                feed_config=feed_cfg,
+            )
+            
+            sources.append(source)
+            logger.info(f"Created synthetic source: {feed_cfg.source_id}")
     
     return sources
 
@@ -597,5 +648,6 @@ def reset_synthetic_state(seed: Optional[int] = None) -> None:
     Args:
         seed: Optional random seed for reproducibility
     """
-    SharedReferencePrice().reset(seed)
+    for reference in SharedReferencePrice.all() or [SharedReferencePrice()]:
+        reference.reset(seed)
     logger.info("Reset synthetic state for new research session")

@@ -39,7 +39,7 @@ class QuoteRecorder:
             c = self._contracts.get(key)
             day = datetime.fromtimestamp(q.recv_ts_ms / 1000, tz=timezone.utc).date().isoformat()
             lines.append(json.dumps({
-                "symbol": "USDINR",
+                "symbol": c.symbol if c else None,
                 "instrument_key": key,
                 "provider": c.provider if c else hub_name,
                 "exchange": c.exchange if c else None,
