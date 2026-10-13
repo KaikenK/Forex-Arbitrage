@@ -1061,6 +1061,15 @@ async def get_recent_arbitrage(limit: int = 20):
     }
 
 
+@app.get("/live")
+async def live_monitor_page():
+    """Self-updating view of the live exchange legs (polls /live/status)."""
+    page = FRONTEND_DIR / "live_monitor.html"
+    if page.exists():
+        return FileResponse(str(page))
+    return {"error": "frontend/live_monitor.html not found"}
+
+
 @app.get("/live/status")
 async def get_live_status():
     """
@@ -1088,6 +1097,8 @@ async def get_live_status():
             "ask_qty": q.ask_qty if q else None,
             "spread_paise": round((q.ask - q.bid) / 0.01, 4) if q and q.two_sided else None,
             "age_ms": now_ms - q.recv_ts_ms if q else None,
+            "recv_ts_ms": q.recv_ts_ms if q else None,
+            "last": q.last if q else None,
             "exchange_ts_ms": q.exchange_ts_ms if q else None,
             "healthy": src.is_healthy(),
             "suppressed_reason": src.get_stats()["suppressed_reason"],

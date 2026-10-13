@@ -93,12 +93,13 @@ pass; `/live/status` shows `replay_loops`. Set `ARBEX_REPLAY_LOOP=0` to play onc
 
 | endpoint | shows |
 |---|---|
+| `GET /live` | **the page to present**: self-updating view of both books, the best executable spread, price and spread charts, opportunities and feed health (works offline, light/dark, phone-friendly) |
 | `GET /live/status` | each venue's live book, spread, quote age, and the NSE↔BSE executable spread in paise; recent opportunities |
 | `GET /health` | per-leg health, suppression reasons, skipped feeds and why |
 | `GET /sources` | per-leg stats incl. hub latency and poll counts |
 | `GET /arbitrage/stats` | engine counters (only `cross_source` fires in live mode) |
 
-A good demo sequence: show `/live/status` live; point out both books share one
+A good demo sequence: open `/live`; point out both books share one
 timestamp; show a BSE leg suppressed for having no two-sided book (evidence, not
 a bug); then replay a full recorded session at speed to show detections and the
 recorded `opportunities.jsonl`.

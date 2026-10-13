@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arbex Live Monitor</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --up-text: #006300;
+    --crossed-wash: rgba(12, 163, 12, 0.10);
+    --flash: rgba(11, 11, 11, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface-1: #1a1a19;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --up-text: #0ca30c;
+      --crossed-wash: rgba(12, 163, 12, 0.16);
+      --flash: rgba(255, 255, 255, 0.08);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --up-text: #0ca30c;
+    --crossed-wash: rgba(12, 163, 12, 0.16);
+    --flash: rgba(255, 255, 255, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 18px; }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0 auto 0 0; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-secondary); font-size: 13px; white-space: nowrap;
+  }
+  .pill strong { color: var(--text-primary); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  button.pill { cursor: pointer; font: inherit; font-size: 13px; }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .label { color: var(--text-secondary); font-size: 13px; }
+  .muted { color: var(--text-muted); }
+
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: end; margin-bottom: 14px; }
+  .hero-value { font-size: 52px; font-weight: 600; line-height: 1.05; margin: 4px 0 6px; }
+  .hero-value.crossed { color: var(--up-text); }
+  .hero-sub { color: var(--text-secondary); max-width: 62ch; }
+  .hero-side { text-align: right; color: var(--text-secondary); font-size: 13px; }
+  .hero-side div + div { margin-top: 2px; }
+
+  .legs { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .leg-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+  .leg-head strong { font-size: 15px; font-weight: 600; }
+  .leg-contract { color: var(--text-muted); font-size: 12px; margin-bottom: 10px; }
+  .book { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-bottom: 10px; }
+  .book .label { font-size: 12px; }
+  .book .px { font-size: 22px; font-weight: 600; }
+  .book .qty { color: var(--text-secondary); font-size: 12px; }
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+  .meta dt { color: var(--text-secondary); }
+  .meta dd { margin: 0; text-align: right; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 10px; color: var(--text-primary); }
+  .status svg { flex: none; }
+  .flash { animation: flash 0.9s ease-out; }
+  @keyframes flash { from { background: var(--flash); } to { background: transparent; } }
+
+  .charts { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-bottom: 14px; }
+  .chart-title { font-weight: 600; margin: 0; }
+  .chart-sub { color: var(--text-secondary); font-size: 13px; margin: 2px 0 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; min-height: 18px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+  .plot { position: relative; height: 230px; }
+  .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 13px; text-align: center; padding: 0 20px; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 2; min-width: 150px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 8px 10px; font-size: 12px; display: none;
+  }
+  .tip .t { color: var(--text-muted); margin-bottom: 4px; }
+  .tip .row { display: flex; align-items: center; gap: 8px; }
+  .tip .row b { font-weight: 600; margin-right: auto; }
+  .tip .row i { width: 12px; height: 2px; display: inline-block; }
+  .tip .row span { color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  td.r, th.r { text-align: right; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  details summary { cursor: pointer; color: var(--text-secondary); margin-top: 8px; font-size: 13px; }
+  .foot { color: var(--text-muted); font-size: 12px; margin-top: 14px; }
+  .error { color: var(--critical); }
+
+  @media (max-width: 860px) {
+    .charts, .grid2 { grid-template-columns: minmax(0, 1fr); }
+    .hero { grid-template-columns: minmax(0, 1fr); }
+    .hero-side { text-align: left; }
+    .hero-value { font-size: 44px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Arbex · Live USD/INR futures</h1>
+    <span class="pill" id="mode-pill"><span class="dot" id="mode-dot"></span><strong id="mode-text">Connecting…</strong></span>
+    <span class="pill"><span id="market-text">–</span></span>
+    <span class="pill"><span id="conn-text">–</span></span>
+    <button class="pill" id="theme-btn" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </header>
+
+  <section class="card hero" aria-live="polite">
+    <div>
+      <div class="label">Best executable spread between venues</div>
+      <div class="hero-value num" id="hero-value">–</div>
+      <div class="hero-sub" id="hero-sub">Waiting for data…</div>
+    </div>
+    <div class="hero-side">
+      <div>Opportunities seen <strong id="opps-count" class="num">0</strong></div>
+      <div>Recorded rows <strong id="rec-count" class="num">0</strong></div>
+      <div id="replay-loops"></div>
+    </div>
+  </section>
+
+  <section class="legs" id="legs"></section>
+
+  <section class="charts">
+    <div class="card">
+      <p class="chart-title">Mid price by venue</p>
+      <p class="chart-sub">INR per USD, last 10 minutes. Gaps mean the venue had no two-sided book.</p>
+      <div class="legend" id="mid-legend"></div>
+      <div class="plot" id="mid-plot"></div>
+    </div>
+    <div class="card">
+      <p class="chart-title">Executable spread</p>
+      <p class="chart-sub">Paise. Above 0 = one venue's bid exceeds another's ask (crossed market).</p>
+      <div class="legend"></div>
+      <div class="plot" id="spread-plot"></div>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <p class="chart-title">Recent opportunities</p>
+      <p class="chart-sub">Crossed books detected by the arbitrage engine (before costs).</p>
+      <table>
+        <thead><tr><th>Time (IST)</th><th>Buy</th><th>Sell</th><th class="r">Paise</th></tr></thead>
+        <tbody id="opps-body"><tr><td colspan="4" class="muted">None yet.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <p class="chart-title">Feed health</p>
+      <p class="chart-sub">One request per provider covers all of its legs.</p>
+      <table>
+        <thead><tr><th>Provider</th><th class="r">Polls</th><th class="r">Errors</th><th class="r">Latency</th></tr></thead>
+        <tbody id="hubs-body"></tbody>
+      </table>
+      <div id="skipped" class="foot"></div>
+      <details>
+        <summary>Data table (last 30 observations)</summary>
+        <table>
+          <thead id="data-head"></thead>
+          <tbody id="data-body"></tbody>
+        </table>
+      </details>
+    </div>
+  </section>
+
+  <p class="foot">Polls <code>/live/status</code> every second. Prices in INR; 1 paisa = 0.01. Read-only — no orders are ever placed.</p>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const POLL_MS = 1000;
+  const WINDOW_MS = 10 * 60 * 1000;
+  const GAP_MS = 5000;
+  const SLOTS = ["--series-1", "--series-2", "--series-3", "--series-4"];
+  const IST = "Asia/Kolkata";
+
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmtTime = (ms) => ms == null ? "–" :
+    new Date(ms).toLocaleTimeString("en-GB", { timeZone: IST, hour12: false });
+  const fmtDateTime = (ms) => ms == null ? "–" :
+    new Date(ms).toLocaleString("en-GB", { timeZone: IST, hour12: false, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const fmtPx = (v) => v == null ? "–" : v.toFixed(4);
+  const fmtPaise = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(2);
+  const prettyLeg = (id) => {
+    const m = /^(replay_)?([a-z]+)_([a-z]+)_usdinr$/.exec(id || "");
+    if (!m) return id;
+    const prov = m[2].charAt(0).toUpperCase() + m[2].slice(1);
+    return `${m[3].toUpperCase()} · ${prov}${m[1] ? " (replay)" : ""}`;
+  };
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+  // Stable colour per leg: fixed slot order by sorted leg id, never re-ranked.
+  const legColorSlot = {};
+  const colorFor = (id) => {
+    if (!(id in legColorSlot)) legColorSlot[id] = Object.keys(legColorSlot).length % SLOTS.length;
+    return css(SLOTS[legColorSlot[id]]);
+  };
+
+  // --- theme toggle --------------------------------------------------------
+  try { const t = localStorage.getItem("arbex-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  $("theme-btn").addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("arbex-theme", next); } catch (e) {}
+    render();
+  });
+
+  // --- history (client-side; the server only keeps the latest quote) ------
+  const mids = {};        // legId -> [{t, v}]
+  const spread = [];      // [{t, v, buy, sell}]
+  const lastSeen = {};    // legId -> last recv_ts pushed
+  let lastSpreadT = null;
+  let state = null;
+  let lastOk = null;
+  let failing = false;
+
+  function ingest(d) {
+    const now = Date.now();
+    const sorted = [...d.legs].sort((a, b) => a.id.localeCompare(b.id));
+    sorted.forEach((l) => colorFor(l.id));
+    for (const l of sorted) {
+      if (l.recv_ts_ms == null || lastSeen[l.id] === l.recv_ts_ms) continue;
+      lastSeen[l.id] = l.recv_ts_ms;
+      const v = (l.bid != null && l.ask != null) ? (l.bid + l.ask) / 2 : null;
+      (mids[l.id] ||= []).push({ t: l.recv_ts_ms, v });
+    }
+    const t = Math.max(...sorted.map((l) => l.recv_ts_ms || 0));
+    if (t && t !== lastSpreadT) {
+      lastSpreadT = t;
+      const best = bestSpread(d.cross_spreads);
+      spread.push(best ? { t, v: best.executable_paise, buy: best.buy, sell: best.sell } : { t, v: null });
+    }
+    const cut = now - WINDOW_MS;
+    for (const k in mids) while (mids[k].length && mids[k][0].t < cut) mids[k].shift();
+    while (spread.length && spread[0].t < cut) spread.shift();
+  }
+
+  const bestSpread = (rows) => (rows && rows.length)
+    ? rows.reduce((a, b) => (b.executable_paise > a.executable_paise ? b : a)) : null;
+
+  // --- rendering ----------------------------------------------------------
+  function render() {
+    renderHeader();
+    if (!state) return;
+    renderHero();
+    renderLegs();
+    renderMid();
+    renderSpread();
+    renderTables();
+  }
+
+  function marketOpen(now = new Date()) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: IST, weekday: "short", hour: "2-digit", hour12: false })
+      .formatToParts(now).map((x) => [x.type, x.value]));
+    const h = parseInt(p.hour, 10);
+    return !["Sat", "Sun"].includes(p.weekday) && h >= 9 && h < 17;
+  }
+
+  function renderHeader() {
+    const open = marketOpen();
+    $("market-text").textContent = `${fmtTime(Date.now())} IST · market ${open ? "open" : "closed"}`;
+    if (failing) {
+      $("conn-text").textContent = "Server unreachable";
+      $("conn-text").className = "error";
+    } else if (lastOk) {
+      $("conn-text").textContent = `Updated ${Math.max(0, Math.round((Date.now() - lastOk) / 1000))}s ago`;
+      $("conn-text").className = "";
+    }
+    if (!state) return;
+    const replay = state.mode === "replay";
+    $("mode-text").textContent = state.error ? "Live mode off" : (replay ? "Replay" : "Live");
+    $("mode-dot").style.background = state.error ? css("--critical") : (replay ? css("--warning") : css("--good"));
+  }
+
+  function renderHero() {
+    const v = $("hero-value"), sub = $("hero-sub");
+    if (state.error) {
+      v.textContent = "–"; v.className = "hero-value num";
+      sub.textContent = state.error;
+      return;
+    }
+    const best = bestSpread(state.cross_spreads);
+    if (best) {
+      v.textContent = `${fmtPaise(best.executable_paise)} paise`;
+      v.className = "hero-value num" + (best.crossed ? " crossed" : "");
+      sub.textContent = best.crossed
+        ? `Crossed: buy on ${prettyLeg(best.buy)}, sell on ${prettyLeg(best.sell)} — arbitrage before costs.`
+        : `Not crossed. Best trade would be buy ${prettyLeg(best.buy)}, sell ${prettyLeg(best.sell)}, losing ${Math.abs(best.executable_paise).toFixed(2)} paise.`;
+    } else {
+      v.textContent = "–"; v.className = "hero-value num";
+      const live = state.legs.filter((l) => l.bid != null && l.ask != null);
+      const dead = state.legs.filter((l) => !(l.bid != null && l.ask != null));
+      if (!state.legs.length) sub.textContent = "No legs are configured. Check /health for the reason (credentials or network).";
+      else sub.textContent = `Needs two venues with live orders; ${live.length} has one. ` +
+        dead.map((l) => `${prettyLeg(l.id)} has no two-sided book (last trade ${fmtDateTime(l.exchange_ts_ms)} IST)`).join("; ") + ".";
+    }
+    $("opps-count").textContent = state.opportunities_seen;
+    $("rec-count").textContent = state.recorded_rows;
+    $("replay-loops").textContent = state.mode === "replay" && state.replay_loops != null
+      ? `Replay loops ${state.replay_loops} (counts repeat each loop)` : "";
+  }
+
+  const ICON_OK = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--good)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ICON_WARN = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1L13.5 12.5H0.5Z" fill="var(--warning)"/><path d="M7 5v3.6" stroke="#0b0b0b" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="10.6" r="0.9" fill="#0b0b0b"/></svg>';
+
+  const prevBook = {};
+  function renderLegs() {
+    const box = $("legs");
+    box.replaceChildren();
+    const legs = [...state.legs].sort((a, b) => a.id.localeCompare(b.id));
+    for (const l of legs) {
+      const card = el("div", "card");
+      const head = el("div", "leg-head");
+      const dot = el("span", "dot"); dot.style.background = colorFor(l.id);
+      head.append(dot, el("strong", null, prettyLeg(l.id)));
+      card.append(head, el("div", "leg-contract", `${l.contract} · expiry ${l.expiry}`));
+
+      const book = el("div", "book");
+      const side = (lbl, px, qty) => {
+        const c = el("div");
+        c.append(el("div", "label", lbl), el("div", "px num", fmtPx(px)), el("div", "qty num", px == null ? "no orders" : `${qty} lots`));
+        return c;
+      };
+      book.append(side("Bid", l.bid, l.bid_qty), side("Ask", l.ask, l.ask_qty));
+      const sig = `${l.bid}|${l.ask}`;
+      if (prevBook[l.id] !== undefined && prevBook[l.id] !== sig) book.classList.add("flash");
+      prevBook[l.id] = sig;
+      card.append(book);
+
+      const meta = el("dl", "meta");
+      const row = (k, v) => { meta.append(el("dt", null, k), el("dd", "num", v)); };
+      row("Spread", l.spread_paise == null ? "–" : `${l.spread_paise.toFixed(2)} paise`);
+      row("Quote age", l.age_ms == null ? "–" : `${(l.age_ms / 1000).toFixed(1)} s`);
+      row("Last trade", `${fmtDateTime(l.exchange_ts_ms)}${l.last != null ? " @ " + l.last : ""}`);
+      card.append(meta);
+
+      const st = el("div", "status");
+      st.innerHTML = l.healthy ? ICON_OK : ICON_WARN;
+      st.append(el("span", null, l.healthy ? "Live two-sided book" : (l.suppressed_reason || "Unavailable")));
+      card.append(st);
+      box.append(card);
+    }
+  }
+
+  // Generic time-series line chart in SVG with crosshair + tooltip.
+  function lineChart(host, series, opts) {
+    host.replaceChildren();
+    const all = series.flatMap((s) => s.points.filter((p) => p.v != null));
+    if (!all.length) { host.append(el("div", "empty", opts.empty)); return; }
+    const W = host.clientWidth, H = host.clientHeight;
+    const m = { l: 62, r: opts.endLabels ? 92 : 14, t: 8, b: 24 };
+    const now = Date.now();
+    const t0 = now - WINDOW_MS, t1 = now;
+    let lo = Math.min(...all.map((p) => p.v)), hi = Math.max(...all.map((p) => p.v));
+    if (opts.includeZero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+    const pad = Math.max((hi - lo) * 0.15, opts.minPad);
+    lo -= pad; hi += pad;
+    // round-number ticks (1 / 2 / 2.5 / 5 x 10^k); the axis snaps to them
+    const raw = (hi - lo) / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((v) => v >= raw);
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    const x = (t) => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r);
+    const y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", opts.aria);
+    const add = (tag, attrs, text) => {
+      const n = document.createElementNS(NS, tag);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      if (text != null) n.textContent = text;
+      svg.append(n); return n;
+    };
+    // y gridlines + ticks
+    for (let v = lo; v <= hi + step / 2; v += step) {
+      const yy = y(v);
+      add("line", { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: css("--grid"), "stroke-width": 1 });
+      add("text", { x: m.l - 8, y: yy + 4, "text-anchor": "end", "font-size": 11, fill: css("--text-muted"), "font-variant-numeric": "tabular-nums" }, opts.fmtTick(v));
+    }
+    if (opts.includeZero) {
+      add("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), stroke: css("--baseline"), "stroke-width": 1 });
+    }
+    // x ticks every 2 minutes
+    const nx = Math.max(1, Math.min(5, Math.floor((W - m.l - m.r) / 64)));
+    for (let k = 0; k <= nx; k++) {
+      const t = t0 + k * WINDOW_MS / nx;
+      add("text", { x: x(t), y: H - 6, "text-anchor": k === 0 ? "start" : k === nx ? "end" : "middle", "font-size": 11, fill: css("--text-muted") },
+        new Date(t).toLocaleTimeString("en-GB", { timeZone: IST, hour12: false, hour: "2-digit", minute: "2-digit" }));
+    }
+    // lines (break on gaps / missing values)
+    const ends = [];
+    for (const s of series) {
+      let d = "", prev = null, last = null;
+      for (const p of s.points) {
+        if (p.v == null || p.t < t0) { prev = null; continue; }
+        const move = !prev || p.t - prev.t > GAP_MS;
+        d += `${move ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)} `;
+        prev = p; last = p;
+      }
+      if (d) add("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+      if (last) {
+        add("circle", { cx: x(last.t), cy: y(last.v), r: 4, fill: s.color, stroke: css("--surface-1"), "stroke-width": 2 });
+        ends.push({ s, y: y(last.v), x: x(last.t), v: last.v });
+      }
+    }
+    if (opts.endLabels) {
+      // direct end labels; skip ones that would collide (legend + tooltip carry them)
+      ends.sort((a, b) => a.y - b.y);
+      let lastY = -Infinity;
+      for (const e of ends) {
+        if (e.y - lastY < 14) continue;
+        add("text", { x: e.x + 8, y: e.y + 4, "font-size": 11, fill: css("--text-secondary"), "font-variant-numeric": "tabular-nums" }, `${e.s.short} ${opts.fmtVal(e.v)}`);
+        lastY = e.y;
+      }
+    }
+    // crosshair + tooltip
+    const cross = add("line", { y1: m.t, y2: H - m.b, stroke: css("--baseline"), "stroke-width": 1, visibility: "hidden" });
+    const tip = el("div", "tip");
+    host.append(svg, tip);
+    const times = [...new Set(series.flatMap((s) => s.points.map((p) => p.t)))].filter((t) => t >= t0).sort((a, b) => a - b);
+    const at = (s, t) => { let r = null; for (const p of s.points) { if (p.t <= t) r = p; else break; } return r; };
+    const move = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) * (W / rect.width);
+      if (!times.length) return;
+      let best = times[0];
+      for (const t of times) if (Math.abs(x(t) - px) < Math.abs(x(best) - px)) best = t;
+      cross.setAttribute("x1", x(best)); cross.setAttribute("x2", x(best)); cross.setAttribute("visibility", "visible");
+      tip.replaceChildren(el("div", "t", `${fmtTime(best)} IST`));
+      for (const s of series) {
+        const p = at(s, best);
+        const r = el("div", "row");
+        const key = el("i"); key.style.background = s.color;
+        r.append(key, el("b", "num", p && p.v != null ? opts.fmtVal(p.v) : "no book"), el("span", null, s.name));
+        tip.append(r);
+      }
+      tip.style.display = "block";
+      const left = (x(best) / W) * rect.width;
+      tip.style.left = `${Math.min(left + 12, rect.width - tip.offsetWidth - 4)}px`;
+      tip.style.top = "8px";
+    };
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+  }
+
+  function renderMid() {
+    const ids = Object.keys(mids).sort();
+    const series = ids.map((id) => ({ name: prettyLeg(id), short: prettyLeg(id).split(" · ")[0], color: colorFor(id), points: mids[id] }));
+    const legend = $("mid-legend");
+    legend.replaceChildren();
+    if (series.length >= 2) for (const s of series) {
+      const k = el("i"); k.style.background = s.color;
+      const item = el("span"); item.append(k, document.createTextNode(s.name)); legend.append(item);
+    }
+    lineChart($("mid-plot"), series, {
+      empty: "No two-sided quotes yet. Outside market hours books are usually empty.",
+      aria: "Mid price per venue over the last 10 minutes",
+      fmtTick: (v) => v.toFixed(4), fmtVal: (v) => v.toFixed(4), minPad: 0.005, endLabels: true,
+    });
+  }
+
+  function renderSpread() {
+    lineChart($("spread-plot"), [{ name: "Best executable spread", short: "", color: css("--series-1"), points: spread }], {
+      empty: "Needs two venues with live books at the same moment. With only one live venue there is nothing to compare.",
+      aria: "Best executable spread between venues in paise",
+      fmtTick: (v) => v.toFixed(2), fmtVal: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} paise`, minPad: 0.5, includeZero: true,
+    });
+  }
+
+  function renderTables() {
+    const ob = $("opps-body");
+    ob.replaceChildren();
+    const opps = [...(state.recent_opportunities || [])].reverse().slice(0, 8);
+    if (!opps.length) {
+      const tr = el("tr"); const td = el("td", "muted", "None yet."); td.colSpan = 4; tr.append(td); ob.append(tr);
+    }
+    for (const o of opps) {
+      const tr = el("tr");
+      tr.append(el("td", "num", fmtTime(o.timestamp_ms)), el("td", null, prettyLeg(o.buy_source)),
+        el("td", null, prettyLeg(o.sell_source)), el("td", "r num", fmtPaise(o.estimated_profit_pips)));
+      ob.append(tr);
+    }
+    const hb = $("hubs-body");
+    hb.replaceChildren();
+    for (const [name, h] of Object.entries(state.hubs || {})) {
+      const tr = el("tr");
+      tr.append(el("td", null, name + (h.auth_failed ? " — credentials rejected" : "")), el("td", "r num", h.polls),
+        el("td", "r num", h.errors), el("td", "r num", h.last_latency_ms == null ? "–" : `${Math.round(h.last_latency_ms)} ms`));
+      hb.append(tr);
+    }
+    const skipped = Object.entries(state.skipped_feeds || {});
+    $("skipped").textContent = skipped.length ? "Skipped: " + skipped.map(([k, v]) => `${k} (${v})`).join("; ") : "";
+
+    // accessible data table: last 30 observations per leg (mid) + spread
+    const ids = Object.keys(mids).sort();
+    const head = $("data-head"); head.replaceChildren();
+    const hr = el("tr"); hr.append(el("th", null, "Time (IST)"));
+    ids.forEach((id) => hr.append(el("th", "r", `${prettyLeg(id)} mid`)));
+    hr.append(el("th", "r", "Spread (paise)")); head.append(hr);
+    const body = $("data-body"); body.replaceChildren();
+    const rows = spread.slice(-30).reverse();
+    for (const r of rows) {
+      const tr = el("tr"); tr.append(el("td", "num", fmtTime(r.t)));
+      for (const id of ids) {
+        const p = [...(mids[id] || [])].reverse().find((q) => q.t <= r.t);
+        tr.append(el("td", "r num", p && p.v != null ? p.v.toFixed(4) : "–"));
+      }
+      tr.append(el("td", "r num", fmtPaise(r.v))); body.append(tr);
+    }
+  }
+
+  // --- polling --------------------------------------------------------------
+  async function poll() {
+    try {
+      const res = await fetch("/live/status", { cache: "no-store" });
+      const d = await res.json();
+      state = d.error ? { error: d.error, legs: [], cross_spreads: [], hubs: {}, skipped_feeds: {} } : d;
+      if (!d.error) ingest(d);
+      lastOk = Date.now(); failing = false;
+    } catch (e) {
+      failing = true;
+    }
+    render();
+  }
+  poll();
+  setInterval(poll, POLL_MS);
+  new ResizeObserver(() => render()).observe(document.querySelector(".charts"));
+})();
+</script>
+</body>
+</html>
