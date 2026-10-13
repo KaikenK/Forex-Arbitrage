@@ -17,6 +17,7 @@ import time
 from typing import Dict, Set, Any, Optional, List
 from fastapi import WebSocket, WebSocketDisconnect
 from collections import defaultdict, deque
+from backend.core.instruments import pip_size
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +415,7 @@ class WebSocketManager:
         # Calculate differences
         max_mid = max(mids)
         min_mid = min(mids)
-        pip_value = 0.01 if "JPY" in symbol or "INR" in symbol else 0.0001
+        pip_value = pip_size(symbol)
         
         return {
             "symbol": symbol,

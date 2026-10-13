@@ -47,6 +47,10 @@ from backend.config import (
     LIVE_EXCHANGE_CONFIG,
     get_active_symbol,
     RESEARCH_SYMBOL,
+    configured_symbols,
+    SYNTHETIC_SUPPORTED_SYMBOLS,
+    LIVE_EXCHANGE_SUPPORTED_SYMBOLS,
+    LEGACY_DEFAULT_SYMBOLS,
     SYNTHETIC_FEEDS,
     ARBITRAGE_RESEARCH_CONFIG,
     TradingSession,
@@ -55,6 +59,7 @@ from backend.config import (
 
 # NEW: Data source plugin architecture
 from backend.core.interfaces.data_source import DataSourceConfig
+from backend.core.instruments import resolve_symbols, to_pips
 from backend.core.data_sources.synthetic_data_source import SyntheticDataSource, SyntheticConfig
 
 # NEW: Session-aware synthetic sources for research
@@ -132,21 +137,29 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================================
 
-# Determine symbols based on mode
+# Determine symbols based on mode: ARBEX_SYMBOLS, narrowed to what the feed supports
+REQUESTED_SYMBOLS = configured_symbols() if os.environ.get("ARBEX_SYMBOLS", "").strip() else None
 if is_synthetic_mode():
-    DEFAULT_SYMBOLS = [RESEARCH_SYMBOL]  # USD/INR only
+    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = resolve_symbols(
+        REQUESTED_SYMBOLS or [RESEARCH_SYMBOL], SYNTHETIC_SUPPORTED_SYMBOLS, SYNTHETIC_SUPPORTED_SYMBOLS)
     logger.info("=" * 60)
     logger.info("RESEARCH MODE: SYNTHETIC_USDINR_ONLY")
     logger.info(f"Symbol: {RESEARCH_SYMBOL}")
     logger.info("MT5 and live data sources are DISABLED")
     logger.info("=" * 60)
 elif is_live_exchange_mode():
-    DEFAULT_SYMBOLS = [RESEARCH_SYMBOL]  # USD/INR futures, NSE + BSE
+    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = resolve_symbols(  # NSE + BSE futures
+        REQUESTED_SYMBOLS or [RESEARCH_SYMBOL], LIVE_EXCHANGE_SUPPORTED_SYMBOLS,
+        LIVE_EXCHANGE_SUPPORTED_SYMBOLS)
     logger.info("=" * 60)
     logger.info("LIVE MODE: LIVE_USDINR_EXCHANGES (NSE/BSE USD/INR futures)")
     logger.info("=" * 60)
 else:
-    DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
+    DEFAULT_SYMBOLS, UNSUPPORTED_SYMBOLS = REQUESTED_SYMBOLS or list(LEGACY_DEFAULT_SYMBOLS), []
+if UNSUPPORTED_SYMBOLS:
+    logger.warning(
+        f"ARBEX_SYMBOLS: {', '.join(UNSUPPORTED_SYMBOLS)} not available from the "
+        f"{DATA_MODE.value} feed yet; running {', '.join(DEFAULT_SYMBOLS)}")
 
 # Default intervals for candles (including micro-candles)
 DEFAULT_INTERVALS = ["100ms", "500ms", "1s", "5s", "15s", "1m"]
@@ -1031,7 +1044,9 @@ async def get_symbols():
     """Get list of available symbols."""
     return {
         "symbols": DEFAULT_SYMBOLS,
-        "active": DEFAULT_SYMBOLS
+        "active": DEFAULT_SYMBOLS,
+        "requested": REQUESTED_SYMBOLS or DEFAULT_SYMBOLS,
+        "unsupported": UNSUPPORTED_SYMBOLS,
     }
 
 
@@ -1204,6 +1219,8 @@ def _feed_status() -> Dict[str, Any]:
         "switched_at": feed_state["switched_at"],
         "data_mode": current_data_mode().value,
         "sources": sources,
+        "symbols": DEFAULT_SYMBOLS,
+        "unsupported_symbols": UNSUPPORTED_SYMBOLS,
         "available": feed_availability(),
     }
 
@@ -1276,7 +1293,7 @@ async def get_live_status():
             "ask": q.ask if q else None,
             "bid_qty": q.bid_qty if q else None,
             "ask_qty": q.ask_qty if q else None,
-            "spread_paise": round((q.ask - q.bid) / 0.01, 4) if q and q.two_sided else None,
+            "spread_paise": round(to_pips(q.ask - q.bid, src.symbol), 4) if q and q.two_sided else None,
             "age_ms": now_ms - q.recv_ts_ms if q else None,
             "recv_ts_ms": q.recv_ts_ms if q else None,
             "last": q.last if q else None,
@@ -1523,7 +1540,7 @@ async def get_research_price_comparison():
             "ask": stats.get("current_ask"),
             "mid": stats.get("current_price"),
             "drift_from_ref": round(stats.get("current_price", 0) - ref_price, 4),
-            "spread_pips": round((stats.get("current_ask", 0) - stats.get("current_bid", 0)) / 0.01, 2),
+            "spread_pips": round(to_pips(stats.get("current_ask", 0) - stats.get("current_bid", 0), RESEARCH_SYMBOL), 2),
         }
     
     # Calculate cross-session spreads
@@ -1534,7 +1551,7 @@ async def get_research_price_comparison():
             # Compare Bloomberg prices across sessions
             if "Bloomberg" in comparison["sessions"][s1] and "Bloomberg" in comparison["sessions"][s2]:
                 diff = comparison["sessions"][s1]["Bloomberg"]["mid"] - comparison["sessions"][s2]["Bloomberg"]["mid"]
-                cross_session[f"{s1}_vs_{s2}_bloomberg"] = round(diff / 0.01, 2)  # in pips
+                cross_session[f"{s1}_vs_{s2}_bloomberg"] = round(to_pips(diff, RESEARCH_SYMBOL), 2)
     
     comparison["cross_session_diff_pips"] = cross_session
     

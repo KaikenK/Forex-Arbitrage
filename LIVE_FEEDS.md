@@ -154,3 +154,27 @@ recorded `opportunities.jsonl`.
   response shapes. The Upstox endpoints were verified live on `arbex-pivot`
   (2026-08-31), but the BSE segment code and Kite responses must be confirmed
   with `check_live_feeds.py` on a networked machine.
+
+## Currency pairs and pip sizes
+
+Pip size, exchange tick, price decimals and contract size for every pair live in
+one place: `backend/core/instruments.py`. All pip calculations (engine,
+diagnostics, broker simulator, state store, `/live/status`, research endpoints)
+read it, so INR pairs are consistently 1 pip = 0.01 INR (one paisa) and a new
+pair needs one registry line, not a hunt through the code. Unregistered
+six-letter pairs fall back by quote currency (JPY/INR → 0.01, else 0.0001).
+
+Choose the pairs with `ARBEX_SYMBOLS` (comma separated, default `USDINR`):
+
+```bash
+ARBEX_SYMBOLS=USDINR,EURINR python -m backend.server.run
+```
+
+A typo (`USDINR,GOLD`) stops the server at startup. Pairs the current feed
+cannot produce yet are skipped with a warning in the log, and listed under
+`unsupported` in `GET /symbols` and `unsupported_symbols` in `GET /feeds/mode`.
+Today both the synthetic generator and the NSE/BSE live legs produce USDINR
+only; adding EURINR/GBPINR/JPYINR legs is the next step.
+
+The live `min_profit_pips` (0.25 = one USDINR tick) is still a single global
+value, not per pair.

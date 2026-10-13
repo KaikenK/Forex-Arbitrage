@@ -22,6 +22,7 @@ from datetime import datetime
 
 from backend.core.arbitrage.tick_aligner import AlignedTickWindow
 from backend.core.interfaces.normalized_tick import NormalizedTick
+from backend.core.instruments import pip_size
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +318,7 @@ class ArbitrageEngine:
                     mid_diff = abs(tick_a.mid - tick_b.mid)
                     
                     # If mid prices differ significantly, there might be latency arb
-                    pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
+                    pip_value = pip_size(window.symbol)
                     mid_diff_pips = mid_diff / pip_value
                     
                     if mid_diff_pips >= 1.0:  # Increased from 0.5 to reduce noise spam
@@ -344,7 +345,7 @@ class ArbitrageEngine:
         """Create a cross-source arbitrage opportunity."""
         # Calculate profit
         profit = sell_tick.bid - buy_tick.ask
-        pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
+        pip_value = pip_size(window.symbol)
         profit_pips = profit / pip_value
         profit_pct = profit / buy_tick.ask
         
@@ -406,7 +407,7 @@ class ArbitrageEngine:
             buy_source, sell_source = source_a, source_b
             buy_tick, sell_tick = tick_a, tick_b
         
-        pip_value = 0.01 if "JPY" in window.symbol or "INR" in window.symbol else 0.0001
+        pip_value = pip_size(window.symbol)
         
         # For latency arbitrage, we inflate the estimated profit to simulate implied momentum,
         # but ONLY for a tiny fraction of them, otherwise background noise spams the engine!
@@ -488,7 +489,7 @@ class ArbitrageEngine:
         min_spread = min(spreads)
         spread_variance = max_spread - min_spread
         
-        pip_value = 0.01 if "JPY" in symbol or "INR" in symbol else 0.0001
+        pip_value = pip_size(symbol)
         spread_variance_pips = spread_variance / pip_value
         
         # Track spreads for this session

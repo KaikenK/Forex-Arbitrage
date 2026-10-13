@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import random
+from backend.core.instruments import pip_size
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +298,7 @@ class PaperBroker(BrokerInterface):
             )
         
         # Calculate fill price with slippage
-        pip_value = 0.01 if "JPY" in request.symbol else 0.0001
+        pip_value = pip_size(request.symbol)
         slippage = random.uniform(0, self._slippage_pips) * pip_value
         
         if request.price:
@@ -377,7 +378,7 @@ class PaperBroker(BrokerInterface):
             return None
         
         position = self._positions.pop(position_id)
-        pip_value = 0.01 if "JPY" in position.symbol else 0.0001
+        pip_value = pip_size(position.symbol)
         
         if position.side == OrderSide.BUY:
             pnl_pips = (close_price - position.entry_price) / pip_value

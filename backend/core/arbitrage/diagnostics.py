@@ -20,6 +20,7 @@ from collections import defaultdict
 import statistics
 
 from backend.core.interfaces.normalized_tick import NormalizedTick
+from backend.core.instruments import pip_size
 from backend.core.session_manager import session_manager, get_current_session_info
 from backend.core.arbitrage.arbitrage_engine import ArbitrageOpportunity, ArbitrageType
 
@@ -284,7 +285,8 @@ class ArbitrageDiagnosticsEngine:
                 buy_price=ticks_by_source[spread_analysis.best_ask_source].ask,
                 sell_price=ticks_by_source[spread_analysis.best_bid_source].bid,
                 estimated_profit_pips=abs(spread_analysis.cross_spread_pips),
-                estimated_profit_pct=abs(spread_analysis.cross_spread_pips) * 0.0001,
+                estimated_profit_pct=(abs(spread_analysis.cross_spread_pips) * pip_size(symbol)
+                                      / ticks_by_source[spread_analysis.best_ask_source].ask),
                 latency_risk_ms=latency_analysis.total_round_trip_ms,
                 confidence_score=self._calculate_confidence(
                     spread_analysis, latency_analysis, session
@@ -319,7 +321,7 @@ class ArbitrageDiagnosticsEngine:
         ticks_by_source: Dict[str, NormalizedTick],
     ) -> SpreadAnalysis:
         """Analyze spreads across sources."""
-        pip_value = 0.01 if "JPY" in symbol else 0.0001
+        pip_value = pip_size(symbol)
         
         spreads = {}
         bids = {}

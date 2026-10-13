@@ -32,6 +32,7 @@ Design Principles:
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from backend.core.instruments import pip_size
 
 
 # =============================================================================
@@ -470,7 +471,10 @@ def get_pip_value(symbol: str) -> float:
 
     Per ISO 4217 convention:
         - JPY pairs: 1 pip = 0.01
+        - INR pairs: 1 pip = 0.01 (one paisa)
         - All other pairs: 1 pip = 0.0001
+
+    Delegates to the instrument registry (backend/core/instruments.py).
 
     Args:
         symbol: Currency pair symbol (e.g., "EURUSD", "USDJPY")
@@ -478,4 +482,4 @@ def get_pip_value(symbol: str) -> float:
     Returns:
         Pip value as a float
     """
-    return JPY_PIP_VALUE if "JPY" in symbol.upper() else STANDARD_PIP_VALUE
+    return pip_size(symbol)

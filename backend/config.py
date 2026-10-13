@@ -74,8 +74,28 @@ DATA_MODE = DataMode(os.environ.get("ARBEX_DATA_MODE", DataMode.SYNTHETIC_USDINR
 # SYMBOL CONFIGURATION
 # ============================================================================
 
-# The only currency pair supported in research mode
+# Default pair, and the only one the synthetic generator and the NSE/BSE live
+# legs can produce today
 RESEARCH_SYMBOL = "USDINR"
+
+
+def configured_symbols() -> list:
+    """Pairs to trade, from ARBEX_SYMBOLS (comma separated, e.g. "USDINR,EURINR").
+
+    Validated against the instrument registry, so a typo stops the server at
+    startup. Unset means RESEARCH_SYMBOL. Each feed then keeps only the pairs it
+    can serve and reports the rest (see backend.core.instruments.resolve_symbols).
+    """
+    from backend.core.instruments import parse_symbol_list
+    raw = os.environ.get("ARBEX_SYMBOLS", "").strip()
+    return parse_symbol_list(raw) if raw else [RESEARCH_SYMBOL]
+
+
+# Pairs each data mode can produce; anything else in ARBEX_SYMBOLS is reported
+# and skipped. LIVE_MT5 is None: the broker decides.
+SYNTHETIC_SUPPORTED_SYMBOLS = [RESEARCH_SYMBOL]
+LIVE_EXCHANGE_SUPPORTED_SYMBOLS = [RESEARCH_SYMBOL]
+LEGACY_DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
 
 # Base price for USD/INR (close to real-world reference, Mar 2026)
 USDINR_BASE_PRICE = 86.50

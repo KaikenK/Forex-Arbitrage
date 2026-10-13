@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from collections import defaultdict
 from threading import RLock
 from enum import Enum
+from backend.core.instruments import pip_size
 
 logger = logging.getLogger(__name__)
 
@@ -225,15 +226,14 @@ class SymbolState:
     current_batch: Optional[AlignedBatch] = None
     recent_batches: List[AlignedBatch] = field(default_factory=list)
     arbitrage: ArbitrageSnapshot = None
-    pip_value: float = 0.0001
+    pip_value: Optional[float] = None  # None: taken from the instrument registry
     max_batch_history: int = 100
     
     def __post_init__(self):
         if self.arbitrage is None:
             self.arbitrage = ArbitrageSnapshot(symbol=self.symbol)
-        # Adjust pip value for JPY pairs
-        if "JPY" in self.symbol:
-            self.pip_value = 0.01
+        if self.pip_value is None:
+            self.pip_value = pip_size(self.symbol)
     
     def get_or_create_source(self, source_id: str) -> SourceState:
         """Get or create a source state."""

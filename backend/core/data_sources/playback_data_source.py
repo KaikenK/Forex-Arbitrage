@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import threading
+from backend.core.instruments import pip_size
 
 from backend.core.interfaces.data_source import (
     DataSourceInterface,
@@ -424,7 +425,7 @@ def generate_sample_data(
             current_prices[symbol] *= (1 + random.gauss(0, volatility))
             
             # Calculate bid/ask
-            spread = 0.0001 if "JPY" not in symbol else 0.01
+            spread = pip_size(symbol)
             mid = current_prices[symbol]
             bid = mid - spread / 2
             ask = mid + spread / 2

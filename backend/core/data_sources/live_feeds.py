@@ -37,6 +37,7 @@ from backend.core.data_sources.exchange_leg_source import ExchangeLegSource
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
 from backend.core.data_sources.replay_hub import ReplayQuoteHub, load_recorded_contracts
 from backend.core.data_sources.tick_recorder import QuoteRecorder
+from backend.core.instruments import to_pips
 from backend.core.interfaces.data_source import DataSourceConfig
 
 logger = logging.getLogger(__name__)
@@ -192,9 +193,10 @@ def build_replay_sources(session_dir: Path | str, *, speed: float = 1.0, loop: b
     return LiveFeedSetup(sources=sources, hubs={"replay": hub}, replay_dir=session_dir)
 
 
-def cross_spreads(quotes: Dict[str, Quote]) -> List[dict]:
+def cross_spreads(quotes: Dict[str, Quote], symbol: str = "USDINR") -> List[dict]:
     """
-    Pairwise executable spread between legs, in paise (1 pip = 0.01 INR).
+    Pairwise executable spread between legs, in pips of `symbol` (for INR
+    pairs a pip is one paisa, so the key keeps its `executable_paise` name).
 
     For legs A and B the executable edge is max(bid_B - ask_A, bid_A - ask_B):
     buy at one venue's ask, sell at the other's bid. Positive means a crossed
@@ -210,7 +212,7 @@ def cross_spreads(quotes: Dict[str, Quote]) -> List[dict]:
             rows.append({
                 "buy": buy,
                 "sell": sell,
-                "executable_paise": round(edge / 0.01, 4),
+                "executable_paise": round(to_pips(edge, symbol), 4),
                 "crossed": edge > 0,
             })
     return rows

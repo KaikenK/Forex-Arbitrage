@@ -31,6 +31,7 @@ from backend.core.interfaces.data_source import (
     DataSourceConfig,
     RawTick,
 )
+from backend.core.instruments import pip_size
 from backend.config import (
     TradingSession,
     DataProvider,
@@ -281,7 +282,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
             self._ema_price = self._local_price
             
             # Calculate initial spread
-            pip_value = 0.01  # INR pairs use 0.01 pip value
+            pip_value = pip_size("USDINR")
             half_spread = (self._session_config.spread_pips * pip_value) / 2
             
             self._local_bid = self._local_price - half_spread
@@ -364,8 +365,7 @@ class SessionAwareSyntheticSource(DataSourceInterface):
         # Update reference price (may not change if too soon)
         ref_price = self._reference.update(current_time_ms)
         
-        # Pip value for INR pairs
-        pip_value = 0.01
+        pip_value = pip_size(symbol)
         
         # ============================================================
         # 1. Apply session-specific drift

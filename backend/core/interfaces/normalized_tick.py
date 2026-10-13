@@ -16,6 +16,8 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
 
+from backend.core.instruments import pip_size
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,20 +110,18 @@ class NormalizedTick:
             result["latency_adjusted_time_ms"] = self.latency_adjusted_time_ms
         return result
     
-    def spread_pips(self, pip_value: float = 0.0001) -> float:
+    def spread_pips(self, pip_value: Optional[float] = None) -> float:
         """
         Get spread in pips.
         
         Args:
-            pip_value: Value of one pip (0.0001 for most pairs, 0.01 for JPY pairs)
+            pip_value: Value of one pip; defaults to the symbol's pip size from
+                the instrument registry (0.01 for JPY and INR pairs, else 0.0001)
         
         Returns:
             Spread in pips
         """
-        # Detect JPY pairs and adjust pip value
-        if "JPY" in self.symbol:
-            pip_value = 0.01
-        return self.spread / pip_value
+        return self.spread / (pip_value or pip_size(self.symbol))
     
     def is_stale(self, max_age_ms: int = 5000) -> bool:
         """

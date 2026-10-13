@@ -15,8 +15,9 @@ from typing import Any, Callable, Dict, List, Optional
 from backend.core.data_sources.exchange_contracts import FutureContract
 from backend.core.data_sources.quote_hub import PolledQuoteHub
 from backend.core.interfaces.data_source import DataSourceConfig, DataSourceInterface, RawTick
+from backend.core.instruments import normalize_symbol
 
-SYMBOL = "USDINR"
+SYMBOL = "USDINR"   # default when the config names no symbol
 
 
 class ExchangeLegSource(DataSourceInterface):
@@ -35,6 +36,11 @@ class ExchangeLegSource(DataSourceInterface):
         self._max_staleness_ms = max_staleness_ms
         self._clock = clock
         self._last_reason: Optional[str] = "not polled yet"
+        self._symbol = normalize_symbol((config.symbols or [SYMBOL])[0])
+
+    @property
+    def symbol(self) -> str:
+        return self._symbol
 
     @property
     def contract(self) -> FutureContract:
@@ -57,7 +63,7 @@ class ExchangeLegSource(DataSourceInterface):
 
     # -- data ------------------------------------------------------------
     def get_tick(self, symbol: str) -> Optional[RawTick]:
-        if symbol.upper() != SYMBOL:
+        if normalize_symbol(symbol) != self._symbol:
             return None
         q = self._hub.latest(self._contract.instrument_key)
         if q is None:
@@ -74,7 +80,7 @@ class ExchangeLegSource(DataSourceInterface):
         if q.recv_ts_ms != self._last_tick_time:   # count observations, not reads
             self._record_tick(q.recv_ts_ms)
         return RawTick(
-            symbol=SYMBOL,
+            symbol=self._symbol,
             bid=q.bid,
             ask=q.ask,
             timestamp_ms=q.recv_ts_ms,
@@ -106,7 +112,7 @@ class ExchangeLegSource(DataSourceInterface):
                 and int(self._clock() * 1000) - q.recv_ts_ms <= self._max_staleness_ms)
 
     def get_supported_symbols(self) -> List[str]:
-        return [SYMBOL]
+        return [self._symbol]
 
     def get_stats(self) -> Dict[str, Any]:
         stats = super().get_stats()

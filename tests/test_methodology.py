@@ -279,4 +279,7 @@ class TestGetPipValue:
         assert get_pip_value("usdjpy") == JPY_PIP_VALUE
 
     def test_inr_pair(self):
-        assert get_pip_value("USDINR") == STANDARD_PIP_VALUE
+        # INR pairs are quoted in paise: 1 pip = 0.01 INR, as everywhere else
+        # in the codebase (engine, live feeds, dashboard). This used to return
+        # 0.0001, which disagreed with the engine by a factor of 100.
+        assert get_pip_value("USDINR") == JPY_PIP_VALUE == 0.01

@@ -23,6 +23,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 import threading
+from backend.core.instruments import pip_size
 
 from backend.core.interfaces.data_source import (
     DataSourceInterface,
@@ -281,7 +282,7 @@ class SyntheticDataSource(DataSourceInterface):
         self._current_prices[symbol] = new_mid_price
         
         # Calculate pip value for spread calculation
-        pip_value = 0.01 if "JPY" in symbol else 0.0001
+        pip_value = pip_size(symbol)
         
         # Calculate bid/ask with spread
         spread_pips = self._synthetic_config.spread_pips
@@ -349,7 +350,7 @@ class SyntheticDataSource(DataSourceInterface):
             return None
         
         # Calculate pip value
-        pip_value = 0.01 if "JPY" in symbol else 0.0001
+        pip_value = pip_size(symbol)
         
         # Add noise to create price difference
         noise_pips = self._synthetic_config.noise_pips
