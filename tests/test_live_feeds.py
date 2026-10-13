@@ -1,5 +1,6 @@
 """Tests for the live-feed factory (provider x exchange legs, common expiry)."""
 
+import time
 from datetime import date
 
 import pytest
@@ -150,3 +151,22 @@ def test_record_dir_off_disables_recording():
     )
     assert setup.recorder is None
     assert not setup.hubs["upstox"]._listeners
+
+
+def test_every_leg_is_registered_before_the_hub_first_polls():
+    """Regression: the hub started on the first leg's connect() and its first
+    request fetched only that leg; all legs must be in the very first request."""
+    seen = []
+    hub = PolledQuoteHub("upstox", lambda keys: seen.append(sorted(keys)) or {}, poll_interval_s=60)
+    setup = build_live_exchange_sources(
+        providers=["upstox"], exchanges=["NSE", "BSE"], as_of=AS_OF, record_dir="off",
+        contract_loader=_loader({("upstox", "NSE"): _contracts("upstox", "NSE", [OCT]),
+                                 ("upstox", "BSE"): _contracts("upstox", "BSE", [OCT])}),
+        hub_factory=lambda provider: hub,
+    )
+    setup.sources[0].connect()          # starts the hub thread -> first poll
+    deadline = time.time() + 2
+    while not seen and time.time() < deadline:
+        time.sleep(0.01)
+    hub.stop()
+    assert seen[0] == sorted(s.contract.instrument_key for s in setup.sources)

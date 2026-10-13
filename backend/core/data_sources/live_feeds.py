@@ -105,6 +105,9 @@ def _leg(source_id: str, display: str, hub: PolledQuoteHub, contract: FutureCont
         extra_config={"exchange": contract.exchange, "provider": contract.provider,
                       "expiry": contract.expiry.isoformat()},
     )
+    # Register now, not on connect(): the hub starts polling on the first leg's
+    # connect(), and every leg must be in that first single request.
+    hub.register(contract.instrument_key)
     return ExchangeLegSource(config, hub=hub, contract=contract, max_staleness_ms=max_staleness_ms)
 
 
