@@ -179,3 +179,19 @@ def test_cross_spreads_skip_two_providers_on_the_same_exchange():
         "kite_nse_usdinr": Quote(bid=88.7150, ask=88.7175),
     })
     assert rows == []
+
+
+def test_a_provider_with_a_stale_exchange_list_is_dropped_not_fatal():
+    """Kite's BSE instrument list only has expired contracts: skip that leg, keep the rest."""
+    old = date(2025, 2, 25)
+    setup = build_live_exchange_sources(
+        providers=["upstox", "kite"], exchanges=["NSE", "BSE"], as_of=AS_OF, record_dir="off",
+        contract_loader=_loader({("upstox", "NSE"): _contracts("upstox", "NSE", [OCT, NOV]),
+                                 ("upstox", "BSE"): _contracts("upstox", "BSE", [OCT, NOV]),
+                                 ("kite", "NSE"): _contracts("kite", "NSE", [OCT, NOV]),
+                                 ("kite", "BSE"): _contracts("kite", "BSE", [old])}),
+        hub_factory=_hubs(),
+    )
+    assert sorted(s.source_id for s in setup.sources) == [
+        "kite_nse_usdinr", "upstox_bse_usdinr", "upstox_nse_usdinr"]
+    assert setup.skipped["kite:BSE"] == "no unexpired monthly contracts listed"

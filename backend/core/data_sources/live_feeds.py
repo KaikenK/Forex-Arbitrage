@@ -32,7 +32,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from backend.core.data_sources.exchange_contracts import FutureContract, select_common_expiry
+from backend.core.data_sources.exchange_contracts import FutureContract, select_best_expiry
 from backend.core.data_sources.exchange_leg_source import ExchangeLegSource
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
 from backend.core.data_sources.replay_hub import ReplayQuoteHub, load_recorded_contracts
@@ -149,7 +149,11 @@ def build_live_exchange_sources(
     if len(groups) < 2:
         raise LiveFeedUnavailable(f"need at least two live legs, have {list(groups)}; skipped: {skipped}")
 
-    picked = select_common_expiry(groups, as_of=as_of)
+    try:
+        picked, dropped = select_best_expiry(groups, as_of=as_of)
+    except LookupError as e:
+        raise LiveFeedUnavailable(str(e)) from e
+    skipped.update(dropped)
     sources = []
     for priority, (group, contract) in enumerate(sorted(picked.items()), start=1):
         provider, exchange = group.split(":")
