@@ -6,7 +6,7 @@ import { useFeedMode } from '@/hooks/useFeedMode';
 
 const MODES: { mode: FeedMode; label: string; title: string }[] = [
   { mode: 'synthetic', label: 'Synthetic', title: 'Generated Bloomberg/Reuters x session feeds (six per pair)' },
-  { mode: 'live', label: 'Live', title: 'Real NSE/BSE currency futures books (Upstox / Kite)' },
+  { mode: 'live', label: 'Live', title: 'Real NSE/BSE currency futures (Upstox / Kite) and free spot venues (Kraken / TrueFX)' },
   { mode: 'replay', label: 'Replay', title: 'Replay a recorded live session' },
 ];
 

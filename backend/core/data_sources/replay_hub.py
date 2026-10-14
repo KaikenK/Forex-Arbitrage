@@ -57,13 +57,14 @@ def load_recorded_contracts(session_dir: Path | str) -> List[FutureContract]:
     seen: Dict[str, FutureContract] = {}
     for r in _read_rows(Path(session_dir)):
         key = r["instrument_key"]
-        if key in seen or not r.get("exchange") or not r.get("expiry"):
+        if key in seen or not r.get("exchange"):
             continue
         seen[key] = FutureContract(
             exchange=r["exchange"], instrument_key=key,
             trading_symbol=r.get("trading_symbol") or key,
-            expiry=date.fromisoformat(r["expiry"]), lot_size=1,
-            contract_size=futures_lot_units(_recorded_symbol(r)),
+            expiry=date.fromisoformat(r["expiry"]) if r.get("expiry") else None,   # None: spot venue
+            lot_size=1,
+            contract_size=futures_lot_units(_recorded_symbol(r)) if r.get("expiry") else 1.0,
             provider=r.get("provider") or "",
             symbol=_recorded_symbol(r),
         )

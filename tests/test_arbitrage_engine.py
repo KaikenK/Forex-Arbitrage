@@ -238,3 +238,26 @@ class TestLiveExchangeMode:
         pairs = {(o.buy_source, o.sell_source) for o in opps}
         assert ("upstox_nse_usdinr", "kite_nse_usdinr") not in pairs
         assert ("kite_bse_usdinr", "kite_nse_usdinr") in pairs      # BSE ask 88.705 < NSE bid 88.715
+
+    def test_spot_legs_use_the_spot_tick_threshold(self):
+        # Kraken vs TrueFX EUR/USD crossed by 0.3 pip: below a futures tick (1 pip)
+        # but three spot ticks (0.1 pip each), so it counts for spot legs.
+        window = make_window("EURUSD", {
+            "spot_kraken_eurusd": make_tick("EURUSD", 1.12020, 1.12022, "spot_kraken_eurusd"),
+            "spot_truefx_eurusd": make_tick("EURUSD", 1.12025, 1.12028, "spot_truefx_eurusd"),
+        }, window_size_ms=500)
+        opps = self._engine(min_profit_ticks=1.0, skip_same_venue=True).detect(window)
+        assert len(opps) == 1 and opps[0].estimated_profit_pips == pytest.approx(0.3)
+
+    def test_spot_cross_is_reported_net_of_the_venue_basis(self):
+        window = make_window("EURUSD", {
+            "spot_kraken_eurusd": make_tick("EURUSD", 1.12000, 1.12002, "spot_kraken_eurusd"),
+            "spot_truefx_eurusd": make_tick("EURUSD", 1.12014, 1.12018, "spot_truefx_eurusd"),
+        }, window_size_ms=500)                       # raw cross: 1.2 pips
+        usual = self._engine(min_profit_ticks=1.0, basis_for=lambda buy, sell: 1.5)
+        assert usual.detect(window) == []            # inside the usual 1.5-pip gap: nothing new
+        warming = self._engine(min_profit_ticks=1.0, basis_for=lambda buy, sell: None)
+        assert warming.detect(window) == []          # basis not measured yet: stay quiet
+        small = self._engine(min_profit_ticks=1.0, basis_for=lambda buy, sell: 0.5)
+        opps = small.detect(window)
+        assert len(opps) == 1 and opps[0].estimated_profit_pips == pytest.approx(0.7)

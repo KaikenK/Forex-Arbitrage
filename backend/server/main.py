@@ -310,6 +310,12 @@ def feed_availability() -> Dict[str, Any]:
         providers.append("upstox")
     if os.environ.get("KITE_API_KEY") and os.environ.get("KITE_ACCESS_TOKEN"):
         providers.append("kite")
+    # Non-INR pairs on the free spot venues (Kraken, Bitstamp, TrueFX) need no credentials.
+    from backend.core.instruments import SPOT_SYMBOLS
+    spot_pairs = [] if os.environ.get("ARBEX_SPOT_VENUES", "").strip().lower() == "off" else \
+        [s for s in configured_symbols() if s in SPOT_SYMBOLS]
+    if spot_pairs:
+        providers.append("spot")
     sessions = _replay_sessions()
     switchable = is_synthetic_mode() or is_live_exchange_mode()
     return {
@@ -318,8 +324,10 @@ def feed_availability() -> Dict[str, Any]:
         "live": {
             "available": switchable and bool(providers),
             "providers": providers,
+            "spot_pairs": spot_pairs,
             "reason": None if providers else
-                "Add UPSTOX_ACCESS_TOKEN (free) or KITE_API_KEY + KITE_ACCESS_TOKEN to .env - no restart needed.",
+                "Add UPSTOX_ACCESS_TOKEN (free) or KITE_API_KEY + KITE_ACCESS_TOKEN to .env, or add a non-INR pair "
+                "(e.g. ARBEX_SYMBOLS=USDINR,EURUSD) for the free spot venues - no restart needed.",
         },
         "replay": {
             "available": switchable and bool(sessions),
@@ -391,6 +399,8 @@ async def _start_synthetic() -> None:
 async def _start_live(setup) -> None:
     global multi_source_streamer, live_feed_setup
     live_feed_setup = setup
+    from backend.core.data_sources.live_feeds import BasisTracker
+    setup.basis = BasisTracker()
     for line in setup.describe():
         logger.info(f"  {line}")
     arbitrage_config = ArbitrageConfig(
@@ -403,6 +413,7 @@ async def _start_live(setup) -> None:
         enable_session_analysis=False,    # not an executable trade
         enable_latency_arbitrage=False,   # mid gaps without a cross are not arbitrage
         skip_same_venue=True,             # Upstox-NSE vs Kite-NSE is one book, not a trade
+        basis_for=lambda buy, sell: setup.basis.basis(buy, sell) if setup.basis else None,
     )
     multi_source_streamer = MultiSourceStreamer(
         ws_manager=ws_manager,
@@ -442,8 +453,17 @@ async def _start_live(setup) -> None:
             asyncio.run_coroutine_threadsafe(
                 ws_manager._broadcast_to_channel("dashboard:unified", msg), loop)
 
+    # Typical gap between venues of a pair, so a persistent venue basis is not
+    # read as arbitrage on every poll (see BasisTracker).
+    leg_symbols = {s.source_id: s.symbol for s in setup.sources}
+
+    def _observe_basis(hub_name, quotes):
+        setup.basis.observe({s.source_id: s.hub.latest(s.contract.instrument_key) for s in setup.sources},
+                            leg_symbols)
+
     for hub in setup.hubs.values():
         hub.add_listener(_publish_depth)
+        hub.add_listener(_observe_basis)
     await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
     logger.info(f"Live exchange pipeline initialized with {len(setup.sources)} legs")
 
@@ -956,7 +976,7 @@ async def health():
                 "exchange": src.contract.exchange,
                 "provider": src.contract.provider,
                 "contract": src.contract.trading_symbol,
-                "expiry": src.contract.expiry.isoformat(),
+                "expiry": src.contract.expiry.isoformat() if src.contract.expiry else None,
                 "healthy": src.is_healthy(),
                 "suppressed_reason": src.get_stats()["suppressed_reason"],
             }
@@ -1323,7 +1343,7 @@ async def get_live_status():
             "exchange": src.contract.exchange,
             "provider": src.contract.provider,
             "contract": src.contract.trading_symbol,
-            "expiry": src.contract.expiry.isoformat(),
+            "expiry": src.contract.expiry.isoformat() if src.contract.expiry else None,
             "bid": q.bid if q else None,
             "ask": q.ask if q else None,
             "bid_qty": q.bid_qty if q else None,
@@ -1347,13 +1367,18 @@ async def get_live_status():
         "legs": legs,
         "symbols": list(DEFAULT_SYMBOLS),
         "instruments": {sym: _instrument_info(sym) for sym in DEFAULT_SYMBOLS},
-        "cross_spreads": cross_spreads(quotes, {s.source_id: s.symbol for s in live_feed_setup.sources}),
+        "cross_spreads": _with_basis(cross_spreads(quotes, {s.source_id: s.symbol for s in live_feed_setup.sources})),
         "opportunities_seen": len(live_opportunities),
         "recent_opportunities": list(live_opportunities)[-20:],
         "hubs": {name: hub.stats() for name, hub in live_feed_setup.hubs.items()},
         "skipped_feeds": live_feed_setup.skipped,
         "recorded_rows": live_feed_setup.recorder.rows_written if live_feed_setup.recorder else 0,
     }
+
+
+def _with_basis(rows: List[dict]) -> List[dict]:
+    tracker = getattr(live_feed_setup, "basis", None)
+    return tracker.annotate(rows) if tracker else rows
 
 
 @app.get("/sources")

@@ -167,7 +167,7 @@
 <body>
 <main>
   <header>
-    <h1>Arbex · Live <span id="title-pair">USD/INR</span> futures</h1>
+    <h1>Arbex · Live <span id="title-pair">USD/INR</span> <span id="title-kind">futures</span></h1>
     <span class="pill" id="mode-pill"><span class="dot" id="mode-dot"></span><strong id="mode-text">Connecting…</strong></span>
     <span class="pill"><span id="market-text">–</span></span>
     <span class="pill"><span id="conn-text">–</span></span>
@@ -233,7 +233,7 @@
     </div>
   </section>
 
-  <p class="foot">Polls <code>/live/status</code> every second. INR pairs: spreads in paise (1 paisa = 0.01 INR). Other pairs: spreads in pips. Read-only — no orders are ever placed.</p>
+  <p class="foot">Polls <code>/live/status</code> every second. INR pairs: spreads in paise (1 paisa = 0.01 INR). Other pairs: spreads in pips, from free spot venues (Kraken order book, TrueFX interbank indicative); a cross that persists is a venue basis, not free money. Read-only — no orders are ever placed.</p>
 </main>
 
 <script>
@@ -369,6 +369,8 @@
     if (!symbols.includes(pair)) pair = symbols[0];
     const i = info(pair);
     $("title-pair").textContent = i.display.replace(/ \(per \d+\)$/, "");
+    const spotPair = legsOf(pair).some((l) => !l.expiry);
+    $("title-kind").textContent = spotPair ? "spot" : "futures";
     $("mid-unit").textContent = `${pair.slice(3)} per ${i.quote_unit > 1 ? i.quote_unit + " " : ""}${pair.slice(0, 3)}`;
     document.querySelectorAll(".unit-cap").forEach((n) => {
       n.textContent = unit(pair) === "paise" ? "Paise" : "Pips";
@@ -410,6 +412,13 @@
       sub.textContent = best.crossed
         ? `Crossed: buy on ${prettyLeg(best.buy)}, sell on ${prettyLeg(best.sell)} — arbitrage before costs.`
         : `Not crossed. Best trade would be buy ${prettyLeg(best.buy)}, sell ${prettyLeg(best.sell)}, losing ${Math.abs(pipsOf(best)).toFixed(2)} ${u}.`;
+      if (best.basis_pips != null) {
+        // a persistent gap between two venues is a basis, not a fresh opportunity
+        const beyond = best.beyond_basis_pips;
+        sub.textContent += ` These venues usually sit ${fmtPaise(best.basis_pips)} ${u} apart (5-min median); ` +
+          (beyond > 0 ? `right now the gap is ${beyond.toFixed(2)} ${u} beyond that — a genuine dislocation.`
+                      : `right now it is within that usual gap, so this is the venue basis, not a new opportunity.`);
+      }
     } else {
       v.textContent = "–"; v.className = "hero-value num";
       const legs = legsOf(pair);
@@ -438,7 +447,8 @@
       const head = el("div", "leg-head");
       const dot = el("span", "dot"); dot.style.background = colorFor(l.id);
       head.append(dot, el("strong", null, prettyLeg(l.id)));
-      card.append(head, el("div", "leg-contract", `${l.contract} · expiry ${l.expiry}`));
+      card.append(head, el("div", "leg-contract", l.expiry ? `${l.contract} · expiry ${l.expiry}`
+        : `${l.contract} · ${l.exchange === "TRUEFX" ? "interbank ECN, indicative" : "spot order book"}`));
 
       const book = el("div", "book");
       const side = (lbl, px, qty) => {

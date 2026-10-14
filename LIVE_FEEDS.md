@@ -209,6 +209,46 @@ Expect thin books on the cross-currency futures and on BSE. Run the pre-flight
 during market hours to see which pairs actually have two-sided books on both
 venues; that availability is itself a result worth reporting.
 
+### Non-INR pairs: free spot venues (no API key, no payment)
+
+NSE/BSE's EUR/USD, GBP/USD and USD/JPY futures books are almost always empty,
+so non-INR pairs use public spot quotes instead:
+
+| venue | what it is | pairs |
+|---|---|---|
+| **Kraken** | crypto exchange with real fiat FX order books (executable) | EUR/USD GBP/USD USD/JPY USD/CAD AUD/USD USD/CHF EUR/GBP EUR/JPY EUR/CHF |
+| **TrueFX** | Integral ECN interbank top of book (indicative) | the same majors |
+| Bitstamp (opt-in) | crypto exchange with fiat FX order books | EUR/USD GBP/USD |
+
+```bash
+ARBEX_SYMBOLS=USDINR,EURUSD,GBPUSD,USDCAD,AUDUSD,EURGBP   # or: all / spot
+ARBEX_SPOT_VENUES=kraken,truefx            # default; add bitstamp, or "off"
+```
+
+No credentials are needed: Live works with only spot pairs and no Upstox/Kite
+token. A pair is never mixed across kinds: INR pairs use NSE/BSE futures,
+non-INR pairs use spot (a future and a spot price differ by carry). All spot
+venues are fetched concurrently in **one** poll, so their legs share one
+timestamp. Leg ids are `spot_<venue>_<pair>`; recordings and replay work the
+same as for futures.
+
+**Venue basis (read this before presenting numbers).** Kraken's USD trades
+persistently a little rich against the interbank TrueFX quote (measured
+2026-10-14: EUR/USD ~1.1 pips, GBP/USD ~2 pips, USD/CAD ~5 pips), because moving
+USD on or off a crypto venue costs fees and time. A raw cross between them
+appears on *every* poll and is that basis, not arbitrage. So:
+
+- `/live/status` reports, per venue pair, the raw `executable_pips`, the
+  5-minute median `basis_pips`, and `beyond_basis_pips`;
+- the engine reports a spot opportunity only when the cross exceeds the basis
+  by at least one spot tick (0.1 pip), with the excess as its profit, and stays
+  quiet for the first ~10 polls while the basis is measured.
+
+In the first live run this turned "a cross on every poll" into 9 dislocations
+of 0.1-0.2 pips in 61 polls. Those are before costs: Kraken's taker fee
+(0.1-0.4%) is far larger, and TrueFX is indicative, so they measure how
+quickly venues re-align, not money left on the table.
+
 ### Pip sizes: one source of truth
 
 Pip size, exchange tick, decimals, contract size and futures specs for every

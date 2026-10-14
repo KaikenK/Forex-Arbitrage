@@ -181,12 +181,13 @@ def test_every_requested_pair_gets_its_own_legs_on_one_hub_per_provider():
              for p, ex in (("upstox", "NSE"), ("upstox", "BSE"))}
     setup = build_live_exchange_sources(
         symbols=["USDINR", "EURINR", "USDJPY", "AUDUSD"], providers=["upstox"], exchanges=["NSE", "BSE"],
-        as_of=AS_OF, record_dir="off", contract_loader=_loader(table), hub_factory=lambda p: hub)
+        as_of=AS_OF, record_dir="off", contract_loader=_loader(table), hub_factory=lambda p: hub,
+        spot_venues=[])                      # spot off: USDJPY and AUDUSD fall back to futures
     assert sorted(s.source_id for s in setup.sources) == [
         "upstox_bse_eurinr", "upstox_bse_usdinr", "upstox_bse_usdjpy",
         "upstox_nse_eurinr", "upstox_nse_usdinr", "upstox_nse_usdjpy"]
     assert {s.symbol for s in setup.sources} == {"USDINR", "EURINR", "USDJPY"}
-    assert setup.skipped["AUDUSD"] == "no NSE/BSE futures for this pair"
+    assert setup.skipped["AUDUSD"] == "no NSE/BSE futures or free spot venue for this pair"
     eur = next(s for s in setup.sources if s.source_id == "upstox_nse_eurinr")
     assert eur.get_supported_symbols() == ["EURINR"] and "EUR/INR" in eur.config.display_name
     # one request covers every pair, so all legs share an observation timestamp
@@ -263,3 +264,65 @@ def test_a_provider_with_a_stale_exchange_list_is_dropped_not_fatal():
     assert sorted(s.source_id for s in setup.sources) == [
         "kite_nse_usdinr", "upstox_bse_usdinr", "upstox_nse_usdinr"]
     assert setup.skipped["kite:BSE:USDINR"] == "no unexpired monthly contracts listed"
+
+
+
+# -- free spot venues for non-INR pairs ----------------------------------------
+
+def test_non_inr_pairs_use_free_spot_venues_on_one_shared_hub():
+    seen = []
+    spot = PolledQuoteHub("spot", lambda keys: seen.append(sorted(keys)) or {}, poll_interval_s=60)
+    table = {(p, ex): _contracts(p, ex, [OCT]) for p, ex in (("upstox", "NSE"), ("upstox", "BSE"))}
+    setup = build_live_exchange_sources(
+        symbols=["USDINR", "EURUSD", "GBPJPY"], providers=["upstox"], exchanges=["NSE", "BSE"], as_of=AS_OF,
+        record_dir="off", contract_loader=_loader(table), hub_factory=_hubs(),
+        spot_venues=["kraken", "bitstamp", "truefx"], spot_hub_factory=lambda: spot)
+    ids = sorted(s.source_id for s in setup.sources)
+    assert ids == ["spot_bitstamp_eurusd", "spot_kraken_eurusd", "spot_truefx_eurusd",
+                   "upstox_bse_usdinr", "upstox_nse_usdinr"]
+    assert setup.skipped["GBPJPY"] == "needs two spot venues; quoted on truefx"
+    kraken = next(s for s in setup.sources if s.source_id == "spot_kraken_eurusd")
+    assert kraken.contract.expiry is None and kraken.config.display_name == "Kraken EUR/USD spot"
+    assert set(setup.hubs) == {"upstox", "spot"}
+    spot.poll_once()                         # every spot venue in one poll -> one timestamp
+    assert seen == [["bitstamp:eurusd", "kraken:ZEURZUSD", "truefx:EUR/USD"]]
+
+
+def test_spot_only_live_feed_needs_no_broker_credentials():
+    spot = PolledQuoteHub("spot", lambda keys: {}, poll_interval_s=60)
+    setup = build_live_exchange_sources(
+        symbols=["EURUSD", "GBPUSD"], providers=["upstox"], as_of=AS_OF, record_dir="off",
+        hub_factory=_hubs(fail=("upstox",)), spot_venues=["kraken", "bitstamp"], spot_hub_factory=lambda: spot)
+    assert len(setup.sources) == 4 and "upstox" not in setup.skipped   # broker never even tried
+
+
+def test_spot_quotes_cross_across_venues_and_replay(tmp_path):
+    from backend.core.data_sources.live_feeds import cross_spreads
+    rows = cross_spreads({"spot_kraken_eurusd": Quote(bid=1.12020, ask=1.12022),
+                          "spot_truefx_eurusd": Quote(bid=1.12025, ask=1.12028)})
+    assert rows[0]["crossed"] and rows[0]["executable_pips"] == pytest.approx(0.3)
+    # recorded spot legs (no expiry) replay as spot legs
+    rec = QuoteRecorder(tmp_path)
+    from backend.core.data_sources.spot_feeds import spot_contracts
+    cs = spot_contracts(["EURUSD"], ["kraken", "truefx"])["EURUSD"]
+    for c in cs:
+        rec.register_contract(c)
+    rec.on_poll("spot", {c.instrument_key: Quote(bid=1.12, ask=1.1201, recv_ts_ms=1_800_000_000_000) for c in cs})
+    setup = build_replay_sources(rec.session_dir)
+    assert sorted(s.source_id for s in setup.sources) == ["replay_spot_kraken_eurusd", "replay_spot_truefx_eurusd"]
+
+
+def test_basis_tracker_separates_a_persistent_venue_gap_from_a_dislocation():
+    from backend.core.data_sources.live_feeds import BasisTracker, cross_spreads
+    t = BasisTracker(window=50)
+    # Kraken's EUR/USD sits ~1.5 pips under TrueFX on every poll: a basis
+    for _ in range(20):
+        t.observe({"spot_kraken_eurusd": Quote(bid=1.12000, ask=1.12002),
+                   "spot_truefx_eurusd": Quote(bid=1.12014, ask=1.12018)})
+    usual = t.annotate(cross_spreads({"spot_kraken_eurusd": Quote(bid=1.12000, ask=1.12002),
+                                      "spot_truefx_eurusd": Quote(bid=1.12014, ask=1.12018)}))[0]
+    assert usual["crossed"] and usual["executable_pips"] == pytest.approx(1.2)
+    assert usual["basis_pips"] == pytest.approx(1.5) and usual["beyond_basis_pips"] < 0   # just the basis
+    jump = t.annotate(cross_spreads({"spot_kraken_eurusd": Quote(bid=1.12000, ask=1.12002),
+                                     "spot_truefx_eurusd": Quote(bid=1.12040, ask=1.12044)}))[0]
+    assert jump["beyond_basis_pips"] == pytest.approx(2.3)                               # a real dislocation

@@ -22,7 +22,7 @@ class FutureContract:
     exchange: str            # "NSE" | "BSE"
     instrument_key: str      # what the provider's quote API takes
     trading_symbol: str
-    expiry: date
+    expiry: Optional[date]   # None for a spot venue
     lot_size: int
     contract_size: float     # base currency per lot (1000 for USDINR)
     weekly: bool = False
@@ -34,7 +34,7 @@ class FutureContract:
             "exchange": self.exchange,
             "instrument_key": self.instrument_key,
             "trading_symbol": self.trading_symbol,
-            "expiry": self.expiry.isoformat(),
+            "expiry": self.expiry.isoformat() if self.expiry else None,
             "lot_size": self.lot_size,
             "contract_size": self.contract_size,
             "weekly": self.weekly,

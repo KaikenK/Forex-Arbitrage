@@ -13,6 +13,7 @@ import { SentimentWorkbench } from '@/components/dashboard/SentimentWorkbench';
 import { FeedModeToggle } from '@/components/dashboard/FeedModeToggle';
 import { PairPicker } from '@/components/dashboard/PairPicker';
 import { useInstrument } from '@/hooks/useInstrument';
+import { parseSourceId, sourceSymbol } from '@/lib/sources';
 
 export default function ArbexDashboard() {
   // Initialize the Buffered WebSocket Connection
@@ -23,6 +24,12 @@ export default function ArbexDashboard() {
   const feedEpoch = useArbexStore((state) => state.feedEpoch);
   const venueMode = feedMode === 'live' || feedMode === 'replay';
   const instrument = useInstrument();
+  // venues the running feed has for the selected pair: NSE / BSE futures or spot venues
+  const sources = useArbexStore((state) => state.feedStatus?.sources);
+  const venues = Array.from(new Set((sources ?? [])
+    .filter((id) => sourceSymbol(id) === instrument.symbol)
+    .map((id) => parseSourceId(id).group))).sort();
+  const isSpot = (sources ?? []).some((id) => sourceSymbol(id) === instrument.symbol && parseSourceId(id).provider === 'spot');
 
   return (
     <div className="bg-[#08090d] text-[#e8ecf4] min-h-screen font-sans overflow-hidden flex flex-col">
@@ -49,7 +56,9 @@ export default function ArbexDashboard() {
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
           <div className="text-[11px] text-slate-400 font-mono tracking-widest">
-            {venueMode ? `${instrument.display} FUT · NSE / BSE` : `SYNTHETIC ${instrument.display}`}
+            {venueMode
+              ? `${instrument.display} ${isSpot ? 'SPOT' : 'FUT'} · ${venues.join(' / ') || 'NSE / BSE'}`
+              : `SYNTHETIC ${instrument.display}`}
           </div>
         </div>
       </header>

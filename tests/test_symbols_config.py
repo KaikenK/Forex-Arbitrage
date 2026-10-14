@@ -25,7 +25,12 @@ def test_a_typo_fails_loudly(monkeypatch):
 
 def test_presets_expand_to_the_exchange_listed_pairs(monkeypatch):
     monkeypatch.setenv("ARBEX_SYMBOLS", "all")
+    assert configured_symbols() == ["USDINR", "EURINR", "GBPINR", "JPYINR", "EURUSD", "GBPUSD", "USDJPY",
+                                    "EURGBP", "USDCHF", "EURJPY", "EURCHF", "USDCAD", "AUDUSD"]
+    monkeypatch.setenv("ARBEX_SYMBOLS", "futures")
     assert configured_symbols() == ["USDINR", "EURINR", "GBPINR", "JPYINR", "EURUSD", "GBPUSD", "USDJPY"]
+    monkeypatch.setenv("ARBEX_SYMBOLS", "spot")
+    assert configured_symbols()[:3] == ["EURUSD", "GBPUSD", "USDJPY"]
     monkeypatch.setenv("ARBEX_SYMBOLS", "inr")
     assert configured_symbols() == ["USDINR", "EURINR", "GBPINR", "JPYINR"]
 

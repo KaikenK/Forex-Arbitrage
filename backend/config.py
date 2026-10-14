@@ -93,10 +93,10 @@ def configured_symbols() -> list:
 
 # Pairs each data mode can produce; anything else in ARBEX_SYMBOLS is reported
 # and skipped. The synthetic generator can model any registered pair; the live
-# legs need NSE/BSE futures (USD/EUR/GBP/JPY-INR, EURUSD, GBPUSD, USDJPY).
-from backend.core.instruments import EXCHANGE_FUTURES_SYMBOLS, REGISTRY as _INSTRUMENTS
+# legs need NSE/BSE futures (INR pairs) or two free spot venues (non-INR pairs).
+from backend.core.instruments import LIVE_SYMBOLS, REGISTRY as _INSTRUMENTS
 SYNTHETIC_SUPPORTED_SYMBOLS = list(_INSTRUMENTS)
-LIVE_EXCHANGE_SUPPORTED_SYMBOLS = list(EXCHANGE_FUTURES_SYMBOLS)
+LIVE_EXCHANGE_SUPPORTED_SYMBOLS = list(LIVE_SYMBOLS)   # NSE/BSE futures + free spot venues
 LEGACY_DEFAULT_SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY"]
 
 # Base price for USD/INR (close to real-world reference, Mar 2026)

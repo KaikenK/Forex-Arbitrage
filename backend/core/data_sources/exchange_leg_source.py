@@ -92,7 +92,7 @@ class ExchangeLegSource(DataSourceInterface):
                 "provider": self._contract.provider,
                 "instrument_key": self._contract.instrument_key,
                 "trading_symbol": self._contract.trading_symbol,
-                "expiry": self._contract.expiry.isoformat(),
+                "expiry": self._contract.expiry.isoformat() if self._contract.expiry else None,
                 "exchange_ts_ms": q.exchange_ts_ms,
                 "recv_ts_ms": q.recv_ts_ms,
                 "bid_qty": q.bid_qty,

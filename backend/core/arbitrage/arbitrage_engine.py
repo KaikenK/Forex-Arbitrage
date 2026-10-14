@@ -15,7 +15,7 @@ Design Decisions:
 
 import logging
 import time
-from typing import Dict, List, Optional, Set, Any, Tuple
+from typing import Callable, Dict, List, Optional, Set, Any, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
@@ -137,14 +137,22 @@ class ArbitrageConfig:
     # Live exchange legs: two providers quoting the same exchange see ONE order
     # book, so a "cross" between them is a polling-time artifact, not a trade.
     skip_same_venue: bool = False
+    # Spot legs: typical (median) price gap between two venues, in pips of
+    # mid(sell) - mid(buy); None while unknown. When set, a spot cross must
+    # exceed that venue basis, and the reported profit is the excess over it.
+    basis_for: Optional[Callable[[str, str], Optional[float]]] = None
     source_latencies: Dict[str, float] = field(default_factory=dict)
     source_reliabilities: Dict[str, float] = field(default_factory=dict)
 
-    def min_profit_for(self, symbol: str) -> float:
-        """Minimum profit in pips for one pair."""
+    def min_profit_for(self, symbol: str, spot: bool = False) -> float:
+        """Minimum profit in pips for one pair (spot legs tick finer than futures)."""
         if self.min_profit_ticks is None:
             return self.min_profit_pips
-        return self.min_profit_ticks * get_instrument(symbol).min_executable_pips()
+        return self.min_profit_ticks * get_instrument(symbol).min_executable_pips(spot=spot)
+
+
+def _is_spot(source_id: str) -> bool:
+    return source_id.removeprefix("replay_").startswith("spot_")
 
 
 def venue_of(source_id: str) -> str:
@@ -236,13 +244,17 @@ class ArbitrageEngine:
             session_opps = self._detect_session_inefficiency(window, ticks_by_source)
             opportunities.extend(session_opps)
         
+        if self.config.basis_for is not None:
+            opportunities = self._net_of_basis(opportunities)
+
         # Filter by minimum confidence and profit
         filtered = [
             opp for opp in opportunities
             if opp.confidence_score >= self.config.min_confidence
             # tolerance: a one-tick cross (e.g. 95.4525 - 95.4500) is 0.2499999... pips
             # in binary floating point and must not fall below a one-tick threshold
-            and opp.estimated_profit_pips >= self.config.min_profit_for(window.symbol) - 1e-9
+            and opp.estimated_profit_pips >= self.config.min_profit_for(
+                window.symbol, spot=_is_spot(opp.buy_source)) - 1e-9
             and opp.latency_risk_ms <= self.config.max_latency_risk_ms
         ]
         
@@ -252,6 +264,21 @@ class ArbitrageEngine:
         
         return filtered
     
+    def _net_of_basis(self, opportunities: List["ArbitrageOpportunity"]) -> List["ArbitrageOpportunity"]:
+        """Spot venues that sit apart persistently are not crossed in any useful
+        sense; keep a spot cross only by how far it exceeds the usual gap."""
+        out = []
+        for opp in opportunities:
+            if not _is_spot(opp.buy_source):
+                out.append(opp)
+                continue
+            basis = self.config.basis_for(opp.buy_source, opp.sell_source)
+            if basis is None:
+                continue                  # basis still being measured: report nothing yet
+            opp.estimated_profit_pips = round(opp.estimated_profit_pips - basis, 4)
+            out.append(opp)
+        return out
+
     def detect_triangular(
         self, 
         windows_by_symbol: Dict[str, AlignedTickWindow]

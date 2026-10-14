@@ -55,9 +55,10 @@ class InstrumentSpec:
     def to_pips(self, price_diff: float) -> float:
         return price_diff / self.pip_size
 
-    def min_executable_pips(self) -> float:
-        """One exchange tick in pips: the smallest edge a crossed futures book can show."""
-        tick = self.futures.tick_size if self.futures else self.tick_size
+    def min_executable_pips(self, spot: bool = False) -> float:
+        """One price tick in pips: the smallest edge a crossed book can show.
+        Exchange futures tick by default; the spot tick (e.g. 0.1 pip) for spot legs."""
+        tick = self.futures.tick_size if (self.futures and not spot) else self.tick_size
         return tick / self.pip_size
 
 
@@ -91,16 +92,27 @@ REGISTRY: Dict[str, InstrumentSpec] = {s.symbol: s for s in (
     _fx("EURGBP", 0.0001, 0.00001, 5, 0.87),
     _fx("EURJPY", 0.01, 0.001, 3, 174.0),
     _fx("GBPJPY", 0.01, 0.001, 3, 200.0),
+    _fx("EURCHF", 0.0001, 0.00001, 5, 0.93),
 )}
 
 # Pairs with futures on NSE and BSE: what the live exchange legs can trade.
 EXCHANGE_FUTURES_SYMBOLS: List[str] = [s for s, spec in REGISTRY.items() if spec.futures]
 
+# Pairs quoted by at least two free spot venues (Kraken, Bitstamp, TrueFX; see
+# backend/core/data_sources/spot_feeds.py): what the live spot legs can trade.
+SPOT_SYMBOLS: List[str] = ["EURUSD", "GBPUSD", "USDJPY", "EURGBP", "USDCHF", "EURJPY",
+                           "EURCHF", "USDCAD", "AUDUSD"]
+
+# Every pair a live feed can serve
+LIVE_SYMBOLS: List[str] = list(dict.fromkeys(EXCHANGE_FUTURES_SYMBOLS + SPOT_SYMBOLS))
+
 # Named sets accepted in ARBEX_SYMBOLS
 SYMBOL_PRESETS: Dict[str, List[str]] = {
-    "ALL": list(EXCHANGE_FUTURES_SYMBOLS),
+    "ALL": list(LIVE_SYMBOLS),
+    "FUTURES": list(EXCHANGE_FUTURES_SYMBOLS),
     "INR": [s for s in EXCHANGE_FUTURES_SYMBOLS if s.endswith("INR")],
     "CROSS": [s for s in EXCHANGE_FUTURES_SYMBOLS if not s.endswith("INR")],
+    "SPOT": list(SPOT_SYMBOLS),
 }
 
 # Quote currencies whose pip is 0.01 rather than 0.0001
@@ -151,8 +163,9 @@ def to_pips(price_diff: float, symbol: str) -> float:
 def parse_symbol_list(raw: str | Iterable[str]) -> List[str]:
     """'USDINR, eur/inr' -> ['USDINR', 'EURINR']. Order kept, duplicates dropped.
 
-    Presets: 'all' (every pair with NSE/BSE futures), 'inr' (the four INR
-    pairs), 'cross' (EURUSD, GBPUSD, USDJPY futures).
+    Presets: 'all' (every pair a live feed can serve), 'futures' (pairs with
+    NSE/BSE futures), 'inr' (the four INR pairs), 'cross' (EURUSD, GBPUSD,
+    USDJPY futures), 'spot' (pairs on the free spot venues).
 
     Raises UnknownInstrumentError on anything that is not a currency pair, so a
     typo in configuration fails at startup instead of producing an empty feed.

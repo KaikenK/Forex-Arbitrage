@@ -20,6 +20,7 @@ two legs, since arbitrage needs two prices.
 
 Environment (all optional):
     ARBEX_SYMBOLS          pairs to trade (default USDINR; "all" = every listed pair)
+    ARBEX_SPOT_VENUES      free spot venues for non-INR pairs (default "kraken,truefx"; "off")
     ARBEX_LIVE_PROVIDERS   default "upstox,kite"
     ARBEX_LIVE_EXCHANGES   default "NSE,BSE"
     ARBEX_RECORD_DIR       where to record quotes (default research/recordings;
@@ -33,7 +34,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
 from dataclasses import dataclass, field
+from statistics import median
 from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -42,9 +45,10 @@ from backend.core.data_sources.exchange_contracts import FutureContract, select_
 from backend.core.data_sources.exchange_leg_source import ExchangeLegSource
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
 from backend.core.data_sources.replay_hub import ReplayQuoteHub, load_recorded_contracts
+from backend.core.data_sources.spot_feeds import DEFAULT_VENUES, VENUE_NAMES, VENUE_PAIRS, make_spot_hub, spot_contracts
 from backend.core.data_sources.tick_recorder import QuoteRecorder
 from backend.core.instruments import (
-    EXCHANGE_FUTURES_SYMBOLS, REGISTRY, get_instrument, normalize_symbol, to_pips,
+    EXCHANGE_FUTURES_SYMBOLS, REGISTRY, SPOT_SYMBOLS, get_instrument, normalize_symbol, to_pips,
 )
 from backend.core.interfaces.data_source import DataSourceConfig
 
@@ -65,10 +69,11 @@ class LiveFeedSetup:
     skipped: Dict[str, str] = field(default_factory=dict)
     recorder: Optional[QuoteRecorder] = None
     replay_dir: Optional[Path] = None
+    basis: Optional["BasisTracker"] = None
 
     def describe(self) -> List[str]:
-        lines = [f"{s.source_id}: {s.contract.trading_symbol} ({s.contract.instrument_key}, "
-                 f"expiry {s.contract.expiry})" for s in self.sources]
+        lines = [f"{s.source_id}: {s.contract.trading_symbol} ({s.contract.instrument_key}"
+                 + (f", expiry {s.contract.expiry})" if s.contract.expiry else ", spot)") for s in self.sources]
         lines += [f"skipped {k}: {v}" for k, v in self.skipped.items()]
         return lines
 
@@ -102,7 +107,7 @@ def _leg(source_id: str, display: str, hub: PolledQuoteHub, contract: FutureCont
          latency_ms: Optional[float] = None) -> ExchangeLegSource:
     config = DataSourceConfig(
         source_id=source_id,
-        source_type="exchange_future",
+        source_type="exchange_future" if contract.expiry else "spot_venue",
         display_name=display,
         priority=priority,
         # Retail polling: on average a quote is acted on one poll interval
@@ -112,7 +117,7 @@ def _leg(source_id: str, display: str, hub: PolledQuoteHub, contract: FutureCont
         reliability_score=0.95,
         symbols=[contract.symbol],
         extra_config={"exchange": contract.exchange, "provider": contract.provider,
-                      "expiry": contract.expiry.isoformat()},
+                      "expiry": contract.expiry.isoformat() if contract.expiry else None},
     )
     # Register now, not on connect(): the hub starts polling on the first leg's
     # connect(), and every leg must be in that first single request.
@@ -121,12 +126,19 @@ def _leg(source_id: str, display: str, hub: PolledQuoteHub, contract: FutureCont
 
 
 def _leg_id(prefix: str, contract: FutureContract) -> str:
+    # futures: upstox_nse_usdinr; spot (no expiry): spot_kraken_eurusd. Either
+    # way the second field is the venue, which the same-venue rule relies on.
+    if contract.expiry is None:
+        return f"{prefix}spot_{contract.provider}_{contract.symbol.lower()}"
     return f"{prefix}{contract.provider}_{contract.exchange.lower()}_{contract.symbol.lower()}"
 
 
 def _leg_name(prefix: str, contract: FutureContract) -> str:
+    pair = get_instrument(contract.symbol).display
+    if contract.expiry is None:
+        return f"{prefix}{VENUE_NAMES.get(contract.provider, contract.provider)} {pair} spot"
     return (f"{prefix}{PROVIDER_NAMES.get(contract.provider, contract.provider)} {contract.exchange} "
-            f"{get_instrument(contract.symbol).display} FUT {contract.expiry:%d %b %y}")
+            f"{pair} FUT {contract.expiry:%d %b %y}")
 
 
 def build_live_exchange_sources(
@@ -139,19 +151,30 @@ def build_live_exchange_sources(
     max_staleness_ms: int = 5_000,
     contract_loader: Callable[[str, str, List[str]], List[FutureContract]] = _default_contract_loader,
     hub_factory: Callable[[str], PolledQuoteHub] = _default_hub_factory,
+    spot_venues: Optional[List[str]] = None,
+    spot_hub_factory: Callable[[], PolledQuoteHub] = make_spot_hub,
 ) -> LiveFeedSetup:
-    symbols = [normalize_symbol(s) for s in (symbols or ["USDINR"])]
+    all_symbols = [normalize_symbol(s) for s in (symbols or ["USDINR"])]
     providers = providers or _env_list("ARBEX_LIVE_PROVIDERS", "upstox,kite")
     exchanges = exchanges or _env_list("ARBEX_LIVE_EXCHANGES", "NSE,BSE")
+    spot_venues = spot_venues if spot_venues is not None else [
+        v for v in _env_list("ARBEX_SPOT_VENUES", DEFAULT_VENUES) if v.lower() != "off"]
     as_of = as_of or date.today()
     skipped: Dict[str, str] = {}
 
-    for sym in [s for s in symbols if s not in EXCHANGE_FUTURES_SYMBOLS]:
-        skipped[sym] = "no NSE/BSE futures for this pair"
-    symbols = [s for s in symbols if s in EXCHANGE_FUTURES_SYMBOLS]
+    # One kind of leg per pair, never mixed: a future and a spot price differ by
+    # carry, so comparing them would report the basis as arbitrage. Non-INR pairs
+    # quoted by the free spot venues use spot; INR pairs use NSE/BSE futures.
+    spot_symbols = [s for s in all_symbols if s in SPOT_SYMBOLS and spot_venues]
+    symbols = [s for s in all_symbols if s not in spot_symbols and s in EXCHANGE_FUTURES_SYMBOLS]
+    for sym in all_symbols:
+        if sym not in spot_symbols and sym not in symbols:
+            quoted = [v for v in spot_venues if sym in VENUE_PAIRS.get(v, {})]
+            skipped[sym] = (f"needs two spot venues; quoted on {', '.join(quoted)}" if quoted
+                            else "no NSE/BSE futures or free spot venue for this pair")
 
     hubs: Dict[str, PolledQuoteHub] = {}
-    for p in providers:
+    for p in (providers if symbols else []):
         try:
             hubs[p] = hub_factory(p)
         except Exception as e:
@@ -194,11 +217,26 @@ def build_live_exchange_sources(
             sources.append(_leg(_leg_id("", contract), _leg_name("", contract), hubs[provider],
                                 contract, len(sources) + 1, max_staleness_ms))
 
+    # Spot legs: one "spot" hub polls every venue concurrently per tick.
+    if spot_symbols:
+        by_symbol = spot_contracts(spot_symbols, spot_venues)
+        usable = {sym: cs for sym, cs in by_symbol.items() if len(cs) >= 2}
+        for sym in spot_symbols:
+            if sym not in usable:
+                have = ", ".join(c.provider for c in by_symbol.get(sym, [])) or "no venue"
+                skipped[sym] = f"needs two spot venues; quoted on {have}"
+        if usable:
+            hubs["spot"] = spot_hub_factory()
+            for sym in spot_symbols:
+                for contract in usable.get(sym, []):
+                    sources.append(_leg(_leg_id("", contract), _leg_name("", contract), hubs["spot"],
+                                        contract, len(sources) + 1, max_staleness_ms))
+
     if len(sources) < 2:
         raise LiveFeedUnavailable(f"need at least two live legs for some pair; skipped: {skipped}")
 
-    used = {s.contract.provider for s in sources}
-    hubs = {p: h for p, h in hubs.items() if p in used}
+    used = {s.hub for s in sources}
+    hubs = {p: h for p, h in hubs.items() if h in used}
 
     recorder = None
     if record_dir is None:
@@ -276,3 +314,48 @@ def cross_spreads(quotes: Dict[str, Quote], symbols: Optional[Dict[str, str]] = 
                 "crossed": edge > 0,
             })
     return rows
+
+
+class BasisTracker:
+    """
+    Rolling typical price gap between two venues of the same pair.
+
+    Some venue pairs sit apart persistently (e.g. Kraken's USD trades slightly
+    rich against the interbank TrueFX quote, because moving USD on/off a crypto
+    venue costs fees and time). A raw cross between them on every poll is that
+    basis, not an arbitrage. This keeps the median mid gap per venue pair over
+    the last `window` observations so each spread can also be reported net of
+    it: a cross *beyond* the basis is a genuine, short-lived dislocation.
+    """
+
+    def __init__(self, window: int = 300):
+        self._window = window
+        self._gaps: Dict[tuple, "deque[float]"] = {}
+
+    def observe(self, quotes: Dict[str, Quote], symbols: Optional[Dict[str, str]] = None) -> None:
+        from backend.core.arbitrage.arbitrage_engine import venue_of
+        symbols = symbols or {}
+        legs = sorted((k, q) for k, q in quotes.items() if q is not None and q.two_sided)
+        for i, (a, qa) in enumerate(legs):
+            for b, qb in legs[i + 1:]:
+                sym = symbols.get(a) or _symbol_from_id(a)
+                if (symbols.get(b) or _symbol_from_id(b)) != sym or venue_of(a) == venue_of(b):
+                    continue
+                gaps = self._gaps.setdefault((a, b), deque(maxlen=self._window))
+                gaps.append(to_pips((qb.bid + qb.ask) / 2 - (qa.bid + qa.ask) / 2, sym))
+
+    def basis(self, a: str, b: str) -> Optional[float]:
+        """Median of mid(b) - mid(a) in pips, or None before 10 observations."""
+        key, sign = ((a, b), 1.0) if a < b else ((b, a), -1.0)
+        gaps = self._gaps.get(key)
+        if not gaps or len(gaps) < 10:
+            return None
+        return sign * median(gaps)
+
+    def annotate(self, rows: List[dict]) -> List[dict]:
+        """Add basis_pips (typical sell-minus-buy mid gap) and beyond_basis_pips."""
+        for row in rows:
+            b = self.basis(row["buy"], row["sell"])
+            row["basis_pips"] = round(b, 2) if b is not None else None
+            row["beyond_basis_pips"] = round(row["executable_pips"] - b, 2) if b is not None else None
+        return rows

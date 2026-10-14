@@ -44,7 +44,7 @@ class QuoteRecorder:
                 "provider": c.provider if c else hub_name,
                 "exchange": c.exchange if c else None,
                 "trading_symbol": c.trading_symbol if c else None,
-                "expiry": c.expiry.isoformat() if c else None,
+                "expiry": c.expiry.isoformat() if c and c.expiry else None,
                 "bid": q.bid,
                 "ask": q.ask,
                 "bid_qty": q.bid_qty,
