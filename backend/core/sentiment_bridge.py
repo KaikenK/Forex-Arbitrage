@@ -15,6 +15,8 @@ from urllib.parse import urlencode
 from urllib.request import Request
 from urllib.request import urlopen
 
+from backend.core.news_fallback import RssHeadlines
+
 
 def normalize_pair(symbol: str) -> str:
     normalized = symbol.strip().upper().replace("_", "/")
@@ -33,6 +35,7 @@ class SentimentBridge:
         enabled: bool | None = None,
         timeout_ms: int | None = None,
         clock: Callable[[], datetime] | None = None,
+        rss: RssHeadlines | None = None,
     ) -> None:
         self._enabled = enabled if enabled is not None else _env_flag("NEWS_STREAM_ENABLE", True)
         self._base_url = (base_url or os.environ.get("NEWS_STREAM_BASE_URL", "http://127.0.0.1:9000")).rstrip("/")
@@ -55,6 +58,38 @@ class SentimentBridge:
         self._last_error: str | None = None
         self._last_latency_ms: float | None = None
         self._last_success_at: datetime | None = None
+        # Direct RSS headlines when news_stream is not running (see news_fallback.py)
+        self._rss = rss or RssHeadlines()
+
+    def _rss_fallback(self, pair: str, limit: int = 12) -> list[dict[str, Any]]:
+        if not RssHeadlines.enabled():
+            return []
+        try:
+            return self._rss.for_pair(pair, limit=limit)
+        except Exception as exc:
+            self._rss.last_error = str(exc)
+            return []
+
+    def _rss_live_payload(self, pair: str, window_minutes: int) -> dict[str, Any]:
+        """Live window built from direct RSS headlines (keyword direction, low confidence)."""
+        payload = _neutral_live_payload(pair, window_minutes)
+        items = self._rss_fallback(pair)
+        if not items:
+            return payload
+        scores = [float(it["sentiment"]) for it in items]
+        payload.update({
+            "overall_sentiment": round(sum(scores) / len(scores), 4),
+            "confidence": 0.3,   # keyword heuristic, not the news_stream model
+            "bullish_count": sum(1 for x in scores if x > 0),
+            "bearish_count": sum(1 for x in scores if x < 0),
+            "neutral_count": sum(1 for x in scores if x == 0),
+            "item_count": len(items),
+            "top_drivers": [{"headline": it["headline"], "sentiment": it["sentiment"],
+                             "source": it["source"], "category": it["category"]} for it in items],
+            "status": "rss_fallback",
+            "reason": "news_stream offline: headlines fetched directly from RSS, direction from a keyword heuristic",
+        })
+        return payload
 
     def start_live_ingest(self) -> None:
         if not self._enabled or not self._base_url:
@@ -96,7 +131,7 @@ class SentimentBridge:
     def get_live_sentiment(self, pair: str, window_minutes: int) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         if not self._enabled or not self._base_url:
-            payload = _neutral_live_payload(normalized_pair, window_minutes)
+            payload = self._rss_live_payload(normalized_pair, window_minutes)
             payload["service"] = self.get_status(normalized_pair)["news_stream"]
             return payload
 
@@ -109,9 +144,9 @@ class SentimentBridge:
                 },
             )
         except Exception:
-            # news_stream unreachable: serve the same neutral window as when it is
-            # disabled; the reason stays visible in service.last_error.
-            payload = _neutral_live_payload(normalized_pair, window_minutes)
+            # news_stream unreachable: direct RSS headlines if available, else a
+            # neutral window; the reason stays visible in service.last_error.
+            payload = self._rss_live_payload(normalized_pair, window_minutes)
         payload["pair"] = normalize_pair(str(payload.get("pair", normalized_pair)))
         payload["service"] = self.get_status(normalized_pair)["news_stream"]
         return payload
@@ -209,6 +244,18 @@ class SentimentBridge:
         self._ensure_live_materialized(normalized_pair, limit=max(1, min(limit, 3)))
         with self._state_lock:
             items = [dict(item) for item in self._feed_items.get(normalized_pair, [])[: max(1, limit)]]
+        news_stream_down = not self._enabled or self._last_error is not None or self._last_success_at is None
+        if news_stream_down:
+            # today's headlines first, then whatever was cached from earlier news_stream runs
+            fresh = [{
+                "event_id": it["event_id"], "headline": it["headline"], "source": it["source"],
+                "pair": normalized_pair, "category": it["category"], "url": it["url"],
+                "timestamp": it["timestamp"].isoformat(), "live": True, "provider": "rss-direct",
+                "provenance": "rss-direct", "feed_mode": "fallback", "upstream_status": "news_stream offline",
+                "upstream_note": "Headlines fetched directly from RSS because news_stream is not running.",
+            } for it in self._rss_fallback(normalized_pair, limit=max(1, limit))]
+            known = {it["event_id"] for it in fresh}
+            items = (fresh + [it for it in items if it.get("event_id") not in known])[: max(1, limit)]
         return {
             "pair": normalized_pair,
             "items": items,
