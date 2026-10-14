@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -100,3 +100,36 @@ def select_common_expiry(
 
     expiry = min(shared)
     return {exchange: live[exchange][expiry] for exchange in live}
+
+
+def select_best_expiry(
+    by_group: Dict[str, Iterable[FutureContract]],
+    *,
+    as_of: date,
+    min_days_to_expiry: int = 2,
+) -> Tuple[Dict[str, FutureContract], Dict[str, str]]:
+    """
+    Like select_common_expiry, but tolerant: picks the nearest monthly expiry
+    listed by the MOST groups (at least two) and returns the groups that lack
+    it as {group: reason} instead of failing. One provider with a stale or
+    empty instrument list (e.g. Kite's BSE list) then drops out on its own.
+    """
+    live: Dict[str, Dict[date, FutureContract]] = {}
+    for group, contracts in by_group.items():
+        live[group] = {}
+        for c in _live(contracts, as_of, min_days_to_expiry):
+            if not c.weekly:
+                live[group].setdefault(c.expiry, c)
+    counts: Dict[date, int] = {}
+    for expiries in live.values():
+        for e in expiries:
+            counts[e] = counts.get(e, 0) + 1
+    best = max(counts.values(), default=0)
+    if best < 2:
+        detail = {g: sorted(e.isoformat() for e in exps) for g, exps in live.items()}
+        raise NoCommonExpiryError(f"no monthly expiry is listed by two sources: {detail}")
+    expiry = min(e for e, n in counts.items() if n == best)
+    picked = {g: exps[expiry] for g, exps in live.items() if expiry in exps}
+    dropped = {g: (f"does not list the {expiry} contract" if exps else "no unexpired monthly contracts listed")
+               for g, exps in live.items() if expiry not in exps}
+    return picked, dropped

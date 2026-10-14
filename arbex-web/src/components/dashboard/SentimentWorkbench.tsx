@@ -353,7 +353,8 @@ export function SentimentWorkbench() {
           ? fetchJson<HistoricalBiasResponse>(`/sentiment/bias?${biasQuery.toString()}`)
           : Promise.resolve<HistoricalBiasResponse | null>(null);
 
-        const [articlePayload, feedPayload, historyPayload, biasPayload] = await Promise.all([
+        // allSettled: one slow or failing endpoint must not blank the whole panel
+        const [articleResult, feedResult, historyResult, biasResult] = await Promise.allSettled([
           articlePromise,
           feedPromise,
           historyPromise,
@@ -362,19 +363,26 @@ export function SentimentWorkbench() {
         if (cancelled) {
           return;
         }
+        const failed = [articleResult, feedResult, historyResult, biasResult]
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected');
 
         startTransition(() => {
           setStatus(statusPayload);
-          setArticles(articlePayload);
-          setFeed(feedPayload);
-          setHistory(historyPayload);
-          setSelectedEventId((currentEventId) => (
-            currentEventId && historyPayload.items.some((item) => item.event_id === currentEventId)
-              ? currentEventId
-              : historyPayload.items[0]?.event_id ?? null
-          ));
-          setBias(biasPayload);
-          setError(null);
+          if (articleResult.status === 'fulfilled') setArticles(articleResult.value);
+          if (feedResult.status === 'fulfilled') setFeed(feedResult.value);
+          if (historyResult.status === 'fulfilled') {
+            const historyPayload = historyResult.value;
+            setHistory(historyPayload);
+            setSelectedEventId((currentEventId) => (
+              currentEventId && historyPayload.items.some((item) => item.event_id === currentEventId)
+                ? currentEventId
+                : historyPayload.items[0]?.event_id ?? null
+            ));
+          }
+          if (biasResult.status === 'fulfilled') setBias(biasResult.value);
+          setError(failed.length
+            ? `${failed.length} sentiment request(s) failed: ${failed[0].reason instanceof Error ? failed[0].reason.message : 'error'}`
+            : null);
           setIsLoading(false);
         });
       } catch (fetchError) {
@@ -506,7 +514,7 @@ export function SentimentWorkbench() {
             </div>
           ) : (
             <div className="text-slate-500">
-              {isLoading ? 'Loading raw live feed from news_stream...' : 'No live feed items mirrored into Arbex yet.'}
+              {isLoading ? 'Loading raw live feed from news_stream...' : 'No headlines yet: news_stream is offline and the direct RSS fallback returned nothing (check internet / NEWS_RSS_FALLBACK).'}
             </div>
           )}
         </div>

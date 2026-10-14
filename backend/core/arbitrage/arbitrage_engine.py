@@ -134,6 +134,9 @@ class ArbitrageConfig:
     enable_triangular: bool = True
     enable_session_analysis: bool = True
     enable_latency_arbitrage: bool = True
+    # Live exchange legs: two providers quoting the same exchange see ONE order
+    # book, so a "cross" between them is a polling-time artifact, not a trade.
+    skip_same_venue: bool = False
     source_latencies: Dict[str, float] = field(default_factory=dict)
     source_reliabilities: Dict[str, float] = field(default_factory=dict)
 
@@ -142,6 +145,12 @@ class ArbitrageConfig:
         if self.min_profit_ticks is None:
             return self.min_profit_pips
         return self.min_profit_ticks * get_instrument(symbol).min_executable_pips()
+
+
+def venue_of(source_id: str) -> str:
+    """Exchange of a live/replay leg id: upstox_nse_usdinr / replay_kite_bse_usdinr -> NSE / BSE."""
+    parts = source_id.removeprefix("replay_").split("_")
+    return parts[1].upper() if len(parts) >= 3 else source_id
 
 
 class ArbitrageEngine:
@@ -294,6 +303,8 @@ class ArbitrageEngine:
         # Compare all source pairs
         for i, source_a in enumerate(sources):
             for source_b in sources[i + 1:]:
+                if self.config.skip_same_venue and venue_of(source_a) == venue_of(source_b):
+                    continue
                 tick_a = ticks_by_source[source_a]
                 tick_b = ticks_by_source[source_b]
                 

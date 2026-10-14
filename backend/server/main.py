@@ -402,6 +402,7 @@ async def _start_live(setup) -> None:
         enable_triangular=False,          # single instrument
         enable_session_analysis=False,    # not an executable trade
         enable_latency_arbitrage=False,   # mid gaps without a cross are not arbitrage
+        skip_same_venue=True,             # Upstox-NSE vs Kite-NSE is one book, not a trade
     )
     multi_source_streamer = MultiSourceStreamer(
         ws_manager=ws_manager,

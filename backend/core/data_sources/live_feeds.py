@@ -38,7 +38,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from backend.core.data_sources.exchange_contracts import FutureContract, select_common_expiry
+from backend.core.data_sources.exchange_contracts import FutureContract, select_best_expiry
 from backend.core.data_sources.exchange_leg_source import ExchangeLegSource
 from backend.core.data_sources.quote_hub import PolledQuoteHub, Quote
 from backend.core.data_sources.replay_hub import ReplayQuoteHub, load_recorded_contracts
@@ -183,10 +183,12 @@ def build_live_exchange_sources(
         if missing.get(sym):
             skipped[sym] = f"not listed on {', '.join(missing[sym])}"
         try:
-            picked = select_common_expiry(groups[sym], as_of=as_of)
+            picked, dropped = select_best_expiry(groups[sym], as_of=as_of)
         except LookupError as e:
             skipped[sym] = str(e)
             continue
+        for group, reason in dropped.items():
+            skipped[f"{group}:{sym}"] = reason
         for group, contract in sorted(picked.items()):
             provider = group.split(":")[0]
             sources.append(_leg(_leg_id("", contract), _leg_name("", contract), hubs[provider],
@@ -251,6 +253,7 @@ def cross_spreads(quotes: Dict[str, Quote], symbols: Optional[Dict[str, str]] = 
     `executable_pips` is in the pair's pips; for INR pairs a pip is one paisa,
     which is what `executable_paise` (kept for the /live page) reports.
     """
+    from backend.core.arbitrage.arbitrage_engine import venue_of
     symbols = symbols or {}
     legs = sorted((k, q) for k, q in quotes.items() if q is not None and q.two_sided)
     rows = []
@@ -259,6 +262,8 @@ def cross_spreads(quotes: Dict[str, Quote], symbols: Optional[Dict[str, str]] = 
         for b, qb in legs[i + 1:]:
             if (symbols.get(b) or _symbol_from_id(b)) != sym:
                 continue
+            if venue_of(a) == venue_of(b):
+                continue   # same venue via two providers: one order book, not a trade
             a_to_b, b_to_a = qb.bid - qa.ask, qa.bid - qb.ask
             buy, sell, edge = (a, b, a_to_b) if a_to_b >= b_to_a else (b, a, b_to_a)
             pips = round(to_pips(edge, sym), 4)

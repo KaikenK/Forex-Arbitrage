@@ -225,3 +225,16 @@ class TestLiveExchangeMode:
             "upstox_bse_usdinr": make_tick("USDINR", 95.4525, 95.4600, "upstox_bse_usdinr"),
         }, window_size_ms=500)
         assert len(engine.detect(usdinr_one_tick)) == 1
+
+    def test_two_providers_on_the_same_exchange_are_not_arbitrage(self):
+        # Upstox-NSE and Kite-NSE read ONE order book at slightly different times;
+        # a gap between them is staleness, not a trade. NSE vs BSE still counts.
+        window = make_window("USDINR", {
+            "upstox_nse_usdinr": make_tick("USDINR", 88.7075, 88.7100, "upstox_nse_usdinr"),
+            "kite_nse_usdinr": make_tick("USDINR", 88.7150, 88.7175, "kite_nse_usdinr"),
+            "kite_bse_usdinr": make_tick("USDINR", 88.7000, 88.7050, "kite_bse_usdinr"),
+        }, window_size_ms=500)
+        opps = self._engine(skip_same_venue=True).detect(window)
+        pairs = {(o.buy_source, o.sell_source) for o in opps}
+        assert ("upstox_nse_usdinr", "kite_nse_usdinr") not in pairs
+        assert ("kite_bse_usdinr", "kite_nse_usdinr") in pairs      # BSE ask 88.705 < NSE bid 88.715
