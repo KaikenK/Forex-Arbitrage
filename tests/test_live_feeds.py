@@ -170,3 +170,12 @@ def test_every_leg_is_registered_before_the_hub_first_polls():
         time.sleep(0.01)
     hub.stop()
     assert seen[0] == sorted(s.contract.instrument_key for s in setup.sources)
+
+
+def test_cross_spreads_skip_two_providers_on_the_same_exchange():
+    from backend.core.data_sources.live_feeds import cross_spreads
+    rows = cross_spreads({
+        "upstox_nse_usdinr": Quote(bid=88.7075, ask=88.7100),
+        "kite_nse_usdinr": Quote(bid=88.7150, ask=88.7175),
+    })
+    assert rows == []

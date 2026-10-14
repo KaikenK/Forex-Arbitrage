@@ -201,10 +201,13 @@ def cross_spreads(quotes: Dict[str, Quote]) -> List[dict]:
     market (arbitrage before costs); negative is the distance to one.
     One-sided books are skipped.
     """
+    from backend.core.arbitrage.arbitrage_engine import venue_of
     legs = sorted((k, q) for k, q in quotes.items() if q is not None and q.two_sided)
     rows = []
     for i, (a, qa) in enumerate(legs):
         for b, qb in legs[i + 1:]:
+            if venue_of(a) == venue_of(b) and venue_of(a) in ("NSE", "BSE"):
+                continue   # same exchange via two providers: one order book, not a trade
             a_to_b, b_to_a = qb.bid - qa.ask, qa.bid - qb.ask
             buy, sell, edge = (a, b, a_to_b) if a_to_b >= b_to_a else (b, a, b_to_a)
             rows.append({
