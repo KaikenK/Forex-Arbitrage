@@ -114,7 +114,7 @@ from backend.core.redis_client import redis_client
 
 # NEW: Experimental metrics collection for research output
 from backend.core.analytics.metrics_collector import MetricsCollector
-from backend.core.sentiment_bridge import SentimentBridge
+from backend.core.sentiment_bridge import SentimentBridge, normalize_pair, _resolve_pair_allowlist
 
 # WebSocket routes (extended with arbitrage endpoints)
 from backend.server.websocket_routes import (
@@ -256,8 +256,49 @@ semantic_context_engine: Optional[SemanticContextEngine] = None
 # v3.0: Experimental metrics collection
 metrics_collector: Optional[MetricsCollector] = None
 
-# v3.1: Sentiment bridge for live article evidence and historical bias
-sentiment_bridge = SentimentBridge()
+# v3.1: Sentiment bridge for live article evidence and historical bias.
+# Allowlist = configured majors (env/default) plus whatever the arbitrage engine
+# actually trades, so the traded symbol is always tracked and the two can't drift.
+_sentiment_pair_allowlist = (
+    _resolve_pair_allowlist()
+    | {normalize_pair(get_active_symbol())}
+    | {normalize_pair(symbol) for symbol in DEFAULT_SYMBOLS}
+)
+sentiment_bridge = SentimentBridge(pair_allowlist=_sentiment_pair_allowlist)
+
+# Semantic snapshot attached to every logged live opportunity (H6b). Filled by a background
+# task from cached lookups only, so the opportunity hot path never makes a network call.
+from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snapshot, currency_bias_enabled
+
+currency_bias_client = CurrencyBiasClient(sentiment_bridge)
+_window_bias_cache: Dict[str, Dict[str, Any]] = {}
+SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
+
+
+async def refresh_semantic_snapshot_cache() -> None:
+    from backend.core.semantic_engine import LiveNewsBiasClient
+
+    client = LiveNewsBiasClient(bridge=sentiment_bridge)
+    while True:
+        try:
+            for pair in sorted(_sentiment_pair_allowlist):
+                _window_bias_cache[pair] = (await client.get_bias(pair)).to_dict()
+            await asyncio.to_thread(currency_bias_client.refresh)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Semantic snapshot refresh failed: {e}")
+        await asyncio.sleep(SEMANTIC_SNAPSHOT_REFRESH_SECONDS)
+
+
+def _semantic_snapshot(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        pair = normalize_pair(str((row.get("symbols") or [""])[0]))
+        return channel_snapshot(pair, str(row.get("type")), window_bias=_window_bias_cache.get(pair),
+                                client=currency_bias_client, applied=currency_bias_enabled())
+    except Exception as e:      # the log must never fail because of the snapshot
+        logger.warning(f"Semantic snapshot failed: {e}")
+        return None
 
 # v4.0: Orderbook Streaming Service
 orderbook_service: Optional[OrderbookService] = None
@@ -428,6 +469,7 @@ async def _start_live(setup) -> None:
 
     def _log_live_opportunity(opp):
         row = opp.to_dict()
+        row["semantic_snapshot"] = _semantic_snapshot(row)
         live_opportunities.append(row)
         rec = setup.recorder
         if rec is not None and rec.session_dir is not None:
@@ -754,6 +796,7 @@ async def lifespan(app: FastAPI):
 
     sentiment_bridge.start_live_ingest()
     logger.info("Started SentimentBridge live feed ingest")
+    semantic_snapshot_task = asyncio.create_task(refresh_semantic_snapshot_cache())
     
     logger.info("=" * 60)
     logger.info("Server startup complete")
@@ -818,6 +861,11 @@ async def lifespan(app: FastAPI):
         logger.info("Stopped ExecutionEngine")
         
 
+    semantic_snapshot_task.cancel()
+    try:
+        await semantic_snapshot_task
+    except asyncio.CancelledError:
+        pass
     sentiment_bridge.stop_live_ingest()
     logger.info("Stopped SentimentBridge live feed ingest")
     
@@ -1001,7 +1049,10 @@ async def health():
         health_data["data_sources"] = stats.get("sources", 0)
         health_data["ticks_processed"] = stats.get("ticks_processed", 0)
         health_data["arbitrage_opportunities"] = stats.get("arbitrage_opportunities_detected", 0)
-    
+
+    # Sentiment / news_stream integration health (network-free snapshot)
+    health_data["sentiment"] = sentiment_bridge.get_health_snapshot()
+
     return health_data
 
 
@@ -1089,6 +1140,55 @@ def _instrument_info(symbol: str) -> Dict[str, Any]:
     return {"display": spec.display, "pip_size": spec.pip_size, "price_decimals": spec.price_decimals,
             "tick_size": spec.futures.tick_size if spec.futures else spec.tick_size,
             "quote_unit": spec.quote_unit, "exchange_listed": spec.futures is not None}
+
+
+@app.get("/sentiment/window-bias")
+async def get_sentiment_window_bias(pair: str = "USD/INR", window_minutes: int = 30):
+    """Return the reaction-model-driven window bias applied to arbitrage confidence.
+
+    This is the aggregate the semantic engine actually consumes, exposed so the
+    dashboard can show the number that moved a decision rather than a proxy for it.
+    """
+    return await asyncio.to_thread(sentiment_bridge.get_window_bias, pair, window_minutes)
+
+
+@app.get("/sentiment/currency-bias")
+async def get_sentiment_currency_bias():
+    """Per-currency market bias and per-pair relative bias (semantic /v1/currency-index).
+
+    `enabled` is false when the service runs without SEMANTIC_CURRENCY_BIAS, so the
+    dashboard hides the panel. `applied_to_ranking` reports ARBEX_CURRENCY_BIAS.
+    """
+    payload = await asyncio.to_thread(currency_bias_client.refresh)
+    if not payload:
+        return {"enabled": False, "status": currency_bias_client.status,
+                "applied_to_ranking": currency_bias_enabled()}
+    return {**payload, "enabled": True, "status": currency_bias_client.status,
+            "applied_to_ranking": currency_bias_enabled()}
+
+
+@app.get("/sentiment/metrics")
+async def get_sentiment_service_metrics():
+    """Return news_stream throughput and model telemetry (upstream /metrics)."""
+    return await asyncio.to_thread(sentiment_bridge.get_service_metrics)
+
+
+@app.get("/sentiment/evaluation")
+async def get_sentiment_model_evaluation():
+    """Return the live reaction-model evaluation block (upstream /evaluation)."""
+    return await asyncio.to_thread(sentiment_bridge.get_model_evaluation)
+
+
+@app.get("/sentiment/correlation")
+async def get_sentiment_correlation(offset: int = 0, limit: int = 200):
+    """Return training rows pairing standardized surprise with realised reaction."""
+    return await asyncio.to_thread(sentiment_bridge.get_correlation, offset, limit)
+
+
+@app.get("/sentiment/benchmark")
+async def get_sentiment_benchmark():
+    """Return the local model-selection benchmark report, if generated."""
+    return await asyncio.to_thread(sentiment_bridge.get_benchmark_report)
 
 
 @app.get("/symbols")

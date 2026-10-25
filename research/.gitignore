@@ -1,0 +1,11 @@
+# Research data stays out of git; small results, manifests and run logs are committed.
+artifacts/*
+!artifacts/*.json
+!artifacts/*.log
+!artifacts/*_runs.jsonl
+artifacts/gdelt_shards/
+recordings/
+__pycache__/
+.pytest_cache/
+*.bak
+*.tmp

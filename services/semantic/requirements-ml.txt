@@ -1,0 +1,7 @@
+# Optional: FinBERT sentiment (--use-finbert) and dense retrieval (--use-sentence-transformer).
+# Several GB on disk and ~1-2 GB RAM when loaded; the service runs without them on the
+# keyword scorer and hashed embeddings.
+-r requirements.txt
+torch==2.11.0
+transformers==5.3.0
+sentence-transformers==5.3.0

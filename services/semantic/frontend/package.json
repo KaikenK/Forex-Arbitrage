@@ -1,0 +1,13 @@
+{
+  "name": "forex-article-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/dashboard.test.js",
+    "test:unit": "node tests/dashboard.test.js",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}

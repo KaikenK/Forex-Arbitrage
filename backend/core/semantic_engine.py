@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import time
@@ -9,17 +8,39 @@ from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, Protocol
-from urllib.parse import urlencode
-from urllib.request import Request
-from urllib.request import urlopen
 
 from backend.core.redis_client import redis_client
+from backend.core.sentiment_bridge import (
+    ACTIVITY_SATURATION_COUNT,
+    MARKET_DIRECTION_THRESHOLD,
+    SentimentBridge,
+    normalize_pair,
+)
 from backend.core.arbitrage.arbitrage_engine import ArbitrageOpportunity, ArbitrageType
+from backend.core.currency_bias_channels import (
+    CurrencyBiasClient,
+    currency_bias_enabled,
+    direction_channel,
+    residual_exposure,
+    risk_channel,
+)
 from backend.core.arbitrage.opportunity_ranker import OpportunityRanker
 from backend.core.arbitrage.opportunity_tracker import OpportunityTracker
 from backend.core.execution.execution_filter import SimulatedExecutionFilter
 
 logger = logging.getLogger(__name__)
+
+# Direction thresholds are scale-specific. FinBERT sentiment is a saturating
+# classifier score that routinely reaches +/-0.9. A normalized reaction-model score
+# is a rescaled return that tops out near +/-0.18 for USD/INR, so it needs its own,
+# much tighter band or it would read as permanently neutral.
+SENTIMENT_DIRECTION_THRESHOLD = 0.12
+# The artifact's own direction_neutral_threshold (0.0005) x MARKET_SCORE_NORMALIZER:
+# the reaction model itself calls anything above this directional rather than flat.
+# Aliased to the bridge's constant so the REST payload, this engine and the
+# dashboard cannot drift to different notions of "directional".
+REACTION_DIRECTION_THRESHOLD = MARKET_DIRECTION_THRESHOLD
+HIGH_CONVICTION_MULTIPLE = 3.0
 
 
 class NewsBiasProvider(Protocol):
@@ -114,17 +135,17 @@ class LiveNewsBiasClient:
     def __init__(
         self,
         *,
-        base_url: str | None = None,
+        bridge: "SentimentBridge | None" = None,
         enabled: bool | None = None,
         window_minutes: int | None = None,
-        timeout_ms: int | None = None,
         cache_ttl_seconds: int | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
+        # Share the SentimentBridge transport so base URL, timeout, status
+        # tracking and pair normalization live in one place instead of drifting.
+        self._bridge = bridge or SentimentBridge()
         self._enabled = enabled if enabled is not None else _env_flag("NEWS_STREAM_ENABLE", True)
-        self._base_url = (base_url or os.environ.get("NEWS_STREAM_BASE_URL", "http://127.0.0.1:9000")).rstrip("/")
         self._window_minutes = window_minutes or int(os.environ.get("NEWS_STREAM_WINDOW_MINUTES", "30"))
-        self._timeout_ms = timeout_ms or int(os.environ.get("NEWS_STREAM_TIMEOUT_MS", "600"))
         self._cache_ttl_seconds = cache_ttl_seconds or int(os.environ.get("NEWS_STREAM_CACHE_TTL_SECONDS", "30"))
         self._clock = clock or time.time
         self._cache: Dict[str, _BiasCacheEntry] = {}
@@ -138,7 +159,7 @@ class LiveNewsBiasClient:
             if age <= self._cache_ttl_seconds:
                 return replace(cache_entry.bias, freshness_seconds=age)
 
-        if not self._enabled or not self._base_url:
+        if not self._enabled:
             return NewsBias.neutral(
                 pair,
                 window_minutes=self._window_minutes,
@@ -147,7 +168,17 @@ class LiveNewsBiasClient:
             )
 
         try:
-            payload = await asyncio.to_thread(self._fetch_payload_sync, pair)
+            # Prefer the locally mirrored analyses: they carry the reaction model's
+            # market_score, which is directionally correct for the quote convention.
+            # /sentiment/live is FinBERT-only and gets USD/INR backwards, so it is
+            # the fallback for when no analysis has landed in the window yet.
+            payload = await asyncio.to_thread(
+                self._bridge.get_window_bias, pair, self._window_minutes
+            )
+            if _safe_int(payload.get("item_count")) <= 0:
+                payload = await asyncio.to_thread(
+                    self._bridge.fetch_live_window, pair, self._window_minutes
+                )
             bias = self._to_bias(pair=pair, payload=payload, freshness_seconds=0.0)
             self._cache[pair] = _BiasCacheEntry(bias=bias, fetched_at=now)
             return bias
@@ -174,17 +205,6 @@ class LiveNewsBiasClient:
                 ),
             )
 
-    def _fetch_payload_sync(self, pair: str) -> Dict[str, Any]:
-        query = urlencode({"pair": pair, "window_minutes": self._window_minutes})
-        url = f"{self._base_url}/sentiment/live?{query}"
-        request = Request(url, headers={"accept": "application/json"})
-        with urlopen(request, timeout=self._timeout_ms / 1000.0) as response:
-            body = response.read().decode("utf-8")
-        payload = json.loads(body)
-        if not isinstance(payload, dict):
-            raise ValueError("news bias payload must be a JSON object")
-        return payload
-
     def _to_bias(self, *, pair: str, payload: Dict[str, Any], freshness_seconds: float) -> NewsBias:
         overall_sentiment = _safe_float(payload.get("overall_sentiment"))
         confidence = _clamp(_safe_float(payload.get("confidence")), 0.0, 1.0)
@@ -204,20 +224,49 @@ class LiveNewsBiasClient:
                 freshness_seconds=freshness_seconds,
             )
 
-        activity_factor = min(1.0, item_count / 5.0)
-        semantic_score = _clamp(overall_sentiment * confidence * activity_factor, -1.0, 1.0)
+        # market_bias is the reaction model's directional term, already normalized to
+        # +/-1 by the bridge. Fall back to raw sentiment only when the payload came
+        # from /sentiment/live, which has no market term at all.
+        has_market_bias = "market_bias" in payload
+        directional_score = (
+            _safe_float(payload.get("market_bias")) if has_market_bias else overall_sentiment
+        )
+        bias_source = "reaction_model" if has_market_bias else "headline_sentiment"
+
+        # Both sources return a *confidence-weighted mean* (weight = recency x
+        # confidence, then divided by total weight), so multiplying by confidence
+        # again here would double-count it. Only activity_factor is applied, which
+        # damps thin windows rather than low-conviction ones.
+        #
+        # Prefer the bridge's precomputed semantic_score when present: the dashboard
+        # renders that same field, and recomputing it here is how the panel and the
+        # engine previously disagreed about the direction.
+        if "semantic_score" in payload:
+            semantic_score = _clamp(_safe_float(payload.get("semantic_score")), -1.0, 1.0)
+            activity_factor = _safe_float(payload.get("activity_factor")) or 1.0
+        else:
+            activity_factor = min(1.0, item_count / ACTIVITY_SATURATION_COUNT)
+            semantic_score = _clamp(directional_score * activity_factor, -1.0, 1.0)
         conflict_ratio = min(bullish_count, bearish_count) / item_count if item_count else 0.0
         freshness_penalty = 0.0
         if updated_at is not None:
             freshness_penalty = _freshness_penalty(updated_at, self._clock())
         risk_penalty = min(0.08, abs(semantic_score) * 0.08 + conflict_ratio * 0.04 + freshness_penalty)
         confidence_adjustment = -risk_penalty
-        direction = _score_direction(semantic_score)
-        regime = _bias_regime(semantic_score, conflict_ratio, item_count)
+        # The two sources live on different scales: FinBERT sentiment routinely
+        # reaches +/-0.9, while a normalized market score tops out near +/-0.18 for
+        # this pair. Reusing one threshold across both would make the reaction model
+        # look permanently neutral, so each gets the threshold native to its scale.
+        direction_threshold = (
+            REACTION_DIRECTION_THRESHOLD if has_market_bias else SENTIMENT_DIRECTION_THRESHOLD
+        )
+        direction = _score_direction(semantic_score, direction_threshold)
+        regime = _bias_regime(semantic_score, conflict_ratio, item_count, direction_threshold)
         status = "live"
         reason = (
-            f"NEWS RISK: {pair} sentiment {overall_sentiment:+.2f}, semantic score {semantic_score:+.2f}, "
-            f"{item_count} articles over {self._window_minutes}m, confidence {confidence_adjustment:+.2f}."
+            f"NEWS RISK: {pair} {bias_source} bias {directional_score:+.2f}, "
+            f"semantic score {semantic_score:+.2f}, {item_count} articles over "
+            f"{self._window_minutes}m, confidence {confidence_adjustment:+.2f}."
         )
 
         return NewsBias(
@@ -251,6 +300,8 @@ class SemanticEngine:
         *,
         news_bias_provider: NewsBiasProvider | None = None,
         publisher: Publisher | None = None,
+        currency_bias_client: CurrencyBiasClient | None = None,
+        currency_bias: bool | None = None,
     ):
         self._tracker = OpportunityTracker()
         self._filter = SimulatedExecutionFilter()
@@ -258,6 +309,12 @@ class SemanticEngine:
         self._is_running = False
         self._news_bias_provider = news_bias_provider or LiveNewsBiasClient()
         self._publisher = publisher or redis_client.publish
+        # ARBEX_CURRENCY_BIAS (default off): add the separate risk and direction channels.
+        self._currency_bias = currency_bias_enabled() if currency_bias is None else currency_bias
+        self._currency_bias_client = currency_bias_client
+        if self._currency_bias and self._currency_bias_client is None:
+            self._currency_bias_client = CurrencyBiasClient(
+                getattr(self._news_bias_provider, "_bridge", None) or SentimentBridge())
 
     async def start(self):
         self._is_running = True
@@ -296,10 +353,21 @@ class SemanticEngine:
                     
             opp = ArbitrageOpportunity(**opp_dict_copy)
             news_bias = await self._resolve_news_bias(opp.symbols[0])
-            biased_opp = replace(
-                opp,
-                confidence_score=_clamp(opp.confidence_score + news_bias.confidence_adjustment, 0.0, 1.0),
-            )
+            channels = await self._resolve_channels(opp) if self._currency_bias else None
+            if channels is None:
+                biased_opp = replace(
+                    opp,
+                    confidence_score=_clamp(opp.confidence_score + news_bias.confidence_adjustment, 0.0, 1.0),
+                )
+                feasibility_adjustment = news_bias.confidence_adjustment
+            else:
+                channel_penalty = channels["risk"].penalty + channels["direction"].penalty
+                biased_opp = replace(
+                    opp,
+                    confidence_score=_clamp(
+                        opp.confidence_score + news_bias.confidence_adjustment - channel_penalty, 0.0, 1.0),
+                )
+                feasibility_adjustment = news_bias.confidence_adjustment - channel_penalty
             
             # Step 1: Track persistence
             tracked = self._tracker.update(opp)
@@ -323,7 +391,7 @@ class SemanticEngine:
                 tracked.key: {
                     "verdict": assessment.execution_verdict.value,
                     "feasibility_score": _clamp(
-                        assessment.execution_feasibility_score + (news_bias.confidence_adjustment * 100.0),
+                        assessment.execution_feasibility_score + (feasibility_adjustment * 100.0),
                         0.0,
                         100.0,
                     ),
@@ -341,6 +409,11 @@ class SemanticEngine:
             if ranked:
                 best = ranked[0]
                 ranking_reason = _append_ranking_reason(best.ranking_reason, news_bias)
+                if channels is not None:
+                    ranking_reason = (
+                        f"{ranking_reason} | Risk channel -{channels['risk'].penalty:.3f} ({channels['risk'].reason})"
+                        f" | Direction channel -{channels['direction'].penalty:.3f} ({channels['direction'].reason})"
+                    )
                 
                 # Publish scored opportunity to Redis
                 scored_msg = {
@@ -355,11 +428,24 @@ class SemanticEngine:
                     "execution": execution_data[tracked.key],
                     "news_bias": news_bias.to_dict(),
                 }
-                
+                if channels is not None:
+                    scored_msg["semantic_channels"] = {name: result.to_dict() for name, result in channels.items()}
+
                 await self._publisher("arbex.scored_opps", scored_msg)
                 
         except Exception as e:
             logger.error(f"SemanticEngine Error processing raw opportunity: {e}")
+
+    async def _resolve_channels(self, opp: ArbitrageOpportunity) -> Dict[str, Any]:
+        """Risk and direction channels; a failed lookup yields zero penalties, never an error."""
+        pair = _normalize_pair(opp.symbols[0])
+        try:
+            payload = await self._currency_bias_client.pair(pair)
+        except Exception as exc:
+            logger.warning("SemanticEngine currency bias lookup failed for %s: %s", pair, exc)
+            payload = None
+        opp_type = opp.type.value if isinstance(opp.type, ArbitrageType) else str(opp.type)
+        return {"risk": risk_channel(payload), "direction": direction_channel(payload, residual_exposure(opp_type))}
 
     async def _resolve_news_bias(self, symbol: str) -> NewsBias:
         pair = _normalize_pair(symbol)
@@ -378,12 +464,8 @@ class SemanticEngine:
 
 
 def _normalize_pair(symbol: str) -> str:
-    normalized = symbol.strip().upper().replace("_", "/")
-    if "/" in normalized:
-        return normalized
-    if len(normalized) == 6 and normalized.isalpha():
-        return f"{normalized[:3]}/{normalized[3:]}"
-    return normalized
+    # Delegate to the shared bridge implementation so pair handling can't drift.
+    return normalize_pair(symbol)
 
 
 def _safe_float(value: object) -> float:
@@ -434,22 +516,28 @@ def _provider_window_minutes(provider: NewsBiasProvider) -> int:
     return int(getattr(provider, "_window_minutes", 30))
 
 
-def _score_direction(semantic_score: float) -> str:
-    if semantic_score > 0.12:
+def _score_direction(semantic_score: float, threshold: float = SENTIMENT_DIRECTION_THRESHOLD) -> str:
+    if semantic_score > threshold:
         return "risk_on"
-    if semantic_score < -0.12:
+    if semantic_score < -threshold:
         return "risk_off"
     return "neutral"
 
 
-def _bias_regime(semantic_score: float, conflict_ratio: float, item_count: int) -> str:
+def _bias_regime(
+    semantic_score: float,
+    conflict_ratio: float,
+    item_count: int,
+    threshold: float = SENTIMENT_DIRECTION_THRESHOLD,
+) -> str:
     if item_count <= 0:
         return "neutral"
     if conflict_ratio >= 0.3:
         return "conflicted"
-    if abs(semantic_score) >= 0.35:
+    # "High conviction" sits at ~3x the directional threshold on either scale.
+    if abs(semantic_score) >= threshold * HIGH_CONVICTION_MULTIPLE:
         return "high_conviction"
-    if abs(semantic_score) >= 0.12:
+    if abs(semantic_score) >= threshold:
         return "directional"
     return "neutral"
 

@@ -1,8 +1,8 @@
 """
 Direct RSS headlines for when the news_stream service is not running.
 
-The sentiment panel normally gets news from the separate news_stream service
-(NEWS_STREAM_BASE_URL, default http://127.0.0.1:9000). Without it the panel is
+The sentiment panel normally gets news from the semantic microservice
+(services/semantic; SEMANTIC_SERVICE_URL, default http://127.0.0.1:9000). Without it the panel is
 empty. This module fetches public RSS feeds directly (no key needed), keeps the
 headlines relevant to a pair, and gives each a rough direction from a keyword
 heuristic. It is labelled as a fallback everywhere it appears; it is not the

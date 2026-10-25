@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import queue
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,73 @@ def normalize_pair(symbol: str) -> str:
     return normalized or "USD/INR"
 
 
+# USD/INR is the arbitrage engine's pair; the majors mirror the news_stream
+# [watchlist] so real upstream headlines for those pairs are still tracked.
+# Anything outside this set (junk "pairs" like MID/CAP, AND/SEE) is dropped.
+_DEFAULT_PAIR_ALLOWLIST = (
+    "USD/INR",
+    "EUR/USD",
+    "GBP/USD",
+    "USD/JPY",
+    "USD/CHF",
+    "AUD/USD",
+)
+
+# The study pairs (research/RESEARCH_TRACKER.md scope, 2026-10-24). A macro/global
+# headline is a USD shock to every one of them, so it is analysed ONCE with all of them
+# requested, and each pair is filed with its own reaction-model score. USD/INR stays
+# first: it is the arbitrage engine's pair, and the service's article-level fields
+# describe the first ("primary") pair.
+STUDY_PAIRS = ("USD/INR", "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF")
+_MACRO_PAIR_TOKENS = {"", "MACRO", "GLOBAL", "RISK", "USD"}
+
+# Path prefix of the semantic microservice's versioned API (services/semantic).
+# SEMANTIC_API_PREFIX="" talks to a legacy, unversioned news_stream instead.
+DEFAULT_API_PREFIX = "/v1"
+
+
+# The reaction model emits a raw return (roughly +/-0.005). news_stream's
+# analyzer._trading_signal rescales it by 200 onto a +/-1 scale before applying
+# thresholds; we use the same factor so both codebases agree on what "strong" means.
+MARKET_SCORE_NORMALIZER = 200.0
+
+# 0.0005 is the artifact's direction_neutral_threshold; x200 puts it on the
+# normalized scale, so a bar counts as directional only if the reaction model
+# would itself have called a direction rather than neutral.
+MARKET_DIRECTION_THRESHOLD = 0.1
+
+# The window is treated as "full" at this many analysed articles; below it the
+# bias is scaled down proportionally so a single article cannot swing the engine.
+ACTIVITY_SATURATION_COUNT = 5.0
+
+# news_stream caps /correlation at 100 rows per page.
+CORRELATION_PAGE_SIZE = 100
+MAX_CORRELATION_PAGES = 10
+
+
+def _bias_direction(semantic_score: float) -> str:
+    """Map an activity-damped bias onto risk_on / risk_off / neutral.
+
+    Defined here so the REST payload, the semantic engine and the dashboard all
+    read one implementation instead of three that can drift apart.
+    """
+    if semantic_score > MARKET_DIRECTION_THRESHOLD:
+        return "risk_on"
+    if semantic_score < -MARKET_DIRECTION_THRESHOLD:
+        return "risk_off"
+    return "neutral"
+
+
+def _resolve_pair_allowlist() -> set[str]:
+    """Build the tracked-pair allowlist, overridable via NEWS_STREAM_PAIR_ALLOWLIST."""
+    raw = os.environ.get("NEWS_STREAM_PAIR_ALLOWLIST")
+    if raw and raw.strip():
+        configured = {normalize_pair(part) for part in raw.split(",") if part.strip()}
+        if configured:
+            return configured
+    return {normalize_pair(pair) for pair in _DEFAULT_PAIR_ALLOWLIST}
+
+
 class SentimentBridge:
     def __init__(
         self,
@@ -36,21 +104,33 @@ class SentimentBridge:
         timeout_ms: int | None = None,
         clock: Callable[[], datetime] | None = None,
         rss: RssHeadlines | None = None,
+        pair_allowlist: set[str] | None = None,
     ) -> None:
         self._enabled = enabled if enabled is not None else _env_flag("NEWS_STREAM_ENABLE", True)
-        self._base_url = (base_url or os.environ.get("NEWS_STREAM_BASE_URL", "http://127.0.0.1:9000")).rstrip("/")
-        self._timeout_ms = timeout_ms or int(os.environ.get("NEWS_STREAM_TIMEOUT_MS", "1200"))
+        # SEMANTIC_SERVICE_URL is the microservice contract; NEWS_STREAM_BASE_URL is the
+        # legacy name, still honoured so existing .env files keep working.
+        self._base_url = (
+            base_url
+            or os.environ.get("SEMANTIC_SERVICE_URL")
+            or os.environ.get("NEWS_STREAM_BASE_URL", "http://127.0.0.1:9000")
+        ).rstrip("/")
+        self._api_prefix = os.environ.get("SEMANTIC_API_PREFIX", DEFAULT_API_PREFIX).rstrip("/")
+        self._timeout_ms = timeout_ms or int(
+            os.environ.get("SEMANTIC_TIMEOUT_MS") or os.environ.get("NEWS_STREAM_TIMEOUT_MS", "1200")
+        )
         self._feed_timeout_seconds = float(os.environ.get("NEWS_STREAM_FEED_TIMEOUT_SECONDS", "20"))
+        self._live_cache_ttl_seconds = float(os.environ.get("NEWS_STREAM_LIVE_CACHE_TTL_SECONDS", "10"))
+        self._pair_allowlist = pair_allowlist if pair_allowlist is not None else _resolve_pair_allowlist()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._root = Path(__file__).resolve().parents[2]
-        self._runtime_history_root = self._root / "sentiment_assets" / "runtime"
+        runtime_override = os.environ.get("SEMANTIC_RUNTIME_DIR", "").strip()
+        self._runtime_history_root = Path(runtime_override) if runtime_override else self._root / "sentiment_assets" / "runtime"
         self._history_cache: dict[Path, list[dict[str, object]]] = {}
         self._article_tape: dict[str, dict[str, dict[str, Any]]] = {}
         self._feed_items: dict[str, list[dict[str, Any]]] = {}
         self._analysis_history: dict[str, list[dict[str, Any]]] = {}
         self._analysis_by_event_id: dict[str, dict[str, Any]] = {}
         self._runtime_cache_loaded: set[str] = set()
-        self._last_materialized_at: dict[str, datetime] = {}
         self._ingest_thread: threading.Thread | None = None
         self._ingest_stop = threading.Event()
         self._ingest_started = threading.Event()
@@ -58,6 +138,14 @@ class SentimentBridge:
         self._last_error: str | None = None
         self._last_latency_ms: float | None = None
         self._last_success_at: datetime | None = None
+        # One job per headline: (pairs it is filed under, primary-pair event).
+        self._analysis_queue: queue.Queue[tuple[tuple[str, ...], dict[str, Any]]] = queue.Queue(maxsize=512)
+        self._analysis_worker: threading.Thread | None = None
+        self._live_cache: dict[tuple[str, int], tuple[datetime, dict[str, Any]]] = {}
+        # /health is polled only from get_status (the dashboard status chip), never
+        # from the arbitrage hot path, and cached so a 15s UI poll is not 15s of probes.
+        self._health_cache: tuple[datetime, dict[str, Any]] | None = None
+        self._health_cache_ttl_seconds = float(os.environ.get("NEWS_STREAM_HEALTH_CACHE_TTL_SECONDS", "30"))
         # Direct RSS headlines when news_stream is not running (see news_fallback.py)
         self._rss = rss or RssHeadlines()
 
@@ -94,9 +182,16 @@ class SentimentBridge:
     def start_live_ingest(self) -> None:
         if not self._enabled or not self._base_url:
             return
+        self._ingest_stop.clear()
+        # The analysis worker drains the /analyze queue off the SSE read path so a
+        # bursty feed can't backpressure ingestion.
+        if self._analysis_worker is None or not self._analysis_worker.is_alive():
+            self._analysis_worker = threading.Thread(
+                target=self._run_analysis_worker, name="SentimentBridgeAnalysis", daemon=True
+            )
+            self._analysis_worker.start()
         if self._ingest_thread is not None and self._ingest_thread.is_alive():
             return
-        self._ingest_stop.clear()
         self._ingest_thread = threading.Thread(target=self._run_live_ingest_loop, name="SentimentBridgeLiveIngest", daemon=True)
         self._ingest_thread.start()
 
@@ -106,34 +201,135 @@ class SentimentBridge:
         if thread is not None and thread.is_alive():
             thread.join(timeout=2.0)
         self._ingest_thread = None
+        worker = self._analysis_worker
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=2.0)
+        self._analysis_worker = None
         self._ingest_started.clear()
+
+    def _record_success(self, latency_ms: float) -> None:
+        with self._state_lock:
+            self._last_latency_ms = latency_ms
+            self._last_success_at = self._clock()
+            self._last_error = None
+
+    def _record_error(self, message: str) -> None:
+        with self._state_lock:
+            self._last_error = message
+
+    def _record_stream_activity(self) -> None:
+        """Mark the service live because an SSE event arrived.
+
+        Deliberately does not touch ``_last_latency_ms``: that figure describes
+        request/response round trips, and a streamed event has no comparable
+        latency. It only needs to establish liveness and clear a stale error.
+        """
+        with self._state_lock:
+            self._last_success_at = self._clock()
+            self._last_error = None
+
+    def get_health_snapshot(self) -> dict[str, Any]:
+        """Cheap, network-free status for the server /health endpoint."""
+        with self._state_lock:
+            last_error = self._last_error
+            last_success_at = self._last_success_at
+        ingest = self._ingest_thread
+        worker = self._analysis_worker
+        return {
+            "enabled": self._enabled,
+            "base_url": self._base_url,
+            "available": last_success_at is not None and last_error is None,
+            "last_success_at": _isoformat(last_success_at),
+            "last_error": last_error,
+            "ingest_active": ingest is not None and ingest.is_alive(),
+            "analysis_worker_active": worker is not None and worker.is_alive(),
+            "analysis_queue_depth": self._analysis_queue.qsize(),
+            "tracked_pairs": sorted(self._pair_allowlist),
+        }
+
+    def _service_block(self) -> dict[str, Any]:
+        """Purely local view of upstream health. Does no I/O.
+
+        Hot paths (get_window_bias, get_live_sentiment) embed this, so it must
+        never make a network call -- that is what get_status's /health probe is for.
+        """
+        with self._state_lock:
+            last_error = self._last_error
+            last_success_at = self._last_success_at
+            last_latency_ms = self._last_latency_ms
+        return {
+            "enabled": self._enabled,
+            "base_url": self._base_url,
+            "available": last_success_at is not None and last_error is None,
+            "last_success_at": _isoformat(last_success_at),
+            "last_error": last_error,
+            "last_latency_ms": round(last_latency_ms, 2) if last_latency_ms is not None else None,
+        }
 
     def get_status(self, pair: str) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         dataset = self.get_dataset_info(normalized_pair)
+        runtime = self._runtime_flags()
         return {
             "pair": normalized_pair,
-            "news_stream": {
-                "enabled": self._enabled,
-                "base_url": self._base_url,
-                "available": self._last_success_at is not None and self._last_error is None,
-                "last_success_at": _isoformat(self._last_success_at),
-                "last_error": self._last_error,
-                "last_latency_ms": round(self._last_latency_ms, 2) if self._last_latency_ms is not None else None,
-            },
-            "runtime": {
-                "rag_enabled": _env_flag("NEWS_STREAM_USE_RAG", False) or _env_flag("NEWS_STREAM_RAG_ENABLED", False),
-                "window_minutes": int(os.environ.get("NEWS_STREAM_WINDOW_MINUTES", "30")),
-            },
+            "news_stream": self._service_block(),
+            "runtime": runtime,
             "dataset": dataset,
         }
+
+    def _runtime_flags(self) -> dict[str, Any]:
+        """Resolve upstream feature flags, preferring what the service reports.
+
+        The service resolves use_rag from env OR its own config.toml, so reading
+        only our environment reported "rag off" while RAG was in fact running.
+        /health now returns the resolved flags; env vars stay as the fallback for
+        when the probe fails or the service predates that field.
+        """
+        env_rag = _env_flag("NEWS_STREAM_USE_RAG", False) or _env_flag("NEWS_STREAM_RAG_ENABLED", False)
+        flags: dict[str, Any] = {
+            "rag_enabled": env_rag,
+            "window_minutes": int(os.environ.get("NEWS_STREAM_WINDOW_MINUTES", "30")),
+            "flags_source": "environment",
+        }
+        health = self._probe_health()
+        runtime = health.get("runtime") if isinstance(health.get("runtime"), dict) else None
+        if runtime:
+            flags["rag_enabled"] = bool(runtime.get("use_rag", env_rag))
+            flags["sentence_transformer_enabled"] = bool(runtime.get("use_sentence_transformer", False))
+            flags["finbert_enabled"] = bool(runtime.get("use_finbert", False))
+            flags["flags_source"] = "news_stream/health"
+        return flags
+
+    def _probe_health(self) -> dict[str, Any]:
+        """Cheap cached GET /health. Never raises; a dead service just returns {}."""
+        if not self._enabled or not self._base_url:
+            return {}
+        now = self._clock()
+        with self._state_lock:
+            cached = self._health_cache
+            if cached is not None and (now - cached[0]).total_seconds() <= self._health_cache_ttl_seconds:
+                return dict(cached[1])
+        try:
+            payload = self._fetch_json("/health", {}, record=False)
+        except Exception:
+            return {}
+        with self._state_lock:
+            self._health_cache = (now, dict(payload))
+        return payload
 
     def get_live_sentiment(self, pair: str, window_minutes: int) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         if not self._enabled or not self._base_url:
             payload = self._rss_live_payload(normalized_pair, window_minutes)
-            payload["service"] = self.get_status(normalized_pair)["news_stream"]
+            payload["service"] = self._service_block()
             return payload
+
+        cache_key = (normalized_pair, window_minutes)
+        now = self._clock()
+        with self._state_lock:
+            cached = self._live_cache.get(cache_key)
+            if cached is not None and (now - cached[0]).total_seconds() <= self._live_cache_ttl_seconds:
+                return dict(cached[1])
 
         try:
             payload = self._fetch_json(
@@ -143,13 +339,235 @@ class SentimentBridge:
                     "window_minutes": window_minutes,
                 },
             )
+            fetch_succeeded = True
         except Exception:
             # news_stream unreachable: direct RSS headlines if available, else a
             # neutral window; the reason stays visible in service.last_error.
             payload = self._rss_live_payload(normalized_pair, window_minutes)
+            fetch_succeeded = False
         payload["pair"] = normalize_pair(str(payload.get("pair", normalized_pair)))
-        payload["service"] = self.get_status(normalized_pair)["news_stream"]
+        payload["service"] = self._service_block()
+        # Only cache successful fetches so a transient outage recovers immediately.
+        if fetch_succeeded:
+            with self._state_lock:
+                self._live_cache[cache_key] = (now, dict(payload))
         return payload
+
+    def get_service_metrics(self) -> dict[str, Any]:
+        """Proxy GET /metrics: upstream throughput and model telemetry."""
+        return self._proxy_get("/metrics", {}, "metrics")
+
+    def get_model_evaluation(self) -> dict[str, Any]:
+        """Proxy GET /evaluation: the LIVE model's evaluation block.
+
+        Preferred over reading the mirrored artifact, which silently goes stale
+        the moment the service is retrained or pointed at a different artifact.
+        """
+        return self._proxy_get("/evaluation", {}, "evaluation")
+
+    def get_correlation(self, offset: int = 0, limit: int = 200) -> dict[str, Any]:
+        """Proxy GET /correlation, paginating to gather the full labelled set.
+
+        Upstream caps a page at 100 rows and returns newest-first. The rows that
+        carry a standardized_surprise are the *scheduled* calendar releases, which
+        are the oldest in the table -- a single page is therefore all unscheduled
+        headlines with a null surprise, and the surprise/reaction scatter comes back
+        empty. Page through instead of trusting one request.
+        """
+        collected: list[dict[str, Any]] = []
+        total = 0
+        page_offset = max(0, offset)
+        target = max(1, limit)
+        for _ in range(MAX_CORRELATION_PAGES):
+            page = self._proxy_get(
+                "/correlation",
+                {"offset": page_offset, "limit": CORRELATION_PAGE_SIZE},
+                "correlation",
+            )
+            if not page.get("available"):
+                return page if not collected else _correlation_payload(collected, total, offset, target, self._service_block())
+            body = page.get("correlation") or {}
+            items = body.get("items") if isinstance(body.get("items"), list) else []
+            total = _safe_int(body.get("total")) or total
+            if not items:
+                break
+            collected.extend(items)
+            page_offset += len(items)
+            if len(collected) >= target or page_offset >= total:
+                break
+        return _correlation_payload(collected[:target], total, offset, target, self._service_block())
+
+    def get_benchmark_report(self) -> dict[str, Any]:
+        """Read the local model-selection benchmark, if one has been generated.
+
+        Not an upstream call: the report is a build artifact of news_stream's
+        experiments/benchmark_reaction_models.py, so it is read from disk and is
+        available whether or not the service is running.
+        """
+        candidates = [
+            self._root / "sentiment_assets" / "benchmark" / "baseline_report.json",
+            self._root.parent / "news_stream" / "artifacts" / "benchmark" / "baseline_report.json",
+        ]
+        for path in candidates:
+            try:
+                if not path.exists():
+                    continue
+                report = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(report, dict):
+                return {"available": True, "path": str(path), "report": _summarize_benchmark(report)}
+        return {
+            "available": False,
+            "path": None,
+            "report": None,
+            "detail": "No baseline_report.json found; run experiments/benchmark_reaction_models.py.",
+        }
+
+    def _proxy_get(self, path: str, query: dict[str, Any], label: str) -> dict[str, Any]:
+        """Fetch an upstream JSON route, degrading to an explicit unavailable payload.
+
+        Mirrors get_live_sentiment's contract: never raise at the REST boundary, so
+        one dead upstream route cannot blank the panels that read from local disk.
+        """
+        if not self._enabled or not self._base_url:
+            return {"available": False, label: None, "detail": "news_stream disabled.", "service": self._service_block()}
+        try:
+            payload = self._fetch_json(path, query)
+        except Exception as exc:
+            return {"available": False, label: None, "detail": str(exc), "service": self._service_block()}
+        return {"available": True, label: payload, "service": self._service_block()}
+
+    def fetch_live_window(self, pair: str, window_minutes: int) -> dict[str, Any]:
+        """Raw /sentiment/live payload, raising on failure.
+
+        For consumers that implement their own fallback (e.g. the semantic engine's
+        NewsBias stale-cache path) and so need to distinguish success from failure.
+
+        Honours the enable flag: NEWS_STREAM_ENABLE=false must mean *no* upstream
+        traffic, and callers treat the raise as "unavailable" and fall back.
+        """
+        if not self._enabled or not self._base_url:
+            raise RuntimeError("news_stream is disabled (NEWS_STREAM_ENABLE=false).")
+        return self._fetch_json(
+            "/sentiment/live",
+            {"pair": normalize_pair(pair), "window_minutes": window_minutes},
+        )
+
+    def get_window_bias(self, pair: str, window_minutes: int) -> dict[str, Any]:
+        """Aggregate locally mirrored analyses into a directional window bias.
+
+        The reaction model's ``market_score`` is the directional term here, NOT the
+        raw headline sentiment. FinBERT is trained on equity/corporate text, so for
+        a quote like USD/INR it reads "rupee plunges" as strongly negative when the
+        tradable implication is that the pair *rises*. The reaction model was trained
+        on realised USD/INR returns and so already encodes that inversion.
+
+        Returns a payload shaped like ``/sentiment/live`` so the semantic engine can
+        consume either source, plus ``market_bias`` and ``source`` for provenance.
+        """
+        normalized_pair = normalize_pair(pair)
+        self._ensure_runtime_cache_loaded(normalized_pair)
+        resolved_window = max(1, window_minutes)
+        now = self._clock()
+        cutoff = now - timedelta(minutes=resolved_window)
+
+        with self._state_lock:
+            history = [dict(item) for item in self._analysis_history.get(normalized_pair, [])]
+
+        total_weight = 0.0
+        weighted_market = 0.0
+        weighted_sentiment = 0.0
+        weighted_confidence = 0.0
+        bullish_count = 0
+        bearish_count = 0
+        neutral_count = 0
+        in_window: list[tuple[float, dict[str, Any]]] = []
+
+        for analysis in history:
+            produced_at = _parse_iso_datetime(analysis.get("produced_at"))
+            if produced_at is None:
+                feed = analysis.get("feed") if isinstance(analysis.get("feed"), dict) else {}
+                produced_at = _parse_iso_datetime(feed.get("timestamp"))
+            if produced_at is None or produced_at < cutoff:
+                continue
+
+            confidence = _clamp(_safe_float(analysis.get("confidence")), 0.0, 1.0)
+            age_minutes = max(0.0, (now - produced_at).total_seconds() / 60.0)
+            # Same recency shape as news_stream's LiveSentimentAggregator.aggregate,
+            # so switching sources cannot silently change the weighting.
+            recency_weight = max(0.1, 1.0 - age_minutes / resolved_window)
+            weight = recency_weight * confidence
+            if weight <= 0.0:
+                continue
+
+            normalized_market = _clamp(
+                _safe_float(analysis.get("market_score")) * MARKET_SCORE_NORMALIZER, -1.0, 1.0
+            )
+            sentiment_score = _clamp(_safe_float(analysis.get("sentiment_score")), -1.0, 1.0)
+
+            weighted_market += normalized_market * weight
+            weighted_sentiment += sentiment_score * weight
+            weighted_confidence += confidence * weight
+            total_weight += weight
+            in_window.append((abs(normalized_market), analysis))
+
+            if normalized_market > MARKET_DIRECTION_THRESHOLD:
+                bullish_count += 1
+            elif normalized_market < -MARKET_DIRECTION_THRESHOLD:
+                bearish_count += 1
+            else:
+                neutral_count += 1
+
+        if total_weight <= 0.0:
+            payload = _neutral_live_payload(normalized_pair, resolved_window)
+            payload["market_bias"] = 0.0
+            payload["source"] = "local_analysis_history"
+            payload["service"] = self._service_block()
+            return payload
+
+        in_window.sort(key=lambda entry: entry[0], reverse=True)
+        top_drivers: list[dict[str, str]] = []
+        for _, analysis in in_window[:5]:
+            feed = analysis.get("feed") if isinstance(analysis.get("feed"), dict) else {}
+            top_drivers.append(
+                {
+                    "headline": str(feed.get("headline", "")),
+                    "sentiment": f"{_safe_float(analysis.get('sentiment_score')):+.2f}",
+                    "market": f"{_safe_float(analysis.get('market_score')):+.5f}",
+                    "signal": str(analysis.get("trading_signal", "")),
+                    "source": str(feed.get("source", "unknown")),
+                }
+            )
+
+        market_bias = _clamp(weighted_market / total_weight, -1.0, 1.0)
+        # A thin window is a weak signal even when the few articles in it agree, so
+        # the bias is scaled by how full the window is before a direction is called.
+        # This MUST happen here rather than in each consumer: the dashboard was
+        # deriving its direction from the raw market_bias while the arbitrage engine
+        # applied the damped score, so the panel could read RISK OFF while the engine
+        # saw NEUTRAL. semantic_score is now the single directional number.
+        activity_factor = min(1.0, len(in_window) / ACTIVITY_SATURATION_COUNT)
+        semantic_score = _clamp(market_bias * activity_factor, -1.0, 1.0)
+
+        return {
+            "pair": normalized_pair,
+            "market_bias": round(market_bias, 4),
+            "activity_factor": round(activity_factor, 4),
+            "semantic_score": round(semantic_score, 4),
+            "direction": _bias_direction(semantic_score),
+            "overall_sentiment": round(_clamp(weighted_sentiment / total_weight, -1.0, 1.0), 4),
+            "confidence": round(_clamp(weighted_confidence / total_weight, 0.0, 1.0), 4),
+            "bullish_count": bullish_count,
+            "bearish_count": bearish_count,
+            "neutral_count": neutral_count,
+            "item_count": len(in_window),
+            "top_drivers": top_drivers,
+            "updated_at": _isoformat(now),
+            "window_minutes": resolved_window,
+            "source": "local_analysis_history",
+            "service": self._service_block(),
+        }
 
     def get_live_articles(self, pair: str, window_minutes: int, limit: int = 12) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
@@ -235,13 +653,12 @@ class SentimentBridge:
                 "active_items": len(active_ids),
                 "tracked_items": len(cache),
             },
-            "service": live_payload.get("service", self.get_status(normalized_pair)["news_stream"]),
+            "service": live_payload.get("service", self._service_block()),
         }
 
     def get_feed_snapshot(self, pair: str, limit: int = 20) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         self._ensure_runtime_cache_loaded(normalized_pair)
-        self._ensure_live_materialized(normalized_pair, limit=max(1, min(limit, 3)))
         with self._state_lock:
             items = [dict(item) for item in self._feed_items.get(normalized_pair, [])[: max(1, limit)]]
         news_stream_down = not self._enabled or self._last_error is not None or self._last_success_at is None
@@ -264,7 +681,7 @@ class SentimentBridge:
                 "ingest_active": self._ingest_thread is not None and self._ingest_thread.is_alive(),
                 "ingest_started": self._ingest_started.is_set(),
             },
-            "service": self.get_status(normalized_pair)["news_stream"],
+            "service": self._service_block(),
         }
 
     def get_analysis_history(
@@ -282,7 +699,6 @@ class SentimentBridge:
     ) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         self._ensure_runtime_cache_loaded(normalized_pair)
-        self._ensure_live_materialized(normalized_pair, limit=max(1, min(limit, 3)))
         with self._state_lock:
             items = [dict(item) for item in self._analysis_history.get(normalized_pair, [])]
         items = _filter_analysis_items(
@@ -303,14 +719,19 @@ class SentimentBridge:
                 "with_evidence": sum(1 for item in items if item.get("evidence")),
                 "rag_enabled": self.get_status(normalized_pair)["runtime"]["rag_enabled"],
             },
-            "service": self.get_status(normalized_pair)["news_stream"],
+            "service": self._service_block(),
         }
 
     def get_explanation(self, pair: str, event_id: str) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)
         self._ensure_runtime_cache_loaded(normalized_pair)
         with self._state_lock:
-            analysis = dict(self._analysis_by_event_id.get(event_id, {}))
+            # Pair-specific first: one headline is filed under several pairs, each
+            # with its own score.
+            analysis = dict(
+                self._analysis_by_event_id.get(_pair_event_key(normalized_pair, event_id))
+                or self._analysis_by_event_id.get(event_id, {})
+            )
         if not analysis:
             fallback = self.get_analysis_history(normalized_pair, limit=1, q=None)
             for item in fallback.get("items", []):
@@ -323,14 +744,14 @@ class SentimentBridge:
                 "event_id": event_id,
                 "available": False,
                 "analysis": None,
-                "service": self.get_status(normalized_pair)["news_stream"],
+                "service": self._service_block(),
             }
         return {
             "pair": normalized_pair,
             "event_id": event_id,
             "available": True,
             "analysis": analysis,
-            "service": self.get_status(normalized_pair)["news_stream"],
+            "service": self._service_block(),
         }
 
     def get_historical_bias(
@@ -508,27 +929,62 @@ class SentimentBridge:
     def _artifact_path(self, pair: str) -> Path:
         return self._root / "sentiment_assets" / _pair_slug(pair) / "reaction_model_artifact.json"
 
-    def _fetch_json(self, path: str, query_params: dict[str, Any]) -> dict[str, Any]:
+    def _fetch_json(
+        self,
+        path: str,
+        query_params: dict[str, Any],
+        *,
+        record: bool = True,
+    ) -> dict[str, Any]:
+        """GET a JSON object from the news service.
+
+        ``record=False`` performs the request without touching the shared
+        success/error state. Used by the /health probe: that probe exists to read
+        feature flags, and letting its outcome redefine "available" would mean a
+        capability lookup could mark a service unavailable that the data endpoints
+        are talking to perfectly well.
+        """
         query = urlencode(query_params)
-        url = f"{self._base_url}{path}?{query}" if query else f"{self._base_url}{path}"
+        url = f"{self._service_url(path)}?{query}" if query else self._service_url(path)
         request = Request(url, headers={"accept": "application/json"})
         started_at = time.perf_counter()
         try:
             with urlopen(request, timeout=self._timeout_ms / 1000.0) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except Exception as exc:
-            self._last_error = str(exc)
+            if record:
+                self._record_error(str(exc))
             raise
-        self._last_latency_ms = (time.perf_counter() - started_at) * 1000.0
-        self._last_success_at = self._clock()
-        self._last_error = None
+        if record:
+            self._record_success((time.perf_counter() - started_at) * 1000.0)
         if not isinstance(payload, dict):
             raise ValueError(f"Sentiment bridge expected a JSON object from {path}.")
         return payload
 
+    def fetch_currency_index(self) -> dict[str, Any] | None:
+        """GET /currency-index (per-currency bias, behind SEMANTIC_CURRENCY_BIAS).
+
+        Returns None when the bridge is disabled or the service has the capability off
+        (501). Uses record=False so an optional capability being off never marks the
+        service unavailable for the data endpoints.
+        """
+        if not self._enabled or not self._base_url:
+            return None
+        try:
+            payload = self._fetch_json("/currency-index", {}, record=False)
+        except HTTPError as exc:
+            if exc.code == 501:
+                return None
+            raise
+        return payload if payload.get("enabled") else None
+
+    def _service_url(self, path: str) -> str:
+        """Absolute URL of a semantic-service route, e.g. '/analyze' -> base + '/v1/analyze'."""
+        return f"{self._base_url}{self._api_prefix}{path}"
+
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         request = Request(
-            f"{self._base_url}{path}",
+            self._service_url(path),
             data=json.dumps(payload).encode("utf-8"),
             headers={"accept": "application/json", "content-type": "application/json"},
             method="POST",
@@ -538,11 +994,9 @@ class SentimentBridge:
             with urlopen(request, timeout=self._timeout_ms / 1000.0) as response:
                 parsed = json.loads(response.read().decode("utf-8"))
         except Exception as exc:
-            self._last_error = str(exc)
+            self._record_error(str(exc))
             raise
-        self._last_latency_ms = (time.perf_counter() - started_at) * 1000.0
-        self._last_success_at = self._clock()
-        self._last_error = None
+        self._record_success((time.perf_counter() - started_at) * 1000.0)
         if not isinstance(parsed, dict):
             raise ValueError(f"Sentiment bridge expected a JSON object from {path}.")
         return parsed
@@ -552,55 +1006,12 @@ class SentimentBridge:
             try:
                 self._stream_feed_once()
             except Exception as exc:
-                self._last_error = str(exc)
+                self._record_error(str(exc))
                 if self._ingest_stop.wait(3.0):
                     return
 
-    def _ensure_live_materialized(self, pair: str, limit: int) -> None:
-        with self._state_lock:
-            last_materialized_at = self._last_materialized_at.get(pair)
-            cached_items = self._feed_items.get(pair, [])
-            history_items = self._analysis_history.get(pair, [])
-        if (
-            last_materialized_at is not None
-            and (self._clock() - last_materialized_at) <= timedelta(seconds=20)
-            and cached_items
-            and history_items
-        ):
-            return
-        self._materialize_live_snapshot(pair, limit=limit)
-
-    def _materialize_live_snapshot(self, pair: str, limit: int) -> None:
-        request = Request(f"{self._base_url}/feed", headers={"accept": "text/event-stream"})
-        collected = 0
-        deadline = time.perf_counter() + self._feed_timeout_seconds
-        try:
-            with urlopen(request, timeout=self._feed_timeout_seconds) as response:
-                while collected < limit and time.perf_counter() < deadline:
-                    raw_line = response.readline()
-                    if not raw_line:
-                        break
-                    line = raw_line.decode("utf-8").strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    try:
-                        event = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    if pair not in _tracked_pairs_for_feed_event(event):
-                        continue
-                    self._handle_feed_event(event)
-                    collected += 1
-        except Exception as exc:
-            self._last_error = str(exc)
-            return
-        with self._state_lock:
-            self._last_materialized_at[pair] = self._clock()
-
     def _stream_feed_once(self) -> None:
-        request = Request(f"{self._base_url}/feed", headers={"accept": "text/event-stream"})
+        request = Request(self._service_url("/feed"), headers={"accept": "text/event-stream"})
         with urlopen(request, timeout=self._feed_timeout_seconds) as response:
             self._ingest_started.set()
             while not self._ingest_stop.is_set():
@@ -616,35 +1027,99 @@ class SentimentBridge:
                     continue
                 if not isinstance(event, dict):
                     continue
+                # A delivered SSE event is proof the service is alive. Without this
+                # the status chip latched on one stale HTTP error and read "service
+                # degraded" indefinitely while live headlines were arriving.
+                self._record_stream_activity()
                 self._handle_feed_event(event)
 
     def _handle_feed_event(self, event: dict[str, Any]) -> None:
-        tracked_pairs = _tracked_pairs_for_feed_event(event)
+        tracked_pairs = self._tracked_pairs_for_feed_event(event)
+        normalized_by_pair: list[tuple[str, dict[str, Any]]] = []
         for tracked_pair in tracked_pairs:
             normalized_event = self._normalize_feed_event(tracked_pair, event)
+            normalized_by_pair.append((tracked_pair, normalized_event))
             with self._state_lock:
                 existing = self._feed_items.setdefault(tracked_pair, [])
                 existing = [item for item in existing if str(item.get("event_id")) != normalized_event["event_id"]]
                 existing.insert(0, normalized_event)
                 self._feed_items[tracked_pair] = existing[:80]
                 self._persist_runtime_record(self._feed_history_path(tracked_pair), normalized_event)
-            analysis = self._analyze_feed_event(normalized_event)
-            if analysis is None:
-                continue
-            with self._state_lock:
-                self._analysis_by_event_id[normalized_event["event_id"]] = analysis
-                history = self._analysis_history.setdefault(tracked_pair, [])
-                history = [item for item in history if str(item.get("event_id")) != normalized_event["event_id"]]
-                history.insert(0, analysis)
-                self._analysis_history[tracked_pair] = history[:80]
-                self._persist_runtime_record(self._analysis_history_path(tracked_pair), analysis)
+        if not normalized_by_pair:
+            return
+        # ONE analysis per headline, however many pairs it is filed under: the service
+        # runs FinBERT once and scores every requested pair in the same call. The
+        # upstream /analyze call goes to the worker thread so a slow response can't
+        # stall the SSE read loop.
+        try:
+            self._analysis_queue.put_nowait(tuple(normalized_by_pair))
+        except queue.Full:
+            self._record_error("Sentiment analysis queue full; dropped an event.")
 
-    def _analyze_feed_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
+    def _run_analysis_worker(self) -> None:
+        while not self._ingest_stop.is_set():
+            try:
+                job = self._analysis_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                self._process_analysis_job(job)
+            except Exception as exc:
+                self._record_error(str(exc))
+            finally:
+                self._analysis_queue.task_done()
+
+    def _process_analysis(self, tracked_pair: str, normalized_event: dict[str, Any]) -> None:
+        """Single-pair form, kept for callers that analyse one pair directly."""
+        self._process_analysis_job(((tracked_pair, normalized_event),))
+
+    def _process_analysis_job(self, job: tuple[tuple[str, dict[str, Any]], ...]) -> None:
+        """Analyse one headline for every pair in `job` and file each pair's own score.
+
+        The first pair is primary: the service's article-level fields describe it. Every
+        other pair gets its `pair_scores[pair]` entry. Pairs are never averaged together:
+        EUR/USD falling and USD/JPY rising are the same dollar move, so a cross-pair mean
+        would cancel a real signal.
+        """
+        if not job:
+            return
+        primary_pair, primary_event = job[0]
+        pairs = [pair for pair, _ in job]
+        analysis = (
+            self._analyze_feed_event(primary_event, currency_pairs=pairs)
+            if len(pairs) > 1
+            else self._analyze_feed_event(primary_event)
+        )
+        if analysis is None:
+            return
+        for pair, normalized_event in job:
+            record = _pair_analysis_view(analysis, pair, primary_pair)
+            if record is None:
+                continue
+            record["event_id"] = normalized_event["event_id"]
+            with self._state_lock:
+                self._analysis_by_event_id[_pair_event_key(pair, record["event_id"])] = record
+                if pair == primary_pair:
+                    self._analysis_by_event_id[record["event_id"]] = record
+                history = self._analysis_history.setdefault(pair, [])
+                history = [item for item in history if str(item.get("event_id")) != record["event_id"]]
+                history.insert(0, record)
+                self._analysis_history[pair] = history[:80]
+                self._persist_runtime_record(self._analysis_history_path(pair), record)
+                self._persist_runtime_record(self._prediction_log_path(), _prediction_log_row(record, self._clock()))
+
+    def _analyze_feed_event(
+        self,
+        event: dict[str, Any],
+        *,
+        currency_pairs: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        primary_pair = str(event.get("pair", "USD/INR"))
         payload = {
             "article_text": str(event.get("headline", "")).strip(),
             "headline": str(event.get("headline", "")).strip(),
             "external_id": str(event.get("event_id", "")).strip() or None,
-            "currency_pair": str(event.get("pair", "USD/INR")),
+            "currency_pair": primary_pair,
             "event_category": str(event.get("category", "general")),
             "source_url": event.get("url"),
             "published_at": event.get("timestamp"),
@@ -655,6 +1130,9 @@ class SentimentBridge:
                 "upstream_status": str(event.get("upstream_status", "unknown")),
             },
         }
+        extra_pairs = [pair for pair in (currency_pairs or []) if normalize_pair(pair) != normalize_pair(primary_pair)]
+        if extra_pairs:
+            payload["currency_pairs"] = extra_pairs
         try:
             response = self._post_json("/analyze", payload)
         except Exception:
@@ -706,14 +1184,23 @@ class SentimentBridge:
                 return
             feed_items = self._load_runtime_records(self._feed_history_path(normalized_pair), limit=80)
             analysis_items = self._load_runtime_records(self._analysis_history_path(normalized_pair), limit=80)
-            if feed_items and normalized_pair not in self._feed_items:
-                self._feed_items[normalized_pair] = feed_items
-            if analysis_items and normalized_pair not in self._analysis_history:
-                self._analysis_history[normalized_pair] = analysis_items
+            # Merge, don't skip. These used to be guarded by "pair not in cache",
+            # so a single item arriving from live ingest before the first request
+            # discarded the whole persisted archive -- the panels then showed one
+            # item instead of the last 80.
+            if feed_items:
+                self._feed_items[normalized_pair] = _merge_runtime_records(
+                    self._feed_items.get(normalized_pair, []), feed_items, limit=80
+                )
+            if analysis_items:
+                self._analysis_history[normalized_pair] = _merge_runtime_records(
+                    self._analysis_history.get(normalized_pair, []), analysis_items, limit=80
+                )
             for analysis in analysis_items:
                 event_id = str(analysis.get("event_id", "")).strip()
                 if event_id:
-                    self._analysis_by_event_id[event_id] = analysis
+                    self._analysis_by_event_id[_pair_event_key(normalized_pair, event_id)] = analysis
+                    self._analysis_by_event_id.setdefault(event_id, analysis)
             self._runtime_cache_loaded.add(normalized_pair)
 
     def _load_runtime_records(self, path: Path, *, limit: int) -> list[dict[str, Any]]:
@@ -754,7 +1241,29 @@ class SentimentBridge:
                 handle.write(json.dumps(payload, ensure_ascii=True))
                 handle.write("\n")
         except OSError:
-            self._last_error = f"Failed to persist runtime sentiment history at {path}"
+            self._record_error(f"Failed to persist runtime sentiment history at {path}")
+
+    def _tracked_pairs_for_feed_event(self, event: dict[str, Any]) -> list[str]:
+        """Map a raw feed event to the pairs it should be filed under.
+
+        Macro/global (and bare-USD) events are a dollar shock to every study pair, so
+        they are filed under all of STUDY_PAIRS that the allowlist permits, USD/INR
+        first. They used to collapse to USD/INR alone, which starved the majors of
+        live data. Everything else must match the configured allowlist, which drops
+        the junk "pairs" the upstream feed regex emits from ordinary hyphenated words
+        (e.g. wait-AND-SEE, MID-CAP).
+        """
+        raw_pair = str(event.get("pair") or "").strip().upper()
+        if raw_pair in _MACRO_PAIR_TOKENS:
+            return [pair for pair in STUDY_PAIRS if pair in self._pair_allowlist]
+        normalized_pair = normalize_pair(raw_pair)
+        if normalized_pair in self._pair_allowlist:
+            return [normalized_pair]
+        return []
+
+    def _prediction_log_path(self) -> Path:
+        """Append-only log of every live per-pair prediction, for prospective evaluation."""
+        return self._runtime_history_root / "predictions" / "live_predictions.jsonl"
 
     def _feed_history_path(self, pair: str) -> Path:
         return self._runtime_history_root / _pair_slug(pair) / "live_feed.jsonl"
@@ -763,21 +1272,189 @@ class SentimentBridge:
         return self._runtime_history_root / _pair_slug(pair) / "live_analysis.jsonl"
 
 
+def _correlation_payload(
+    items: list[dict[str, Any]],
+    total: int,
+    offset: int,
+    limit: int,
+    service: dict[str, Any],
+) -> dict[str, Any]:
+    """Shape paginated correlation rows like a single upstream page.
+
+    ``plottable`` counts rows carrying both a surprise and a realised reaction --
+    only scheduled releases have a consensus forecast, so this is well below
+    ``total`` and the UI should say so rather than implying every row is charted.
+    """
+    plottable = sum(
+        1
+        for item in items
+        if isinstance(item, dict)
+        and item.get("standardized_surprise") is not None
+        and item.get("reaction_label") is not None
+    )
+    return {
+        "available": True,
+        "correlation": {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "returned": len(items),
+            "plottable": plottable,
+            "items": items,
+        },
+        "service": service,
+    }
+
+
+def _merge_runtime_records(
+    live: list[dict[str, Any]],
+    persisted: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Union live and persisted records, newest first, deduped by event_id.
+
+    Live records win on collision: they are the same event but may carry a newer
+    analysis. Records without an event_id are kept, keyed by identity, rather than
+    silently collapsing into one.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for index, record in enumerate([*live, *persisted]):
+        event_id = str(record.get("event_id", "")).strip() or f"__anon_{index}"
+        if event_id not in merged:
+            merged[event_id] = record
+    ordered = sorted(
+        merged.values(),
+        key=lambda record: str(record.get("produced_at") or record.get("timestamp") or ""),
+        reverse=True,
+    )
+    return ordered[:limit]
+
+
+def _summarize_benchmark(report: dict[str, Any]) -> dict[str, Any]:
+    """Flatten the benchmark report into a comparison table the UI can render.
+
+    Keeps only what a reader needs to judge model selection: which family, how
+    many rows it was evaluated on, and the four headline metrics. The raw report
+    is several hundred KB of per-slice breakdowns.
+    """
+    datasets: list[dict[str, Any]] = []
+    for dataset in report.get("datasets", []) if isinstance(report.get("datasets"), list) else []:
+        if not isinstance(dataset, dict):
+            continue
+        inventory = dataset.get("inventory") if isinstance(dataset.get("inventory"), dict) else {}
+        models: list[dict[str, Any]] = []
+        for benchmark in dataset.get("benchmarks", []) if isinstance(dataset.get("benchmarks"), list) else []:
+            if not isinstance(benchmark, dict):
+                continue
+            evaluation = benchmark.get("evaluation") if isinstance(benchmark.get("evaluation"), dict) else {}
+            summary = benchmark.get("artifact_summary") if isinstance(benchmark.get("artifact_summary"), dict) else {}
+            confusion = evaluation.get("confusion_matrix")
+            holdout = 0
+            if isinstance(confusion, list):
+                holdout = sum(sum(row) for row in confusion if isinstance(row, list))
+            models.append(
+                {
+                    "model_family": str(benchmark.get("model_family", "unknown")),
+                    "training_rows": _safe_int(summary.get("training_rows")),
+                    "holdout_rows": holdout,
+                    "direction_accuracy": round(_safe_float(evaluation.get("direction_accuracy")), 4),
+                    "direction_macro_f1": round(_safe_float(evaluation.get("direction_macro_f1")), 4),
+                    "magnitude_mae": round(_safe_float(evaluation.get("magnitude_mae")), 6),
+                    "calibration_score": round(_safe_float(evaluation.get("calibration_score")), 4),
+                }
+            )
+        models.sort(key=lambda model: model["direction_accuracy"], reverse=True)
+        datasets.append(
+            {
+                "dataset_name": str(dataset.get("dataset_name", "unknown")),
+                "row_count": _safe_int(inventory.get("row_count")),
+                "time_range": inventory.get("time_range") if isinstance(inventory.get("time_range"), dict) else None,
+                "horizons": inventory.get("horizons") if isinstance(inventory.get("horizons"), dict) else None,
+                "models": models,
+                "best_model": models[0]["model_family"] if models else None,
+            }
+        )
+    datasets.sort(key=lambda dataset: dataset["row_count"], reverse=True)
+    return {"generated_at": report.get("generated_at"), "datasets": datasets}
+
+
+def _pair_event_key(pair: str, event_id: str) -> str:
+    return f"{normalize_pair(pair)}|{event_id}"
+
+
+def _pair_signal_label(market_score: float) -> str:
+    """Direction label for a secondary pair, from its reaction-model score alone.
+
+    The service's trading_signal (with its risk-flag gating) is computed for the
+    primary pair only, so it must not be copied onto other pairs.
+    """
+    normalized = market_score * MARKET_SCORE_NORMALIZER
+    if normalized > MARKET_DIRECTION_THRESHOLD:
+        return "BUY"
+    if normalized < -MARKET_DIRECTION_THRESHOLD:
+        return "SELL"
+    return "HOLD"
+
+
+def _pair_analysis_view(analysis: dict[str, Any], pair: str, primary_pair: str) -> dict[str, Any] | None:
+    """The analysis as filed under `pair`: that pair's own score, never another pair's.
+
+    Returns None for a secondary pair the service produced no score for, rather than
+    filing the primary pair's number under it.
+    """
+    view = dict(analysis)
+    view["pair"] = normalize_pair(pair)
+    view["primary_pair"] = normalize_pair(primary_pair)
+    raw_scores = analysis.get("pair_scores")
+    scores = raw_scores if isinstance(raw_scores, dict) else {}
+    pair_score = scores.get(normalize_pair(pair))
+    if normalize_pair(pair) == normalize_pair(primary_pair):
+        view["signal_scope"] = "article"
+        if isinstance(pair_score, dict):
+            view["pair_score"] = dict(pair_score)
+        return view
+    if not isinstance(pair_score, dict):
+        return None
+    market_score = _safe_float(pair_score.get("market_score"))
+    view["market_score"] = market_score
+    view["confidence"] = _clamp(_safe_float(pair_score.get("confidence")), 0.0, 1.0)
+    view["trading_signal"] = _pair_signal_label(market_score)
+    view["signal_scope"] = "pair_score"
+    view["pair_score"] = dict(pair_score)
+    return view
+
+
+def _prediction_log_row(record: dict[str, Any], logged_at: datetime) -> dict[str, Any]:
+    """Compact, self-contained row: enough to score the prediction against later prices."""
+    feed = record.get("feed") if isinstance(record.get("feed"), dict) else {}
+    pair_score = record.get("pair_score") if isinstance(record.get("pair_score"), dict) else {}
+    return {
+        "logged_at": _isoformat(logged_at),
+        "event_id": record.get("event_id"),
+        "pair": record.get("pair"),
+        "primary_pair": record.get("primary_pair"),
+        "signal_scope": record.get("signal_scope"),
+        "headline": feed.get("headline"),
+        "published_at": feed.get("timestamp"),
+        "produced_at": record.get("produced_at"),
+        "market_score": _safe_float(record.get("market_score")),
+        "confidence": _safe_float(record.get("confidence")),
+        "sentiment_score": _safe_float(record.get("sentiment_score")),
+        "trading_signal": record.get("trading_signal"),
+        "direction": pair_score.get("direction"),
+        "magnitude": pair_score.get("magnitude"),
+        "horizon_minutes": pair_score.get("horizon_minutes"),
+        "source": feed.get("source"),
+        "provider": feed.get("provider"),
+    }
+
+
 def _pair_slug(pair: str) -> str:
     normalized = normalize_pair(pair)
     if normalized == "USD/INR":
         return "usdinr"
     return normalized.replace("/", "").replace("-", "").lower()
-
-
-def _tracked_pairs_for_feed_event(event: dict[str, Any]) -> list[str]:
-    raw_pair = str(event.get("pair") or "").strip().upper()
-    if raw_pair in {"", "MACRO", "GLOBAL", "RISK"}:
-        return ["USD/INR"]
-    normalized_pair = normalize_pair(raw_pair)
-    if "/" in normalized_pair:
-        return [normalized_pair]
-    return ["USD/INR"]
 
 
 def _article_id(pair: str, headline: str) -> str:

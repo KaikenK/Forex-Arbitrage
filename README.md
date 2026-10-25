@@ -20,7 +20,44 @@ npm run dev
 # http://localhost:3001 (or 3000 depending on terminal output)
 ```
 
-**Prerequisites:** MetaTrader 5 must be running and logged in.
+**Prerequisites:** MetaTrader 5 must be running and logged in (MT5 mode only; the live
+exchange mode below needs no MT5).
+
+## Semantic layer: news-weighted opportunity ranking
+
+The detector finds opportunities; a separate semantic microservice adds news context as
+an extra, capped weighting factor. It never creates, removes or reverses an opportunity
+and is not a trading signal.
+
+```
+ live quotes (Kraken, TrueFX spot; NSE/BSE futures via Upstox/Kite)
+        │
+ arbitrage detector (backend :8000) ── crossed books ──► opportunities.jsonl (recorder)
+        │                                                        ▲
+        ▼                                                        │ semantic snapshot
+ semantic_engine (ranker) ◄── window bias + currency bias ── SentimentBridge
+                                                                 │  HTTP only
+                                     services/semantic (:9000) ◄─┘
+                         headlines → sentiment + reaction model → per-pair scores
+                         per-currency bias (H6 formula) + live economic calendar
+```
+
+- **Window bias** (existing, always on): recent scored headlines for the pair lower
+  opportunity confidence by at most 0.08.
+- **Currency bias, two channels** (`ARBEX_CURRENCY_BIAS=1`, off by default):
+  - *risk*: expected move after news (reaction model) and a high-impact release within
+    15 min ahead / 10 min behind (live calendar); penalty = 0.004 × (expected bps − 2),
+    plus 0.03 near a release, total capped at 0.06;
+  - *direction*: only through legging risk of a crossed book (buy leg first, so a failed
+    second leg leaves the book long the pair); penalty ≤ 0.03 when the pair's currency
+    bias opposes that exposure, 0 when neutral, aligned or low-confidence.
+  Both only lower confidence and appear in the ranking reason.
+- **Shadow mode** (flag off): both channels are still computed from cached values and
+  written into every recorded opportunity (`semantic_snapshot`), so their value can be
+  evaluated prospectively (research H6b) without changing today's ranking.
+
+Run order, env flags, the recorder and tests: `RUN_STEPS.md` ("Live semantic stack").
+Service contract: `services/semantic/README.md`.
 
 ## Features
 

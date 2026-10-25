@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-04-23T05:27:29+00:00",
+  "dataset_generation": {
+    "seed_source": "exported live archive event ledger",
+    "labeling_method": "timestamped seed -> 60m intraday bars -> leak-safe future price windows",
+    "pair": "USD/INR",
+    "ticker": "INR=X",
+    "price_interval": "60m",
+    "horizons": [
+      60,
+      240,
+      1440
+    ]
+  },
+  "seed_count": 65,
+  "seed_sources": {
+    "OFFICIAL": 65
+  },
+  "seed_categories": {
+    "central-bank": 23,
+    "official": 41,
+    "policy": 1
+  },
+  "bars_downloaded": 2722,
+  "candidate_row_count": 153,
+  "appended_row_count": 153,
+  "duplicate_row_count": 0,
+  "appended_horizons": {
+    "60": 58,
+    "240": 49,
+    "1440": 46
+  },
+  "output_path": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\sentiment_assets\\usdinr\\usdinr_reaction_training_rows_targeted_expanded.jsonl"
+}

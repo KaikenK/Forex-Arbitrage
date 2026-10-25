@@ -1,0 +1,35 @@
+# Optional: run Arbex as two services. Not required for local use (see RUN_STEPS.md);
+# on a laptop the plain run scripts are lighter.
+#   docker compose up --build
+services:
+  semantic:
+    build: ./services/semantic
+    ports:
+      - "9000:9000"
+    environment:
+      SEMANTIC_CONFIG: /run/config/config.toml
+    volumes:
+      # Real config with API keys stays on the host (gitignored).
+      - ./services/semantic/config.toml:/run/config/config.toml:ro
+      - semantic-history:/app/artifacts/history
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    image: python:3.14-slim
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -q -r requirements.txt && python -m backend.server.run"
+    ports:
+      - "8000:8000"
+    environment:
+      SEMANTIC_SERVICE_URL: http://semantic:9000
+    volumes:
+      - ./:/app
+    depends_on:
+      - semantic
+
+volumes:
+  semantic-history:

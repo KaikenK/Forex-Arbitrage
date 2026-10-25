@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forex Market Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+
+    <!-- ───── Top bar ───── -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="logo-icon">◈</span>
+        <h1>Forex Market Intelligence</h1>
+      </div>
+      <div class="topbar-right">
+        <span class="feed-status" id="feed-status">
+          <span class="dot dot--off"></span>
+          Feed disconnected
+        </span>
+        <span class="topbar-stat" id="topbar-metrics">—</span>
+      </div>
+    </header>
+
+    <!-- ───── Main 3-column layout ───── -->
+    <main class="layout">
+
+      <!-- ▌ LEFT — Live News Feed ▌ -->
+      <aside class="col col--feed">
+        <div class="col-header">
+          <h2>Live Feed</h2>
+          <div class="feed-filters">
+            <button class="chip chip--active" data-filter="all">All</button>
+            <button class="chip" data-filter="FINNHUB">Finnhub</button>
+            <button class="chip" data-filter="RSS">RSS</button>
+            <button class="chip" data-filter="USD/INR">USD/INR</button>
+          </div>
+        </div>
+        <!-- Live Sentiment Snapshot -->
+        <div class="live-sentiment-card" id="live-sentiment-card">
+          <div class="live-sentiment-header">
+            <span class="live-dot"></span>
+            <span class="live-label">USD/INR Live Sentiment</span>
+          </div>
+          <div class="live-sentiment-body">
+            <span class="live-score" id="live-score">—</span>
+            <span class="live-meta" id="live-meta">No data yet</span>
+          </div>
+        </div>
+        <div class="feed-provenance-card" id="feed-provenance-card" data-testid="feed-provenance-card">
+          <div class="feed-provenance-header">
+            <span class="feed-provenance-pill feed-provenance-pill--idle" id="feed-provenance-pill">Awaiting feed</span>
+          </div>
+          <p class="feed-provenance-meta" id="feed-provenance-meta">Waiting for the first headline…</p>
+        </div>
+        <div class="feed-scroll" id="feed-list" data-testid="feed-list">
+          <p class="feed-empty">Waiting for headlines…</p>
+        </div>
+        <div class="auto-row">
+          <label class="toggle">
+            <input type="checkbox" id="auto-analyze-toggle" data-testid="auto-analyze-toggle" aria-label="Auto-analyze incoming headlines" />
+            <span class="toggle-track"></span>
+          </label>
+          <span>Auto-analyze incoming</span>
+        </div>
+      </aside>
+
+      <!-- ▌ CENTER — Article Input ▌ -->
+      <section class="col col--input">
+        <div class="col-header">
+          <h2>Analyze Article</h2>
+        </div>
+        <form id="analysis-form" class="analysis-form" autocomplete="off" data-testid="analysis-form">
+          <label class="field">
+            <span class="field-label">Headline <span class="required">*</span></span>
+            <input type="text" name="headline" placeholder="e.g. RBI cuts repo rate by 25bps, rupee weakens" required />
+          </label>
+          <label class="field">
+            <span class="field-label">Article body <span class="optional">(optional)</span></span>
+            <textarea name="body" rows="5" placeholder="Paste the full article text…"></textarea>
+          </label>
+          <div class="field-row">
+            <label class="field field--half">
+              <span class="field-label">Currency pair</span>
+              <input type="text" name="currency_pair" placeholder="USD/INR" />
+            </label>
+            <label class="field field--half">
+              <span class="field-label">Event category</span>
+              <select name="event_category">
+                <option value="">Auto-detect</option>
+                <option value="rate_decision">Rate decision</option>
+                <option value="macro_data">Macro data</option>
+                <option value="fed_decision">Fed decision</option>
+                <option value="central_bank">Central bank</option>
+                <option value="commodity">Commodity</option>
+                <option value="capital_flows">Capital flows</option>
+                <option value="trade_data">Trade data</option>
+                <option value="geopolitical">Geopolitical</option>
+                <option value="risk_sentiment">Risk sentiment</option>
+                <option value="fiscal">Fiscal / Budget</option>
+                <option value="policy">Policy / Regulation</option>
+                <option value="yields">Bond yields</option>
+                <option value="dxy">Dollar index</option>
+                <option value="rating">Rating change</option>
+                <option value="intervention">FX intervention</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-row">
+            <label class="field field--half">
+              <span class="field-label">Source</span>
+              <select name="source">
+                <option value="">Auto</option>
+                <option value="RSS">RSS</option>
+                <option value="FINNHUB">Finnhub</option>
+                <option value="REDDIT">Reddit</option>
+              </select>
+            </label>
+            <label class="field field--half">
+              <span class="field-label">Published at</span>
+              <input type="datetime-local" name="published_at" />
+            </label>
+          </div>
+          <button type="submit" class="btn btn--primary" id="submit-btn">
+            <span class="btn-label">Analyze</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+        </form>
+
+        <!-- Quick-pick: click a feed item to populate -->
+        <p class="hint" id="click-hint">💡 Click any headline in the feed to auto-fill it here</p>
+      </section>
+
+      <!-- ▌ RIGHT — Results ▌ -->
+      <section class="col col--results">
+        <div class="col-header">
+          <h2>Analysis Results</h2>
+        </div>
+
+        <!-- States -->
+        <div id="loading-state" class="state-banner" hidden>
+          <span class="spinner"></span> Running analysis…
+        </div>
+        <div id="error-state" class="state-banner state-banner--error" hidden>
+          <strong>Error:</strong> <span id="error-text"></span>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon">📊</div>
+          <p>Submit a headline to see<br/>sentiment, market impact &amp; evidence</p>
+        </div>
+
+        <!-- Result panels -->
+        <div id="results-shell" hidden>
+
+          <!-- Metric cards -->
+          <div class="metric-row">
+            <div class="metric-card">
+              <span class="metric-label">Sentiment</span>
+              <span class="metric-value" id="sentiment-score">0.00</span>
+              <span class="metric-bar"><span class="metric-bar-fill" id="sentiment-bar"></span></span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Market Impact</span>
+              <span class="metric-value" id="market-score">0.00</span>
+              <span class="metric-bar"><span class="metric-bar-fill" id="market-bar"></span></span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Confidence</span>
+              <span class="metric-value" id="confidence-score">0%</span>
+              <span class="metric-bar"><span class="metric-bar-fill metric-bar-fill--confidence" id="confidence-bar"></span></span>
+            </div>
+          </div>
+
+          <!-- Trading Signal -->
+          <div class="result-section signal-section" id="signal-section" hidden>
+            <h3>Trading Signal</h3>
+            <div class="signal-card" id="signal-card">
+              <span class="signal-badge" id="signal-badge">HOLD</span>
+              <p class="signal-rationale" id="signal-rationale"></p>
+            </div>
+          </div>
+
+          <!-- Affected pairs -->
+          <div class="result-section">
+            <h3>Affected Pairs</h3>
+            <div class="pair-chips" id="pair-chips"></div>
+          </div>
+
+          <!-- Risk flags -->
+          <div class="result-section" id="risk-section">
+            <h3>Risk Flags</h3>
+            <div class="risk-flags" id="risk-list"></div>
+          </div>
+
+          <!-- Key drivers -->
+          <div class="result-section">
+            <h3>Key Drivers</h3>
+            <ul class="driver-list" id="driver-list"></ul>
+          </div>
+
+          <!-- Evidence -->
+          <div class="result-section">
+            <h3>Retrieved Evidence</h3>
+            <div class="evidence-list" id="evidence-list"></div>
+          </div>
+
+          <!-- Methodology -->
+          <details class="result-section methodology-section">
+            <summary class="methodology-toggle"><h3 class="summary-title">Methodology</h3> <span class="methodology-hint">How were these scores computed?</span></summary>
+            <div class="methodology-body" id="methodology-body"></div>
+          </details>
+
+          <!-- Model Validation -->
+          <details class="result-section methodology-section">
+            <summary class="methodology-toggle"><h3 class="summary-title">Model Validation</h3> <span class="methodology-hint">How accurate is this model?</span></summary>
+            <div class="methodology-body" id="validation-body" data-testid="validation-body">
+              <p class="muted-copy">Loading evaluation data…</p>
+            </div>
+          </details>
+
+          <!-- History -->
+          <div class="result-section">
+            <div class="section-row">
+              <h3>Reaction History</h3>
+              <span class="metrics-tag" id="metrics-block">—</span>
+            </div>
+            <div class="chart-shell" id="history-chart"></div>
+          </div>
+
+          <!-- News-Price Correlation Browser -->
+          <details class="result-section methodology-section">
+            <summary class="methodology-toggle"><h3 class="summary-title">News-Price Correlation</h3> <span class="methodology-hint">Browse aligned training data</span></summary>
+            <div class="correlation-body" id="correlation-body" data-testid="correlation-body">
+              <p class="muted-copy">Click to load correlation data…</p>
+            </div>
+            <div class="correlation-nav" id="correlation-nav" data-testid="correlation-nav" hidden>
+              <button class="btn btn--sm" id="corr-prev" disabled>← Prev</button>
+              <span class="correlation-info" id="corr-info"></span>
+              <button class="btn btn--sm" id="corr-next">Next →</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

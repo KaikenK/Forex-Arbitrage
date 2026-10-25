@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-10-24T16:42:55+00:00",
+  "calendar_store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\calendar_events.parquet",
+  "horizons": [
+    60,
+    240,
+    1440
+  ],
+  "views": [
+    "live",
+    "calendar"
+  ],
+  "label_orientation": "usd",
+  "releases": 1435,
+  "release_moments": 929,
+  "release_moments_with_rows": 921,
+  "rows": 29052,
+  "rows_by_pair_horizon": {
+    "EUR/USD": {
+      "60": 1335,
+      "240": 1369,
+      "1440": 925
+    },
+    "GBP/USD": {
+      "60": 1334,
+      "240": 1369,
+      "1440": 919
+    },
+    "USD/JPY": {
+      "60": 1334,
+      "240": 1371,
+      "1440": 932
+    },
+    "USD/CHF": {
+      "60": 1329,
+      "240": 1372,
+      "1440": 937
+    }
+  },
+  "indicators": {
+    "Unemployment Claims": 115,
+    "Average Hourly Earnings m/m": 88,
+    "Non-Farm Employment Change": 88,
+    "Unemployment Rate": 88,
+    "CPI y/y": 87,
+    "Core Retail Sales m/m": 87,
+    "Retail Sales m/m": 86,
+    "ISM Manufacturing PMI": 84,
+    "CPI m/m": 81,
+    "Core CPI m/m": 80,
+    "ISM Services PMI": 75,
+    "ADP Non-Farm Employment Change": 67,
+    "PPI m/m": 64,
+    "CB Consumer Confidence": 58,
+    "Federal Funds Rate": 41,
+    "Flash Manufacturing PMI": 32,
+    "Advance GDP q/q": 29,
+    "Prelim UoM Consumer Sentiment": 28,
+    "Core PPI m/m": 28,
+    "Prelim GDP q/q": 23,
+    "Core Durable Goods Orders m/m": 22,
+    "JOLTS Job Openings": 18,
+    "Final GDP q/q": 15,
+    "Core PCE Price Index m/m": 15,
+    "Revised UoM Consumer Sentiment": 8,
+    "Flash Services PMI": 7,
+    "Pending Home Sales m/m": 6,
+    "Building Permits": 3,
+    "Chicago PMI": 2,
+    "Empire State Manufacturing Index": 2,
+    "Philly Fed Manufacturing Index": 2,
+    "Final Manufacturing PMI": 2,
+    "Housing Starts": 1,
+    "S&P/CS Composite-20 HPI y/y": 1,
+    "Durable Goods Orders m/m": 1,
+    "New Home Sales": 1
+  }
+}
