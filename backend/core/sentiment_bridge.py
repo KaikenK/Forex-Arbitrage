@@ -398,15 +398,24 @@ class SentimentBridge:
         return _correlation_payload(collected[:target], total, offset, target, self._service_block())
 
     def get_benchmark_report(self) -> dict[str, Any]:
-        """Read the local model-selection benchmark, if one has been generated.
+        """Read the model-selection benchmark for the shipped model, if one exists.
 
-        Not an upstream call: the report is a build artifact of news_stream's
-        experiments/benchmark_reaction_models.py, so it is read from disk and is
-        available whether or not the service is running.
+        Not an upstream call: the report is a build artifact read from disk, so it is
+        available whether or not the service is running. The pooled multi-pair model's
+        training_report.json (in services/semantic) comes first; an older
+        baseline_report.json under sentiment_assets is the fallback. Paths outside the
+        repository (the former sibling news_stream folder) are no longer consulted.
         """
+        pooled = self._root / "services" / "semantic" / "artifacts" / "pooled_multipair" / "training_report.json"
+        try:
+            if pooled.exists():
+                report = json.loads(pooled.read_text(encoding="utf-8"))
+                if isinstance(report, dict) and isinstance(report.get("test"), dict):
+                    return {"available": True, "path": str(pooled), "report": _summarize_pooled_report(report)}
+        except (OSError, json.JSONDecodeError):
+            pass
         candidates = [
             self._root / "sentiment_assets" / "benchmark" / "baseline_report.json",
-            self._root.parent / "news_stream" / "artifacts" / "benchmark" / "baseline_report.json",
         ]
         for path in candidates:
             try:
@@ -1375,6 +1384,52 @@ def _summarize_benchmark(report: dict[str, Any]) -> dict[str, Any]:
                 "best_model": models[0]["model_family"] if models else None,
             }
         )
+    datasets.sort(key=lambda dataset: dataset["row_count"], reverse=True)
+    return {"generated_at": report.get("generated_at"), "datasets": datasets}
+
+
+def _summarize_pooled_report(report: dict[str, Any]) -> dict[str, Any]:
+    """The pooled model's training_report.json in the same table shape as the UI expects.
+
+    One dataset per holdout view the live service serves ("<pair>|live" calendar view and
+    the USD/INR archive; horizon sub-slices are skipped). Rows: the pooled linear model,
+    the majority-class and surprise-word baselines, and the k-NN / SVM benchmarks. Metrics
+    a family does not report are None, never 0, so the table never shows a fake score.
+    """
+    benchmarks: dict[str, dict] = {}
+    for block in (report.get("benchmarks") or {}).values():
+        if isinstance(block, dict):
+            benchmarks.update({k: v for k, v in block.items() if isinstance(v, dict)})
+    datasets: list[dict[str, Any]] = []
+    for block in (report.get("test") or {}).values():
+        if not isinstance(block, dict):
+            continue
+        for view, metrics in block.items():
+            if not isinstance(metrics, dict) or not (view.endswith("|live") or view.endswith("|archive")):
+                continue
+            rows = _safe_int(metrics.get("rows"))
+            mae = metrics.get("magnitude_mae_bps")
+
+            def row(family: str, accuracy: Any, f1: Any = None, mae_bps: Any = None) -> dict[str, Any] | None:
+                if not isinstance(accuracy, (int, float)):
+                    return None
+                return {"model_family": family, "training_rows": None, "holdout_rows": rows,
+                        "direction_accuracy": round(float(accuracy), 4),
+                        "direction_macro_f1": round(float(f1), 4) if isinstance(f1, (int, float)) else None,
+                        "magnitude_mae": round(float(mae_bps) * 1e-4, 6) if isinstance(mae_bps, (int, float)) else None,
+                        "calibration_score": None}
+
+            bench = benchmarks.get(view, {})
+            models = [m for m in (
+                row("pooled linear (shipped)", metrics.get("direction_accuracy"), metrics.get("direction_macro_f1"), mae),
+                row("majority class", metrics.get("majority_baseline_accuracy")),
+                row("surprise-word rule", metrics.get("surprise_word_rule_accuracy")),
+                row("k-NN", bench.get("knn_accuracy")),
+                row("SVM (tf-idf)", bench.get("svm_tfidf_accuracy")),
+            ) if m is not None]
+            models.sort(key=lambda model: model["direction_accuracy"], reverse=True)
+            datasets.append({"dataset_name": view, "row_count": rows, "time_range": None, "horizons": None,
+                             "models": models, "best_model": models[0]["model_family"] if models else None})
     datasets.sort(key=lambda dataset: dataset["row_count"], reverse=True)
     return {"generated_at": report.get("generated_at"), "datasets": datasets}
 

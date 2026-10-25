@@ -48,13 +48,17 @@ NOVELTY_TOP_K = 5
 NOVELTY_MIN_CONTEXT = 3
 MAX_HISTORY_VALUES = 5000
 RISK_LOOKBACK_MINUTES = 60.0
+RISK_BASELINE_HOURS = 24.0              # the pair's "normal" expected move: median over 24 h
+RISK_BASELINE_MIN_ITEMS = 20            # fewer scored items -> baseline warming up, no ratio
 LIVE_PAIRS: tuple[str, ...] = ("EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "USD/INR")
 
 PROVISIONAL_SETTINGS: dict[str, object] = {
-    "novelty_missing": "as_novel",
+    # Aligned 2026-10-25 with the logged H6 decisions (RESEARCH_TRACKER §6 C6-C9), so the
+    # live signal is the one the paper tests; only the z-score must stay causal live.
+    "novelty_missing": "drop_headline",
     "relevance_unmatched": "indirect",
     "event_window_hours": 24.0,
-    "no_data_value": "raw_zero",
+    "no_data_value": "z_zero",
     "zscore_scheme": "expanding_causal",
     "zscore_min_history": 30,
     "label_threshold_z": 0.5,
@@ -121,6 +125,7 @@ class CurrencyBiasTracker:
         self._lock = threading.Lock()
         self._currencies = {c: _CurrencyState() for c in core.CURRENCIES}
         self._pair_risk: dict[str, deque] = {p: deque() for p in LIVE_PAIRS}
+        self._pair_baseline: dict[str, deque] = {p: deque() for p in LIVE_PAIRS}
 
     # ------------------------------------------------------------ ingest
     def observe(self, *, headline: str, published_at: datetime | None, polarity: float, confidence: float,
@@ -150,10 +155,15 @@ class CurrencyBiasTracker:
             now = self._clock().timestamp()
             for pair, score in (pair_scores or {}).items():
                 if pair in self._pair_risk:
-                    self._pair_risk[pair].append((t, float(score.get("magnitude", 0.0)), float(score.get("confidence", 0.0))))
+                    magnitude = float(score.get("magnitude", 0.0))
+                    self._pair_risk[pair].append((t, magnitude, float(score.get("confidence", 0.0))))
+                    self._pair_baseline[pair].append((t, abs(magnitude) * 1e4))
             for risk in self._pair_risk.values():
                 while risk and risk[0][0] < now - RISK_LOOKBACK_MINUTES * 60:
                     risk.popleft()
+            for baseline in self._pair_baseline.values():
+                while baseline and baseline[0][0] < now - RISK_BASELINE_HOURS * 3600:
+                    baseline.popleft()
             for state in self._currencies.values():
                 while state.release_times and state.release_times[0] < now - NOVELTY_LOOKBACK_HOURS * 3600:
                     state.release_times.popleft()
@@ -201,6 +211,8 @@ class CurrencyBiasTracker:
         values = [v for v in history if v is not None]
         if len(values) < int(self._settings["zscore_min_history"]):
             return None
+        if value is None and self._settings["no_data_value"] == "z_zero":
+            return 0.0      # H6 C7: no news in the window = neutral standardized component
         mean = sum(values) / len(values)
         var = sum((v - mean) ** 2 for v in values) / (len(values) - 1)
         raw = 0.0 if value is None and self._settings["no_data_value"] == "raw_zero" else value
@@ -286,7 +298,16 @@ class CurrencyBiasTracker:
                       if sum(weights) > 0 else 0.0)
         recent = [(t, m, c) for t, m, c in self._pair_risk[pair] if as_of - t <= RISK_LOOKBACK_MINUTES * 60]
         expected_bps = max((abs(m) * 1e4 * core.decay((as_of - t) / 3600.0) for t, m, _ in recent), default=0.0)
-        event_risk: dict[str, object] = {"expected_move_bps": round(expected_bps, 3), "recent_scored_items": len(recent),
+        normal = sorted(bps for t, bps in self._pair_baseline[pair] if as_of - t <= RISK_BASELINE_HOURS * 3600)
+        baseline = None
+        if len(normal) >= RISK_BASELINE_MIN_ITEMS:
+            mid = len(normal) // 2
+            baseline = normal[mid] if len(normal) % 2 else (normal[mid - 1] + normal[mid]) / 2.0
+        ratio = round(expected_bps / baseline, 4) if baseline else None
+        event_risk: dict[str, object] = {"expected_move_bps": round(expected_bps, 3),
+                                         "baseline_move_bps": None if baseline is None else round(baseline, 3),
+                                         "baseline_items": len(normal), "risk_ratio": ratio,
+                                         "recent_scored_items": len(recent),
                                          "lookback_minutes": RISK_LOOKBACK_MINUTES, "release_proximity": None,
                                          "calendar": "unavailable"}
         if self._calendar is not None:

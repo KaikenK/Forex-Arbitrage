@@ -242,11 +242,18 @@ interface MetricsResponse {
 
 interface EvaluationBlock {
   direction_accuracy: number;
-  direction_macro_f1: number;
-  magnitude_mae: number;
-  calibration_score: number;
-  confusion_matrix: number[][];
-  horizon_breakdown: Record<string, { count: number; direction_accuracy: number; magnitude_mae: number }>;
+  direction_macro_f1?: number | null;
+  magnitude_mae?: number | null;
+  calibration_score?: number | null;
+  confusion_matrix?: number[][];
+  holdout_rows?: number;
+  source?: string;
+  error?: string;
+  horizon_breakdown?: Record<string, { count: number; direction_accuracy: number; magnitude_mae: number }>;
+}
+
+function fixedOrNa(value: number | null | undefined, digits: number, scale = 1): string {
+  return typeof value === 'number' && Number.isFinite(value) ? (value * scale).toFixed(digits) : 'n/a';
 }
 
 interface EvaluationResponse {
@@ -269,12 +276,12 @@ interface CorrelationResponse {
 
 interface BenchmarkModel {
   model_family: string;
-  training_rows: number;
+  training_rows: number | null;
   holdout_rows: number;
   direction_accuracy: number;
-  direction_macro_f1: number;
-  magnitude_mae: number;
-  calibration_score: number;
+  direction_macro_f1: number | null;
+  magnitude_mae: number | null;
+  calibration_score: number | null;
 }
 
 interface BenchmarkResponse {
@@ -387,8 +394,9 @@ function buildBiasQuery(dataset: SentimentStatusResponse['dataset'], pair: strin
 }
 
 function holdoutSize(evaluation: EvaluationBlock): number {
-  if (!Array.isArray(evaluation.confusion_matrix)) return 0;
-  return evaluation.confusion_matrix.reduce(
+  const matrix = evaluation.confusion_matrix;
+  if (!Array.isArray(matrix)) return 0;
+  return matrix.reduce(
     (total, row) => total + (Array.isArray(row) ? row.reduce((sum, cell) => sum + cell, 0) : 0),
     0,
   );
@@ -704,7 +712,7 @@ export function SentimentWorkbench() {
                     {formatSigned(windowBias.market_bias, 3)}
                   </div>
                   <div className="mt-1 text-slate-600">
-                    applied {formatSigned(windowBias.semantic_score, 3)} &times;{windowBias.activity_factor.toFixed(2)} activity
+                    applied {formatSigned(windowBias.semantic_score, 3)} &times;{fixedOrNa(windowBias.activity_factor, 2)} activity
                   </div>
                 </div>
                 <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
@@ -1102,34 +1110,36 @@ export function SentimentWorkbench() {
             </span>
           </div>
 
-          {evaluation?.available && evaluation.evaluation ? (
+          {evaluation?.available && typeof evaluation.evaluation?.direction_accuracy === 'number' ? (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
                 <div className="text-slate-500">direction acc</div>
                 <div className="mt-1 text-[13px] text-slate-200">{formatPercent(evaluation.evaluation.direction_accuracy)}</div>
-                <div className="mt-1 text-slate-600">n={holdoutSize(evaluation.evaluation)} holdout</div>
+                <div className="mt-1 text-slate-600">n={evaluation.evaluation.holdout_rows ?? holdoutSize(evaluation.evaluation)} holdout</div>
               </div>
               <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
                 <div className="text-slate-500">macro F1</div>
-                <div className="mt-1 text-[13px] text-slate-200">{evaluation.evaluation.direction_macro_f1.toFixed(3)}</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.direction_macro_f1, 3)}</div>
                 <div className="mt-1 text-slate-600">3-class</div>
               </div>
               <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
                 <div className="text-slate-500">magnitude MAE</div>
-                <div className="mt-1 text-[13px] text-slate-200">{(evaluation.evaluation.magnitude_mae * 10000).toFixed(1)} bp</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.magnitude_mae, 1, 10000)} bp</div>
                 <div className="mt-1 text-slate-600">absolute return</div>
               </div>
               <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
                 <div className="text-slate-500">calibration</div>
-                <div className="mt-1 text-[13px] text-slate-200">{evaluation.evaluation.calibration_score.toFixed(3)}</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.calibration_score, 3)}</div>
                 <div className="mt-1 text-slate-600">Brier</div>
               </div>
             </div>
           ) : (
-            <div className="text-slate-500">Model evaluation unavailable while news_stream is down.</div>
+            <div className="text-slate-500">
+              {evaluation?.available ? 'No holdout evaluation published for the active model.' : 'Model evaluation unavailable while the semantic service is down.'}
+            </div>
           )}
 
-          {evaluation?.available && evaluation.evaluation ? (
+          {evaluation?.available && evaluation.evaluation?.horizon_breakdown ? (
             <div className="mt-3">
               <div className="mb-1 uppercase tracking-widest text-slate-500">By horizon</div>
               <div className="flex flex-wrap gap-2">
@@ -1166,7 +1176,7 @@ export function SentimentWorkbench() {
                         <span>{model.model_family}</span>
                         <span className="flex gap-3">
                           <span>acc {formatPercent(model.direction_accuracy)}</span>
-                          <span>F1 {model.direction_macro_f1.toFixed(3)}</span>
+                          <span>F1 {fixedOrNa(model.direction_macro_f1, 3)}</span>
                           <span className="text-slate-600">n={model.holdout_rows}</span>
                         </span>
                       </div>

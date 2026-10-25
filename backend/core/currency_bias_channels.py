@@ -6,12 +6,18 @@ reverses an opportunity, and never acts as a trading signal on its own. Event ri
 apart from direction, because a currency can carry a strong directional bias while the
 market is too jumpy to execute in:
 
-  risk channel       expected volatility around news for the pair: the reaction model's
-                     recent expected move (bps) and a high-impact release scheduled within
-                     minutes or just out (the service's live calendar sets release_proximity
-                     only inside its window: 15 min before, 10 min after). Penalty in confidence units:
-                       min(RISK_CAP, RISK_SLOPE x max(0, expected_bps - RISK_FREE_BPS))
+  risk channel       expected volatility around news for the pair, RELATIVE to that pair's
+                     normal level: risk_ratio = recent expected move / median expected move
+                     of the pair's own scored news over the last 24 h (the service computes
+                     both). An absolute threshold saturated on ordinary news (2026-10-25
+                     end-to-end test: 47 bps against a 17 bps cap point), so it ranked nothing.
+                     Plus a high-impact release scheduled within minutes or just out (the
+                     service's live calendar sets release_proximity only inside its window:
+                     15 min before, 10 min after). Penalty in confidence units:
+                       RISK_CAP x clip((risk_ratio - 1) / RISK_RATIO_SPAN, 0, 1)
                        + RELEASE_PENALTY when release_proximity is known (capped as a whole).
+                     No magnitude penalty while the baseline is warming up (unknown risk is
+                     not treated as high risk).
   direction channel  the detector finds cross-venue crossed books, which are market-neutral
                      once both legs fill. The only directional exposure is legging: the
                      execution engine submits the BUY leg first, so if the second leg fails
@@ -42,8 +48,7 @@ from typing import Any, Callable, Dict, Optional
 logger = logging.getLogger(__name__)
 
 RISK_CAP = 0.06
-RISK_FREE_BPS = 2.0
-RISK_SLOPE = 0.004
+RISK_RATIO_SPAN = 2.0                 # full magnitude penalty at 3x the pair's normal expected move
 RELEASE_PENALTY = 0.03
 DIRECTION_CAP = 0.03
 DIRECTION_SLOPE = 0.01
@@ -78,13 +83,21 @@ def risk_channel(pair_payload: Optional[Dict[str, Any]]) -> ChannelResult:
         return ChannelResult("risk", 0.0, "no currency-bias data", {})
     risk = pair_payload.get("event_risk") or {}
     expected = float(risk.get("expected_move_bps") or 0.0)
-    penalty = RISK_SLOPE * max(0.0, expected - RISK_FREE_BPS)
+    ratio = risk.get("risk_ratio")
+    if ratio is None:
+        penalty = 0.0
+        reason = f"expected move {expected:.1f} bps (baseline warming up)"
+    else:
+        ratio = float(ratio)
+        penalty = RISK_CAP * min(1.0, max(0.0, (ratio - 1.0) / RISK_RATIO_SPAN))
+        reason = f"expected move {expected:.1f} bps, {ratio:.1f}x normal"
     proximity = risk.get("release_proximity")
     if proximity is not None:
         penalty += RELEASE_PENALTY
+        reason += f", release {_describe(proximity)}"
     penalty = min(RISK_CAP, penalty)
-    reason = f"expected move {expected:.1f} bps" + ("" if proximity is None else f", release {_describe(proximity)}")
-    return ChannelResult("risk", penalty, reason, {"expected_move_bps": expected, "release_proximity": proximity})
+    return ChannelResult("risk", penalty, reason, {"expected_move_bps": expected, "risk_ratio": ratio,
+                                                   "release_proximity": proximity})
 
 
 def _describe(proximity: Any) -> str:

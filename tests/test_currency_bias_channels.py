@@ -36,10 +36,10 @@ class StubClient:
         return 1.0
 
 
-def _pair(bias=None, label="neutral", confidence=0.0, expected=0.0, proximity=None):
+def _pair(bias=None, label="neutral", confidence=0.0, expected=0.0, proximity=None, ratio=None):
     return {"relative_bias": bias, "label": label, "confidence": confidence,
             "components": {"base": "USD", "quote": "INR"},
-            "event_risk": {"expected_move_bps": expected, "release_proximity": proximity}}
+            "event_risk": {"expected_move_bps": expected, "risk_ratio": ratio, "release_proximity": proximity}}
 
 
 async def _score(engine, opp):
@@ -77,7 +77,7 @@ async def test_flag_off_is_identical_to_todays_scoring(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_flag_on_applies_two_separate_capped_channels():
-    payload = _pair(bias=-4.0, label="bearish", confidence=0.9, expected=40.0)   # opposes a long residual
+    payload = _pair(bias=-4.0, label="bearish", confidence=0.9, expected=40.0, ratio=5.0)   # opposes a long residual
     engine = SemanticEngine(news_bias_provider=FixedNewsBiasProvider(_bias()), currency_bias=True,
                             currency_bias_client=StubClient(payload))
     message = await _score(engine, make_opportunity(confidence=0.82))
@@ -89,12 +89,21 @@ async def test_flag_on_applies_two_separate_capped_channels():
 
 
 def test_channels_are_independent():
-    calm_but_directional = _pair(bias=-2.0, label="bearish", confidence=0.8, expected=0.0)
-    risky_but_neutral = _pair(bias=0.1, label="neutral", confidence=0.8, expected=12.0)
-    assert ch.risk_channel(calm_but_directional).penalty == 0.0
+    calm_but_directional = _pair(bias=-2.0, label="bearish", confidence=0.8, expected=5.0, ratio=0.8)
+    risky_but_neutral = _pair(bias=0.1, label="neutral", confidence=0.8, expected=24.0, ratio=2.0)
+    assert ch.risk_channel(calm_but_directional).penalty == 0.0, "at or below normal: no risk penalty"
     assert ch.direction_channel(calm_but_directional, +1).penalty == pytest.approx(0.01 * 2.0 * 0.8)
-    assert ch.risk_channel(risky_but_neutral).penalty == pytest.approx(0.004 * (12.0 - 2.0))
+    assert ch.risk_channel(risky_but_neutral).penalty == pytest.approx(ch.RISK_CAP * 0.5), "2x normal: half"
     assert ch.direction_channel(risky_but_neutral, +1).penalty == 0.0
+
+
+def test_risk_is_relative_to_the_pairs_normal_level_and_zero_while_warming_up():
+    """Ordinary news must not saturate the channel (the absolute rule did, at 47 bps)."""
+    assert ch.risk_channel(_pair(expected=47.0, ratio=1.0)).penalty == 0.0, "big but normal for the pair"
+    assert ch.risk_channel(_pair(expected=47.0, ratio=None)).penalty == 0.0, "unknown is not high"
+    assert ch.risk_channel(_pair(expected=47.0, ratio=None)).reason.endswith("(baseline warming up)")
+    assert ch.risk_channel(_pair(expected=90.0, ratio=3.0)).penalty == pytest.approx(ch.RISK_CAP)
+    assert ch.risk_channel(_pair(expected=40.0, ratio=1.5)).penalty == pytest.approx(ch.RISK_CAP * 0.25)
 
 
 def test_direction_is_zero_when_neutral_aligned_low_confidence_or_no_legging():
@@ -106,7 +115,7 @@ def test_direction_is_zero_when_neutral_aligned_low_confidence_or_no_legging():
 
 
 def test_caps_hold_and_release_term():
-    extreme = _pair(bias=-100.0, label="bearish", confidence=1.0, expected=1e6, proximity="in 1 min")
+    extreme = _pair(bias=-100.0, label="bearish", confidence=1.0, expected=1e6, proximity="in 1 min", ratio=1e6)
     assert ch.risk_channel(extreme).penalty == ch.RISK_CAP
     assert ch.direction_channel(extreme, +1).penalty == ch.DIRECTION_CAP
     assert ch.risk_channel(_pair(expected=0.0, proximity="just out")).penalty == pytest.approx(ch.RELEASE_PENALTY)
@@ -140,7 +149,7 @@ def test_snapshot_uses_cached_values_only():
         async def pair(self, pair):
             raise AssertionError("snapshot must not fetch")
 
-    client = NoNetworkClient(_pair(bias=-2.0, label="bearish", confidence=0.8, expected=10.0))
+    client = NoNetworkClient(_pair(bias=-2.0, label="bearish", confidence=0.8, expected=10.0, ratio=2.0))
     snap = ch.channel_snapshot("EUR/USD", "cross_source", window_bias={"semantic_score": 0.1}, client=client, applied=False)
     assert snap["risk_channel"]["penalty"] > 0 and snap["direction_channel"]["penalty"] > 0
     assert snap["applied"] is False and snap["window_bias"] == {"semantic_score": 0.1}

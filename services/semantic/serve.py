@@ -39,12 +39,59 @@ from market.runtime_factory import build_runtime_service
 
 
 def _load_evaluation_from_artifact(artifact_path: Path) -> dict[str, object] | None:
-    """Reads evaluation metrics embedded in the reaction artifact."""
+    """Evaluation metrics for the active reaction artifact.
+
+    Older artifacts embed an "evaluation" block. Weights-only artifacts (the pooled
+    multi-pair model) ship no rows to evaluate, so the holdout metrics recorded at training
+    time are read from the sibling training_report.json instead.
+    """
     try:
         raw = json.loads(artifact_path.read_text(encoding="utf-8"))
-        return raw.get("evaluation")
     except (OSError, json.JSONDecodeError):
         return None
+    if isinstance(raw.get("evaluation"), dict):
+        return raw["evaluation"]
+    return _evaluation_from_training_report(artifact_path.parent / "training_report.json")
+
+
+def _evaluation_from_training_report(report_path: Path) -> dict[str, object] | None:
+    """Row-weighted holdout metrics over the views the live service actually serves.
+
+    Calendar releases are scored in the report twice ("calendar" view with actual/forecast,
+    "live" view with the headline only); live inference never sees actuals, so only the
+    "live" view and the USD/INR archive count here. Per-view metrics are kept alongside.
+    """
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    views: dict[str, dict] = {}
+    for block in (report.get("test") or {}).values():
+        if isinstance(block, dict):
+            views.update({name: m for name, m in block.items() if isinstance(m, dict)})
+    served = {name: m for name, m in views.items()
+              if name.endswith("|live") or name.endswith("|archive")}
+    rows = sum(int(m.get("rows") or 0) for m in served.values())
+    if rows == 0:
+        return None
+
+    def weighted(key: str, scale: float = 1.0) -> float | None:
+        pairs = [(int(m.get("rows") or 0), m.get(key)) for m in served.values()]
+        pairs = [(n, float(v)) for n, v in pairs if isinstance(v, (int, float)) and n > 0]
+        total = sum(n for n, _ in pairs)
+        return sum(n * v for n, v in pairs) / total * scale if total else None
+
+    return {
+        "direction_accuracy": weighted("direction_accuracy"),
+        "direction_macro_f1": weighted("direction_macro_f1"),
+        "magnitude_mae": weighted("magnitude_mae_bps", 1e-4),   # return units, as before
+        "calibration_score": None,                               # no Brier in the report
+        "holdout_rows": rows,
+        "source": report_path.name,
+        "per_view": {name: {k: m.get(k) for k in ("rows", "releases", "direction_accuracy",
+                                                  "majority_baseline_accuracy", "magnitude_mae_bps")}
+                     for name, m in sorted(served.items())},
+    }
 
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
