@@ -26,7 +26,7 @@ from pathlib import Path
 RESEARCH = Path(__file__).resolve().parent
 ARTIFACTS = RESEARCH / "artifacts"
 H6B_WINDOW_END_UTC = datetime(2026, 11, 4, 18, 30, tzinfo=UTC)
-GDELT_CUTOFF_UTC = datetime(2026, 10, 30, 18, 30, tzinfo=UTC)
+GDELT_CUTOFF_UTC = datetime(2026, 11, 1, 18, 30, tzinfo=UTC)    # 2026-11-02 00:00 IST (DEVIATION 1)
 HISTDATA_YEARS = range(2018, 2026)
 MAJORS = ("EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF")
 

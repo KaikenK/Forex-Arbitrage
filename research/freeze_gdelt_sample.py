@@ -1,8 +1,9 @@
 """Freeze the H1/H5 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
-PROTOCOL 2026-10-25).
+PROTOCOL 2026-10-25; cutoff moved once by DEVIATION 1, 2026-10-28, before any H1/H5/H6
+result existed: 2026-10-31 00:00 IST became 2026-11-02 00:00 IST).
 
 Locked rule: "H1/H5 use only GDELT windows for 2018-01-01..2021-12-31 whose shard completed
-before 2026-10-31 00:00 IST (2026-10-30 18:30 UTC); the shard list is frozen at the cutoff
+before [the cutoff, now 2026-11-02 00:00 IST = 2026-11-01 18:30 UTC]; the shard list is frozen at the cutoff
 with a content hash recorded here. Coverage at the cutoff (windows done / 1,461, events) is
 reported as is: the cutoff is not moved and gaps are not selectively filled. Data downloaded
 after the cutoff is not used for H1/H5."
@@ -36,7 +37,7 @@ ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 SHARD_DIR = ARTIFACTS / "gdelt_shards"
 FREEZE_PATH = ARTIFACTS / "gdelt_sample_freeze.json"
 
-CUTOFF_UTC = datetime(2026, 10, 30, 18, 30, tzinfo=UTC)      # = 2026-10-31 00:00 IST
+CUTOFF_UTC = datetime(2026, 11, 1, 18, 30, tzinfo=UTC)       # = 2026-11-02 00:00 IST (DEVIATION 1)
 SAMPLE_START = date(2018, 1, 1)
 SAMPLE_END = date(2021, 12, 31)                                # inclusive
 EXPECTED_WINDOWS = 1461                                        # daily windows, 2018-2021

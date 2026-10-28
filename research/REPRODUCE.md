@@ -32,7 +32,7 @@ time and never while the live semantic service or backend is running.
 | R1 as originally reported | `r1_legacy` | stdout | pre-fix calendar backup |
 | H2 category CARs, H3 half-lives | `h2h3` | `h2h3.json` | calendar, HistData |
 | GDELT feature table (descriptive) | `features` | `features.parquet` (+ manifest) | shards |
-| News-sample coverage (frozen sample) | `freeze` | `gdelt_sample_freeze.json` | at/after 2026-10-31 00:00 IST |
+| News-sample coverage (frozen sample) | `freeze` | `gdelt_sample_freeze.json` | at/after 2026-11-02 00:00 IST (DEVIATION 1) |
 | Archive scores | `score_dedup`, `score_lexicon`, `score_finbert`, `score_embed` | `archive_scores/<stage>/` | frozen sample; later stages need `dedup` |
 | H1 novelty vs sentiment (decides on sentence-transformer) | `h1_primary`, `h1_tfidf`, `h1_hashing`, `h1_decide` | `h1_results.json` | scores stamped with the freeze hash |
 | H5 currency sentiment factor (same-day, explanatory) | `h5_lexicon`, `h5_finbert`, `h5_decide` | `h5_results.json` | scores stamped with the freeze hash |
