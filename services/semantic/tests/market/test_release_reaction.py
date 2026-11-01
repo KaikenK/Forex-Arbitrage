@@ -199,3 +199,25 @@ def test_calendar_keeps_one_archive_copy_per_week(tmp_path):
     calendar = EconomicCalendar(tmp_path, fetch=lambda url: _json.dumps(rows).encode(), clock=lambda: 1.8e9)
     assert calendar.refresh(force=True)
     assert [p.name for p in (tmp_path / "archive").iterdir()] == ["ff_calendar_2026-W46.json"]
+
+
+def test_history_skips_excluded_event_ids(tmp_path):
+    import asyncio
+
+    from market.analyzer import UnifiedArticleAnalyzer
+    from market.empty_evidence_retriever import EmptyEvidenceRetriever
+    from market.history_store import JsonlAnalysisHistoryStore
+    from market.schemas import ArticleInput
+    from market.service import UnifiedArticleAnalysisService
+    from tests.market.test_multi_pair_analysis import CountingSentimentScorer, PerPairReactionScorer
+
+    store = JsonlAnalysisHistoryStore(tmp_path / "analysis_history.jsonl")
+    analyzer = UnifiedArticleAnalyzer(sentiment_scorer=CountingSentimentScorer(), reaction_scorer=PerPairReactionScorer(),
+                                      evidence_retriever=EmptyEvidenceRetriever(), clock=lambda: RELEASE)
+    service = UnifiedArticleAnalysisService(analyzer=analyzer, history_store=store)
+    for event_id in ("keep", "drop"):
+        asyncio.run(service.analyze_article(ArticleInput(article_text=f"Dollar news {event_id}", headline=f"Dollar news {event_id}",
+                                                         currency_pair="EUR/USD", external_id=event_id, published_at=RELEASE)))
+    (tmp_path / "excluded_event_ids.txt").write_text("drop\n", encoding="utf-8")
+    reloaded = UnifiedArticleAnalysisService(analyzer=analyzer, history_store=store)
+    assert [a.event_id for a in reloaded._history] == ["keep"]

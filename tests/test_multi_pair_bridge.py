@@ -171,3 +171,16 @@ def test_summary_and_publisher_time_reach_the_service_and_the_log(tmp_path, monk
              "publisher_time": "2026-10-15T12:30:05+00:00", "feed_url": "https://investinglive.com/feed/news"}
     bridge._process_analysis_job((("EUR/USD", bridge._normalize_feed_event("EUR/USD", event)),))
     assert calls and calls[0][1]["article_text"] == "US payrolls beat expectations\n\nPayrolls rose 254,000."
+
+
+def test_persisted_synthetic_records_are_skipped_on_load(tmp_path):
+    import json as _json
+
+    bridge = _bridge(tmp_path)
+    path = tmp_path / "records.jsonl"
+    rows = [{"event_id": "real", "timestamp": "2026-11-01T10:00:00+00:00", "provenance": "upstream"},
+            {"event_id": "fake", "timestamp": "2026-11-01T10:01:00+00:00", "provenance": "synthetic"},
+            {"event_id": "fake-analysis", "produced_at": "2026-11-01T10:02:00+00:00",
+             "feed": {"provenance": "synthetic", "provider": "synthetic"}}]
+    path.write_text("\n".join(_json.dumps(r) for r in rows), encoding="utf-8")
+    assert [r["event_id"] for r in bridge._load_runtime_records(path, limit=80)] == ["real"]

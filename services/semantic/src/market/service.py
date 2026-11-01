@@ -156,7 +156,25 @@ class UnifiedArticleAnalysisService(MarketAnalysisService):
         except OSError:
             self.logger.warning("analysis_history_store_load_failed", path=str(history_store.path), exc_info=True)
             return []
+        excluded = _excluded_event_ids(history_store.path)
+        if excluded:
+            history = [analysis for analysis in history if analysis.event_id not in excluded]
         return history[: self._max_history]
+
+
+EXCLUDED_IDS_FILE = "excluded_event_ids.txt"
+
+
+def _excluded_event_ids(history_path) -> set[str]:
+    """Event ids never to reload, one per line, next to the history file. Used for the synthetic
+    demo headlines analysed before 2026-11-02: kept on disk, kept out of the history views."""
+    from pathlib import Path
+
+    path = Path(history_path).with_name(EXCLUDED_IDS_FILE)
+    try:
+        return {line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+    except OSError:
+        return set()
 
 
 def _split_article(explicit_headline: str | None, article_text: str) -> tuple[str, str | None]:

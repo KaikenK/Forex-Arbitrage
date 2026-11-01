@@ -1274,6 +1274,10 @@ class SentimentBridge:
                 continue
             if not isinstance(payload, dict):
                 continue
+            # Records written before 2026-11-02 include synthetic demo headlines; they stay on
+            # disk (nothing is deleted) but never re-enter the dashboards or the window bias.
+            if _is_synthetic_record(payload):
+                continue
             event_id = str(payload.get("event_id", "")).strip()
             if not event_id or event_id in seen_ids:
                 continue
@@ -1492,6 +1496,13 @@ def _pair_signal_label(market_score: float) -> str:
     if normalized < -MARKET_DIRECTION_THRESHOLD:
         return "SELL"
     return "HOLD"
+
+
+def _is_synthetic_record(record: dict[str, Any]) -> bool:
+    """Feed records carry provenance at top level; analysis records under `feed`."""
+    feed = record.get("feed") if isinstance(record.get("feed"), dict) else {}
+    values = (record.get("provenance"), record.get("provider"), feed.get("provenance"), feed.get("provider"))
+    return any(str(v or "").strip().lower() == "synthetic" for v in values)
 
 
 def _pair_analysis_view(analysis: dict[str, Any], pair: str, primary_pair: str) -> dict[str, Any] | None:
