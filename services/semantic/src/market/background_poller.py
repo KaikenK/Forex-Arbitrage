@@ -27,11 +27,9 @@ POLLER_RSS_URLS = (
     "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     "https://www.livemint.com/rss/markets",
     "https://www.business-standard.com/rss/markets-106.rss",
-    "https://www.moneycontrol.com/rss/markets.xml",
-    "https://www.ndtv.com/rss/business/latest.xml",
-    "https://www.forexlive.com/feed/news",
-    "https://feeds.reuters.com/reuters/businessNews",
+    "https://investinglive.com/feed/news",              # ForexLive's successor domain
     "https://www.fxstreet.com/rss/news",
+    "https://economictimes.indiatimes.com/markets/forex/rssfeeds/1150221130.cms",
 )
 
 # Keywords that indicate forex / India market relevance

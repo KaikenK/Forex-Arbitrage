@@ -4,36 +4,60 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import random
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import structlog
+
+from market.pairs import canonical_pair, pair_against_usd
 
 _logger = structlog.get_logger().bind(component="feed")
 
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
+# Synthetic demo headlines fill quiet periods only when explicitly enabled. They used to be on
+# always: by 2026-11-02 they were 92% of the backend's logged predictions and fed the live
+# currency bias. Off, a quiet stream sends SSE keep-alive comments instead.
+SYNTHETIC_FEED_ENABLED = os.environ.get("SEMANTIC_SYNTHETIC_FEED", "").strip().lower() in {"1", "true", "yes", "on"}
+KEEPALIVE_SECONDS = 10.0
 FINNHUB_NEWS_CATEGORIES = ("forex", "general")
 UPSTREAM_PROVENANCE = "upstream"
 SYNTHETIC_PROVENANCE = "synthetic"
 
-# RSS feeds with financial / forex coverage
+# RSS feeds with forex / macro coverage. Curated from the live inventory of 2026-11-02
+# (research/feed_inventory.py, research/paper/news_sources.md): dead feeds removed (Reuters
+# legacy DNS gone, NDTV 404, Moneycontrol 503), ForexLive moved to its successor domain,
+# central-bank and statistics-agency feeds added (exact publication times; agencies put the
+# release figures in the item summary, which the release extractor reads).
 DEFAULT_RSS_URLS = (
-    # Global
-    "https://www.forexlive.com/feed/news",
-    "https://feeds.reuters.com/reuters/businessNews",
-    "http://feeds.bbci.co.uk/news/business/rss.xml",
+    # FX specialists (fast release headlines with figures)
+    "https://investinglive.com/feed/news",
+    "https://www.fxstreet.com/rss/news",
+    # Global finance / macro
+    "https://www.cnbc.com/id/20910258/device/rss/rss.html",
     "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    # India / INR focused
+    "https://feeds.bloomberg.com/economics/news.rss",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    # India / INR
+    "https://economictimes.indiatimes.com/markets/forex/rssfeeds/1150221130.cms",
     "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     "https://www.livemint.com/rss/markets",
     "https://www.business-standard.com/rss/markets-106.rss",
-    "https://www.moneycontrol.com/rss/markets.xml",
-    "https://www.ndtv.com/rss/business/latest.xml",
-    # Forex-specific
-    "https://www.fxstreet.com/rss/news",
+    # Central banks
+    "https://www.federalreserve.gov/feeds/press_all.xml",
+    "https://www.ecb.europa.eu/rss/press.html",
+    "https://www.bankofengland.co.uk/rss/news",
+    "https://www.boj.or.jp/en/rss/whatsnew.xml",
+    "https://www.snb.ch/public/rss/en/pressrel",
+    "https://www.rbi.org.in/pressreleases_rss.xml",
+    # Statistics agencies (US release figures)
+    "https://www.bls.gov/feed/bls_latest.rss",
+    "https://apps.bea.gov/rss/rss.xml",
+    "https://www.census.gov/economic-indicators/indicator.xml",
 )
 
 # Only Finnhub/RSS items passing this keyword filter reach the SSE stream.
@@ -61,6 +85,11 @@ FOREX_FILTER_WORDS = frozenset({
     "missile", "nuclear", "trade war",
     # Ratings
     "rating", "upgrade", "downgrade", "moody", "fitch", "s&p",
+    # Majors and their central banks / agency release titles (study pairs)
+    "euro", "yen", "sterling", "pound", "franc", "ecb", "boe", "boj", "snb", "lagarde",
+    "consumer price", "producer price", "employment situation", "nonfarm", "non-farm",
+    "unemployment", "gdp", "gross domestic product", "personal income", "retail trade",
+    "retail sales", "durable goods", "job openings", "jolts", "pmi",
 })
 
 _PAIR_RE = re.compile(r"\b([A-Z]{3})[/\-]([A-Z]{3})\b")
@@ -202,17 +231,21 @@ def _is_forex_relevant(text: str) -> bool:
 def _detect_pair(text: str) -> str:
     """Best-effort forex pair detection from headline text."""
     for base_currency, quote_currency in _PAIR_RE.findall(text.upper()):
-        if base_currency in _SUPPORTED_CURRENCIES and quote_currency in _SUPPORTED_CURRENCIES:
-            return f"{base_currency}/{quote_currency}"
+        if (base_currency in _SUPPORTED_CURRENCIES and quote_currency in _SUPPORTED_CURRENCIES
+                and base_currency != quote_currency):
+            return canonical_pair(base_currency, quote_currency)
     lowered = text.casefold()
     currencies: list[str] = []
     for hint, code in _CURRENCY_HINTS.items():
-        if hint in lowered and code not in currencies:
+        # Word boundaries: "franc" must not match "France", nor "das" inside "Sundas".
+        if re.search(rf"(?<![a-z]){re.escape(hint.strip())}(?![a-z])", lowered) and code not in currencies:
             currencies.append(code)
     if len(currencies) >= 2:
-        return f"{currencies[0]}/{currencies[1]}"
+        return canonical_pair(currencies[0], currencies[1])
     if len(currencies) == 1:
-        return f"USD/{currencies[0]}" if currencies[0] != "USD" else "EUR/USD"
+        # A single non-USD currency is quoted against USD in market convention (EUR/USD, not
+        # USD/EUR); a USD-only headline is a dollar-wide shock, filed under every study pair.
+        return pair_against_usd(currencies[0]) or "MACRO"
     return "MACRO"
 
 
@@ -281,9 +314,28 @@ def _event_with_feed_metadata(
     return enriched_event
 
 
+SUMMARY_CHARS = 600
+
+
+def _plain_summary(value: object) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip()[:SUMMARY_CHARS]
+
+
+def _publisher_time(entry: dict[str, Any]) -> str | None:
+    """The feed's own publication time (ISO UTC), or None. `timestamp` stays our receipt time,
+    so release-to-arrival latency can be measured both ways."""
+    parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+    if not parsed:
+        return None
+    from calendar import timegm
+    return datetime.fromtimestamp(timegm(parsed), UTC).isoformat()
+
+
 def _finnhub_to_event(article: dict[str, Any]) -> dict[str, Any]:
     headline = article.get("headline", "")
     source_name = article.get("source", "Finnhub")
+    published = article.get("datetime")
     return {
         "headline": headline,
         "source": f"FINNHUB ({source_name})",
@@ -291,19 +343,27 @@ def _finnhub_to_event(article: dict[str, Any]) -> dict[str, Any]:
         "category": _detect_category(headline),
         "url": article.get("url", ""),
         "timestamp": datetime.now(UTC).isoformat(),
+        "publisher_time": datetime.fromtimestamp(published, UTC).isoformat() if published else None,
+        "feed_url": "finnhub:news",
+        "summary": _plain_summary(article.get("summary")),
         "live": True,
     }
 
 
 def _rss_to_event(entry: dict[str, Any]) -> dict[str, Any]:
     headline = entry.get("title", "")
+    summary = _plain_summary(entry.get("summary"))
+    feed_url = str(entry.get("_feed_url", ""))
     return {
         "headline": headline,
-        "source": "RSS",
-        "pair": _detect_pair(headline + " " + entry.get("summary", "")),
+        "source": f"RSS ({urlparse(feed_url).netloc})" if feed_url else "RSS",
+        "pair": _detect_pair(headline + " " + summary),
         "category": _detect_category(headline),
         "url": entry.get("link", ""),
         "timestamp": datetime.now(UTC).isoformat(),
+        "publisher_time": _publisher_time(entry),
+        "feed_url": feed_url,
+        "summary": summary,
         "live": True,
     }
 
@@ -339,15 +399,25 @@ async def _fetch_rss(urls: tuple[str, ...] | list[str]) -> list[dict[str, Any]]:
     except ImportError:
         _logger.warning("feedparser_not_installed")
         return []
+    import httpx
+
+    # Fetch with httpx (certifi CA bundle): with this machine's system store, feedparser's own
+    # urllib fetch fails TLS verification for the ECB, SNB and Eurostat feeds and returned nothing.
     entries: list[dict[str, Any]] = []
-    for url in urls:
-        try:
-            feed = await asyncio.to_thread(feedparser.parse, url)
-            raw_entries = getattr(feed, "entries", [])
-            for entry in raw_entries[:10]:
-                entries.append(dict(entry) if not isinstance(entry, dict) else entry)
-        except (OSError, RuntimeError, ValueError) as exc:
-            _logger.warning("rss_fetch_failed", url=url, error=str(exc))
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0 (arbex-semantic)"}) as client:
+        for url in urls:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                feed = await asyncio.to_thread(feedparser.parse, response.content)
+            except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
+                _logger.warning("rss_fetch_failed", url=url, error=str(exc))
+                continue
+            for entry in list(getattr(feed, "entries", []))[:10]:
+                item = dict(entry) if not isinstance(entry, dict) else entry
+                item["_feed_url"] = url
+                entries.append(item)
     return entries
 
 
@@ -468,9 +538,13 @@ async def generate_feed_events():
     try:
         while True:
             try:
-                event = await asyncio.wait_for(buffer.get(), timeout=5.0)
+                event = await asyncio.wait_for(
+                    buffer.get(), timeout=5.0 if SYNTHETIC_FEED_ENABLED else KEEPALIVE_SECONDS)
             except asyncio.TimeoutError:
-                # No real news — cycle through USD/INR synthetic headlines
+                if not SYNTHETIC_FEED_ENABLED:
+                    yield ": keepalive\n\n"
+                    continue
+                # Demo mode only: cycle through USD/INR synthetic headlines
                 available = [i for i in range(len(ALL_SYNTHETIC)) if i not in synthetic_seen]
                 if not available:
                     synthetic_seen.clear()
@@ -486,6 +560,9 @@ async def generate_feed_events():
                 )
 
             yield f"data: {json.dumps(event)}\n\n"
-            await asyncio.sleep(random.uniform(4.0, 8.0))
+            # Real items go out as soon as they are fetched: pacing them 4–8 s apart queued a
+            # release headline behind the whole refill backlog. Only demo items are paced.
+            if event.get("provenance") == SYNTHETIC_PROVENANCE:
+                await asyncio.sleep(random.uniform(4.0, 8.0))
     finally:
         refill_task.cancel()
