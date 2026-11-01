@@ -49,6 +49,13 @@ def _p(x):
     return "$<$0.001" if x < 0.001 else f"{x:.3f}"
 
 
+def _p_inline(x):
+    """'$p<0.001$' or '$p=0.150$' for use inside a sentence or cell."""
+    if x is None:
+        return "$p$ n/a"
+    return "$p<0.001$" if x < 0.001 else f"$p={x:.3f}$"
+
+
 def _write(name: str, body: str) -> None:
     TABLES.mkdir(parents=True, exist_ok=True)
     (TABLES / name).write_text(body, encoding="utf-8")
@@ -79,7 +86,7 @@ def table_magnitude(ev: dict) -> None:
         def cell(name):
             e = m[name]
             diff = e.get("model_minus_baseline_abs_error")
-            d = "" if not diff else f" ({diff['mean']:+.2f}, $p$={_p(diff['p'])})"
+            d = "" if not diff else f" ({diff['mean']:+.2f}, {_p_inline(diff['p'])})"
             return f"{_num(e['mae_bps'])} / {_num(e['spearman'])}{d}"
         rows.append(f"{LABEL[key]} & {_num(m['mean_abs_move_bps'], 1)} & {cell('model')} & {cell('pair_mean')} & "
                     f"{cell('cell_mean')} & {cell('v_fit')} \\\\")
@@ -99,21 +106,34 @@ def table_confidence(ev: dict) -> None:
                     f"{_pct(cov90.get('coverage'))} & {_num(cov90.get('mean_width_bps'), 1)} \\\\")
     _write("confidence.tex", "\n".join([
         r"\begin{tabular}{lrrrrrrrr}", r"\toprule",
-        r"Window & ECE & Brier & Brier (const.) & Mean $p$ & Hit rate & Cov.\ 80\% & Cov.\ 90\% & 90\% width (bps) \\",
+        r"Window & ECE & Brier & Brier (const.) & Mean $p$ (\%) & Hit rate (\%) & Cov.\ 80\% & Cov.\ 90\% & 90\% width (bps) \\",
         r"\midrule", *rows, r"\bottomrule", r"\end{tabular}", ""]))
 
 
 def table_affected(ev: dict) -> None:
     a = ev["rq1_affected"]
     pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF"]
-    lines = [r"\begin{tabular}{lrrrr}", r"\toprule", "Release currency & " + " & ".join(pairs) + r" \\", r"\midrule"]
+    counts = _release_counts()
+    lines = [r"\begin{tabular}{lrrrrr}", r"\toprule",
+             "Release currency & Releases & " + " & ".join(pairs) + r" \\", r"\midrule"]
     for cur, by_pair in a["by_release_currency"].items():
-        lines.append(f"{cur} & " + " & ".join(_pct(by_pair.get(p), 0) if p in by_pair else "--" for p in pairs) + r" \\")
-    lines += [r"\midrule",
-              rf"\multicolumn{{5}}{{l}}{{Currency rule: precision {_pct(a['rule']['precision'])}\%, recall "
-              rf"{_pct(a['rule']['recall'])}\%, F1 {_num(a['rule']['f1'])}; AUC of expected move {_num(a['auc_expected_move'])}}} \\",
-              r"\bottomrule", r"\end{tabular}", ""]
+        lines.append(f"{cur} & {counts.get(cur, '--')} & "
+                     + " & ".join(_pct(by_pair.get(p), 0) if p in by_pair else "--" for p in pairs) + r" \\")
+    lines += [r"\bottomrule", r"\end{tabular}", ""]
     _write("affected.tex", "\n".join(lines))
+    # Numbers used inside captions go in as macros: \input is fragile in a caption with hyperref.
+    rule = (rf"precision {_pct(a['rule']['precision'])}\%, recall {_pct(a['rule']['recall'])}\%, "
+            rf"F1 {_num(a['rule']['f1'])}; AUC of the expected move {_num(a['auc_expected_move'])}")
+    _write("macros.tex", r"\newcommand{\affectedrule}{" + rule + "}\n")
+
+
+def _release_counts() -> dict:
+    """Releases per currency in the evaluated panel (local cache written by run_reaction_eval)."""
+    panel = ARTIFACTS / "reaction_panel.parquet"
+    if not panel.exists():
+        return {}
+    frame = pd.read_parquet(panel, columns=["release_id", "currency"])
+    return frame.drop_duplicates("release_id")["currency"].value_counts().to_dict()
 
 
 def table_positive_control(pc: dict) -> None:

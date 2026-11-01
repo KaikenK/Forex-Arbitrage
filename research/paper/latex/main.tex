@@ -4,9 +4,13 @@
 % Every number in the text is taken from research/artifacts/*.json (see research/REPRODUCE.md).
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage[T1]{fontenc}
-\usepackage[utf8]{inputenc}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\fi
 \usepackage{lmodern}
+\usepackage[section]{placeins}   % floats stay inside their section
 \usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{graphicx}
@@ -14,8 +18,9 @@
 \usepackage[round]{natbib}
 \usepackage[hidelinks]{hyperref}
 
+\input{tables/macros.tex}        % generated numbers used inside captions
 \newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
-\newcommand{\bps}{\,bps}
+\newcommand{\bps}{\,bps}   % write \bps{} before a space
 
 \title{From Headline to Currency Reaction: Predicting Affected Pairs, Direction, Magnitude and
 Confidence of FX Moves from News, for Ranking Arbitrage Opportunities}
@@ -109,8 +114,8 @@ surprise at one minute (standard errors clustered by release).}\label{tab:pc}
 
 \begin{figure}[t]\centering
 \includegraphics[width=0.8\linewidth]{figures/gdelt_daily_defect.pdf}
-\caption{Time of day of headlines kept by daily GDELT DOC requests: almost all fall in the last
-hour before midnight UTC.}\label{fig:gdelt}
+\caption{Time of day of headlines kept by daily GDELT DOC requests: 88\% are stamped between
+23:00 and 01:00 UTC.}\label{fig:gdelt}
 \end{figure}
 
 \section{Pre-registration and design}\label{sec:prereg}
@@ -141,7 +146,7 @@ indicator's economic sign) --- but the learned model is \emph{worse} than that r
 horizon: the learned $\hat\beta$ agrees with the theory sign on 82\% of rows, and the
 disagreements are noise from small cells. Accuracy rises with $|z|$. From article arrival
 there is no direction left: 48.8\% for the primary 15--60 minute window ($p=0.27$), and the mean
-move in the predicted direction is 7--8\bps from 1 to 120 minutes after the release but
+move in the predicted direction is 7--8\bps{} from 1 to 120 minutes after the release but
 indistinguishable from zero after arrival (Figure~\ref{fig:profile}).
 
 \begin{table}[t]\centering\scriptsize
@@ -186,7 +191,9 @@ contains the release currency) recalls 90\% of abnormal moves with 41\% precisio
 release moves GBP/USD and USD/JPY abnormally about 22\% of the time.
 
 \begin{table}[t]\centering\small
-\caption{Share of release $\times$ pair rows with an abnormal 15-minute move ($|r|>2v$).}\label{tab:aff}
+\caption{Share (\%) of release $\times$ pair rows with an abnormal 15-minute move ($|r|>2v$). Rows with
+few releases (JPY, CHF) are anecdotal. Currency rule (affected if the pair contains the release
+currency): \affectedrule.}\label{tab:aff}
 \input{tables/affected.tex}
 \end{table}
 
