@@ -59,6 +59,8 @@ services/semantic/artifacts/usdinr_targeted_expanded/*
 !services/semantic/artifacts/release_reaction/
 services/semantic/artifacts/release_reaction/*
 !services/semantic/artifacts/release_reaction/reaction_model.json
+# V1 text model retrained without synthetic USD/INR rows (RQ2-E2E baseline, never deployed)
+!services/semantic/artifacts/pooled_multipair_clean/
 !services/semantic/artifacts/pooled_multipair/
 services/semantic/artifacts/pooled_multipair/*
 !services/semantic/artifacts/pooled_multipair/reaction_model_artifact.json
