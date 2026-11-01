@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -45,29 +45,42 @@ def _shard(shard_dir, name: str, n_events: int, *, completed_at=None, mtime=None
         os.utime(sentinel, (mtime.timestamp(), mtime.timestamp()))
 
 
+# Slices are named by window start; scheduled = weekday, 1 h window ending 07/09/11/13/14/15/17/20 UTC.
+# 2024-01-02 is a Tuesday, 2024-01-06 a Saturday.
 @pytest.fixture
 def shards(tmp_path):
-    _shard(tmp_path, "20180101T000000", 3, completed_at=BEFORE)
-    _shard(tmp_path, "20180102T000000", 2, completed_at=AFTER)                 # too late
-    _shard(tmp_path, "20180103T000000", 4, mtime=BEFORE)                       # old sentinel, mtime
-    _shard(tmp_path, "20180104T000000", 0, completed_at=BEFORE)                # confirmed empty
-    _shard(tmp_path, "20180105T000000", 0, mtime=BEFORE, confirmed_empty=False)  # unverified empty
-    _shard(tmp_path, "20220101T000000", 5, completed_at=BEFORE)                # outside 2018-2021
-    _shard(tmp_path, "20211231T000000", 1, mtime=AFTER)                        # old, mtime too late
+    _shard(tmp_path, "20240102T060000", 3, completed_at=BEFORE)                # ends 07:00
+    _shard(tmp_path, "20240102T080000", 2, completed_at=AFTER)                 # ends 09:00, too late
+    _shard(tmp_path, "20240102T100000", 4, mtime=BEFORE)                       # old sentinel, mtime
+    _shard(tmp_path, "20240102T120000", 0, completed_at=BEFORE)                # confirmed empty
+    _shard(tmp_path, "20240102T130000", 0, mtime=BEFORE, confirmed_empty=False)  # unverified empty
+    _shard(tmp_path, "20240102T070000", 5, completed_at=BEFORE)                # ends 08:00: off schedule
+    _shard(tmp_path, "20240106T120000", 5, completed_at=BEFORE)                # Saturday: off schedule
+    _shard(tmp_path, "20250502T120000", 5, completed_at=BEFORE)                # after the period
+    _shard(tmp_path, "20250430T190000", 1, mtime=AFTER)                        # old, mtime too late
     return tmp_path
 
 
-def test_freeze_membership_follows_completion_time_and_sample_range(shards):
+def test_schedule_matches_the_backfill_and_counts_weekday_slices():
+    names = freeze_mod.expected_windows(date(2024, 1, 1), date(2024, 1, 7))      # Mon..Sun
+    assert len(names) == 5 * 8
+    assert names[:2] == ["20240101T060000", "20240101T080000"] and "20240106T060000" not in names
+    assert EXPECTED_WINDOWS == len(freeze_mod.expected_windows()) and EXPECTED_WINDOWS % 8 == 0
+
+
+def test_freeze_membership_follows_completion_time_and_schedule(shards):
     freeze = build_freeze(shards)
     names = [row["window"] for row in freeze["shards"]]
-    assert names == ["20180101T000000", "20180103T000000", "20180104T000000", "20180105T000000"]
-    assert freeze["excluded_completed_after_cutoff"] == ["20180102T000000", "20211231T000000"]
+    assert names == ["20240102T060000", "20240102T100000", "20240102T120000", "20240102T130000"]
+    assert freeze["excluded_completed_after_cutoff"] == ["20240102T080000", "20250430T190000"]
     assert freeze["completion_time_source_counts"] == {"completed_at": 2, "mtime": 2}
     assert freeze["events"] == 7
     assert freeze["coverage"] == round(4 / EXPECTED_WINDOWS, 4)
     assert freeze["unverified_empty_windows"] == 1
     assert freeze["coverage_excluding_unverified_empty"] == round(3 / EXPECTED_WINDOWS, 4)
-    assert "2018-01-02" in freeze["missing_windows"] and len(freeze["missing_windows"]) == EXPECTED_WINDOWS - 4
+    # 2024-01-02 still misses its 09/17/20 UTC slices, so the whole day is a missing unit (C17).
+    assert "2024-01-02" in freeze["missing_windows"]
+    assert len(freeze["missing_slices"]) == EXPECTED_WINDOWS - 4
     assert freeze["mtime_vs_fetched_at_seconds"]["n"] == 2
 
 
@@ -85,7 +98,7 @@ def test_write_refuses_before_the_cutoff_and_never_overwrites(shards, tmp_path):
 def test_hash_detects_any_change_to_a_frozen_shard(shards):
     freeze = build_freeze(shards)
     verify_freeze(freeze, shards)
-    _shard(shards, "20180101T000000", 4, completed_at=BEFORE)       # rewritten after freezing
+    _shard(shards, "20240102T060000", 4, completed_at=BEFORE)       # rewritten after freezing
     with pytest.raises(FreezeError):
         verify_freeze(freeze, shards)
 
@@ -94,13 +107,13 @@ def test_frozen_events_come_only_from_listed_shards(shards):
     freeze = build_freeze(shards)
     events = load_frozen_events(freeze, shards)
     windows = {event_id.rsplit("-", 1)[0] for event_id in events["event_id"]}
-    assert windows == {"20180101T000000", "20180103T000000"}
+    assert windows == {"20240102T060000", "20240102T100000"}
     assert len(events) == 7
 
 
 def test_later_downloads_do_not_enter_an_existing_freeze(shards):
     freeze = build_freeze(shards)
-    _shard(shards, "20180106T000000", 9, completed_at=AFTER)
+    _shard(shards, "20240103T060000", 9, completed_at=AFTER)
     assert len(load_frozen_events(freeze, shards)) == 7
 
 

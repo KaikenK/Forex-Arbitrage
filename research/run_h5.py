@@ -50,7 +50,8 @@ TICKERS = {"EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "USDJPY=X",
            "USD/CHF": "USDCHF=X", "USD/INR": "USDINR=X", "VIX": "^VIX"}
 
 
-def _headlines(backend: str) -> tuple[list[ScoredHeadline], str]:
+def _headlines(backend: str) -> tuple[list[ScoredHeadline], str, set[str]]:
+    """(scored canonical headlines, freeze hash, ISO dates with a missing scheduled slice)."""
     freeze = load_freeze()
     store = load_frozen_events(freeze)[["event_id", "timestamp", "currencies"]]
     for stage in ("dedup", backend):
@@ -67,7 +68,7 @@ def _headlines(backend: str) -> tuple[list[ScoredHeadline], str]:
                                 currencies=tuple(c for c in str(r.currencies).split(";") if c),
                                 polarity=float(r.polarity), event_id=r.event_id)
                  for r in frame.itertuples()]
-    return headlines, freeze["sha256"]
+    return headlines, freeze["sha256"], set(freeze.get("missing_windows", []))
 
 
 def _daily_closes(start: datetime, end: datetime) -> pd.DataFrame:
@@ -99,10 +100,13 @@ def _summarise(test_a, test_b) -> dict:
 
 
 def run_backend(backend: str) -> dict:
-    headlines, freeze_sha = _headlines(backend)
+    headlines, freeze_sha, missing_days = _headlines(backend)
     first = min(h.timestamp for h in headlines)
     last = max(h.timestamp for h in headlines)
-    days = [d.date() for d in pd.bdate_range(first.date(), last.date())]
+    # C31: a weekday missing a scheduled slice is a data gap, not a no-news day; it is dropped
+    # (the same unit C17 drops for H6). Days with every slice present keep "no news = 0".
+    all_days = [d.date() for d in pd.bdate_range(first.date(), last.date())]
+    days = [d for d in all_days if d.isoformat() not in missing_days]
     index = daily_currency_sentiment(headlines, days=days)
     market = walk_forward_market_component(index)
     closes = _daily_closes(first, last)
@@ -110,6 +114,7 @@ def run_backend(backend: str) -> dict:
     calendar = pd.read_parquet(CALENDAR)
 
     report: dict = {"backend": backend, "headlines": len(headlines), "days": len(days),
+                    "days_dropped_missing_slices": len(all_days) - len(days),
                     "freeze_sha256": freeze_sha,
                     "framing": "same-day: explains moves over the 24 h ending 21:00 UTC; not a forecast"}
     for label, exclude in (("primary", False), ("robustness_no_pandemic_releases", True)):

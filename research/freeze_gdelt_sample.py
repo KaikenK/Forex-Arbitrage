@@ -1,12 +1,14 @@
-"""Freeze the H1/H5 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
-PROTOCOL 2026-10-25; cutoff moved once by DEVIATION 1, 2026-10-28, before any H1/H5/H6
-result existed: 2026-10-31 00:00 IST became 2026-11-02 00:00 IST).
+"""Freeze the H1/H5/H6 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
+PROTOCOL 2026-10-25; cutoff moved by DEVIATION 1 and 2; sample re-collected by DEVIATION 3,
+2026-11-02, before any H1/H5/H6 result existed).
 
-Locked rule: "H1/H5 use only GDELT windows for 2018-01-01..2021-12-31 whose shard completed
-before [the cutoff, now 2026-11-02 00:00 IST = 2026-11-01 18:30 UTC]; the shard list is frozen at the cutoff
-with a content hash recorded here. Coverage at the cutoff (windows done / 1,461, events) is
-reported as is: the cutoff is not moved and gaps are not selectively filled. Data downloaded
-after the cutoff is not used for H1/H5."
+Locked rule, as amended by DEVIATION 3: H1/H5/H6 use only the scheduled time-stratified slices —
+1 h windows ending 07, 09, 11, 13, 14, 15, 17, 20 UTC on weekdays, 2023-07-01..2025-04-30
+(`gdelt_backfill.scheduled_window`, shard dir `artifacts/gdelt_slices_main`) — whose shard
+completed before the cutoff, 2026-11-10 23:59 IST (18:29 UTC). The shard list is frozen at the
+cutoff with a content hash. Coverage (slices done / scheduled, events) is reported as is: the
+cutoff is not moved and gaps are not selectively filled. A day with any scheduled slice missing
+is listed in `missing_windows` (the unit C17 drops). Data downloaded after the cutoff is not used.
 
 Run at or after the cutoff (it refuses earlier, and refuses to overwrite an existing freeze):
   python -m research.freeze_gdelt_sample
@@ -33,25 +35,39 @@ from pathlib import Path
 
 import pandas as pd
 
+from research.gdelt_backfill import _window_name, scheduled_window
+
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
-SHARD_DIR = ARTIFACTS / "gdelt_shards"
+SHARD_DIR = ARTIFACTS / "gdelt_slices_main"
 FREEZE_PATH = ARTIFACTS / "gdelt_sample_freeze.json"
 
-CUTOFF_UTC = datetime(2026, 11, 1, 18, 30, tzinfo=UTC)       # = 2026-11-02 00:00 IST (DEVIATION 1)
-SAMPLE_START = date(2018, 1, 1)
-SAMPLE_END = date(2021, 12, 31)                                # inclusive
-EXPECTED_WINDOWS = 1461                                        # daily windows, 2018-2021
+CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)      # = 2026-11-10 23:59 IST (DEVIATION 3)
+SAMPLE_START = date(2023, 7, 1)
+SAMPLE_END = date(2025, 4, 30)                                 # inclusive
+SLICE_HOURS = (7, 9, 11, 13, 14, 15, 17, 20)                   # UTC window-end hours, 1 h windows
+WEEKDAYS_ONLY = True
+
+
+def expected_windows(start: date = SAMPLE_START, end: date = SAMPLE_END) -> list[str]:
+    """Names of every scheduled slice in [start, end], exactly as the backfill names them."""
+    names = []
+    hours = set(SLICE_HOURS)
+    cursor = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+    stop = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+    while cursor < stop:
+        window_end = cursor + timedelta(hours=1)
+        if scheduled_window(cursor, window_end, hours, WEEKDAYS_ONLY):
+            names.append(_window_name(cursor))
+        cursor = window_end
+    return names
+
+
+EXPECTED = frozenset(expected_windows())
+EXPECTED_WINDOWS = len(EXPECTED)
 
 
 class FreezeError(RuntimeError):
     """The freeze is missing, premature, already written, or no longer matches the shards."""
-
-
-def _window_date(name: str) -> date | None:
-    try:
-        return datetime.strptime(name[:8], "%Y%m%d").date()
-    except ValueError:
-        return None
 
 
 def sentinel_completed_at(sentinel: Path) -> tuple[datetime, str, dict]:
@@ -89,8 +105,7 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
     mtime_vs_fetched: list[float] = []
     for sentinel in sorted(Path(shard_dir).glob("*.done")):
         name = sentinel.stem
-        day = _window_date(name)
-        if day is None or not (SAMPLE_START <= day <= SAMPLE_END):
+        if name not in EXPECTED:                      # off-schedule or outside the period
             continue
         completed, source, meta = sentinel_completed_at(sentinel)
         if completed >= cutoff:
@@ -116,6 +131,7 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
     return {
         "cutoff_utc": cutoff.isoformat(),
         "sample": [SAMPLE_START.isoformat(), SAMPLE_END.isoformat()],
+        "schedule": {"slice_end_hours_utc": list(SLICE_HOURS), "window_hours": 1, "weekdays_only": WEEKDAYS_ONLY},
         "expected_windows": EXPECTED_WINDOWS,
         "windows_done": len(names),
         "coverage": round(len(names) / EXPECTED_WINDOWS, 4),
@@ -127,20 +143,17 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
             {"n": len(mtime_vs_fetched), "max": max(mtime_vs_fetched), "median": sorted(mtime_vs_fetched)[len(mtime_vs_fetched) // 2]}
             if mtime_vs_fetched else None),
         "excluded_completed_after_cutoff": excluded_after_cutoff,
-        "missing_windows": _missing(names),
+        "missing_windows": _missing_days(names),
+        "missing_slices": sorted(EXPECTED - set(names)),
         "sha256": content_hash(Path(shard_dir), names),
         "shards": qualifying,
     }
 
 
-def _missing(names: list[str]) -> list[str]:
-    have = {name[:8] for name in names}
-    missing, day = [], SAMPLE_START
-    while day <= SAMPLE_END:
-        if day.strftime("%Y%m%d") not in have:
-            missing.append(day.isoformat())
-        day += timedelta(days=1)
-    return missing
+def _missing_days(names: list[str]) -> list[str]:
+    """ISO dates with at least one scheduled slice missing (C17: such a day is dropped)."""
+    missing = EXPECTED - set(names)
+    return sorted({f"{n[:4]}-{n[4:6]}-{n[6:8]}" for n in missing})
 
 
 def write_freeze(
@@ -207,10 +220,11 @@ def main() -> None:
         summary = build_freeze(args.shard_dir)
         summary.pop("shards")
         summary["missing_windows"] = len(summary["missing_windows"])
+        summary["missing_slices"] = len(summary["missing_slices"])
         print(json.dumps(summary, indent=2))
         return
     freeze = write_freeze(args.shard_dir, args.out)
-    print(f"Frozen {freeze['windows_done']}/{EXPECTED_WINDOWS} windows ({freeze['coverage']:.1%}), "
+    print(f"Frozen {freeze['windows_done']}/{EXPECTED_WINDOWS} slices ({freeze['coverage']:.1%}), "
           f"{freeze['events']} events, sha256 {freeze['sha256']} -> {args.out}")
     print(f"Excluded (completed after cutoff): {len(freeze['excluded_completed_after_cutoff'])}; "
           f"completion source: {freeze['completion_time_source_counts']}")

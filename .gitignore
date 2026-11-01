@@ -43,8 +43,9 @@ Thumbs.db
 # Live exchange mode: recorded quotes (research data, publish separately) and instrument-master cache
 research/recordings/
 data/cache/
-# Research artifacts (regenerated data)
-research/artifacts/
+# Research artifacts: data stays out; research/.gitignore re-includes small results (*.json),
+# run logs and manifests, so the replication package carries every reported number.
+research/artifacts/*
 
 # Semantic microservice (services/semantic): secrets, caches, runtime data.
 # Only config.toml.example is committed; the real config.toml holds API keys.

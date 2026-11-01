@@ -32,7 +32,7 @@ import os
 import random
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -41,7 +41,7 @@ from pathlib import Path
 import pandas as pd
 
 from research.data.base import RawEvent
-from research.data.gdelt import DEFAULT_QUERY, GdeltRateLimited, fetch_window_once
+from research.data.gdelt import DEFAULT_QUERY, QUERIES, GdeltQueryRejected, GdeltRateLimited, fetch_window_once
 from research.data.prefetch import _classify, _retry_after_seconds, _ThrottleGate
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
@@ -60,11 +60,21 @@ MAX_BACKOFF_SECONDS = 120.0
 MAX_RECORDED_FAILURES = 50
 
 
+def scheduled_window(start: datetime, end: datetime, slice_hours: set[int] | None,
+                     weekdays_only: bool) -> bool:
+    """Whether [start, end) belongs to the sampling schedule (see `backfill`)."""
+    if weekdays_only and start.weekday() >= 5:
+        return False
+    return slice_hours is None or end.hour in slice_hours
+
+
 def _window_name(start: datetime) -> str:
     return start.strftime("%Y%m%dT%H%M%S")
 
 
 def _classify_gdelt(exc: BaseException) -> str:
+    if isinstance(exc, GdeltQueryRejected):
+        return "permanent"
     if isinstance(exc, GdeltRateLimited):
         return "throttle"
     return _classify(exc)
@@ -199,6 +209,8 @@ def backfill(
     workers: int = DEFAULT_WORKERS,
     min_interval_seconds: float = GDELT_MIN_INTERVAL_SECONDS,
     max_windows: int | None = None,
+    slice_hours: Sequence[int] | None = None,
+    weekdays_only: bool = False,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     base_backoff_seconds: float = DEFAULT_BASE_BACKOFF_SECONDS,
     retry_empty: bool = True,
@@ -212,7 +224,13 @@ def backfill(
     """Fetch every window in [start, end) that has no `.done` sentinel, ≤ 2 at a time.
 
     `max_windows` caps the number of windows *attempted*, for a pilot run.
+
+    `slice_hours` keeps only windows whose *end* falls on one of these UTC hours, and
+    `weekdays_only` drops windows starting on Saturday/Sunday. Together with a 1 h window they
+    give a time-stratified sample: the DOC API returns the last `max_records` articles before
+    each window end, so a 24 h window collapses to the minutes before midnight UTC.
     """
+    wanted_hours = None if slice_hours is None else {int(h) % 24 for h in slice_hours}
     shard_dir = Path(shard_dir)
     shard_dir.mkdir(parents=True, exist_ok=True)
     workers = max(1, min(int(workers), MAX_WORKERS))
@@ -227,6 +245,9 @@ def backfill(
     cursor = start
     while cursor < end:
         window_end = min(cursor + step, end)
+        if not scheduled_window(cursor, window_end, wanted_hours, weekdays_only):
+            cursor = window_end
+            continue
         report.windows += 1
         fetch, recheck = _needs_fetch(shard_dir / f"{_window_name(cursor)}.done", retry_empty)
         if fetch:
@@ -350,6 +371,13 @@ def main() -> None:
     parser.add_argument("--min-interval", type=float, default=GDELT_MIN_INTERVAL_SECONDS,
                         help="floor on the spacing between request starts, seconds")
     parser.add_argument("--max-windows", type=int, default=None, help="attempt at most N windows (pilot)")
+    parser.add_argument("--query-name", choices=sorted(QUERIES), default="default",
+                        help="named GDELT DOC query from data/gdelt.QUERIES")
+    parser.add_argument("--slice-hours", type=lambda s: [int(h) for h in s.split(",")], default=None,
+                        help="comma-separated UTC window-end hours to keep, e.g. 9,11,13 (use with --window-hours 1)")
+    parser.add_argument("--weekdays-only", action="store_true", help="skip windows starting Sat/Sun")
+    parser.add_argument("--max-attempts", type=int, default=DEFAULT_MAX_ATTEMPTS,
+                        help="tries per window before it is left for the next run")
     parser.add_argument("--no-retry-empty", action="store_true",
                         help="trust old 0-count sentinels instead of re-checking them")
     parser.add_argument("--no-consolidate", action="store_true", help="skip the merge at the end")
@@ -375,7 +403,9 @@ def main() -> None:
     report = backfill(
         args.start, args.end,
         shard_dir=args.shard_dir, window_hours=args.window_hours, workers=args.workers,
-        min_interval_seconds=args.min_interval, max_windows=args.max_windows, retry_empty=not args.no_retry_empty, progress=progress,
+        min_interval_seconds=args.min_interval, max_windows=args.max_windows, max_attempts=args.max_attempts,
+        slice_hours=args.slice_hours, weekdays_only=args.weekdays_only, query=QUERIES[args.query_name],
+        retry_empty=not args.no_retry_empty, progress=progress,
     )
     summary = report.to_dict()
     print(f"Done: {summary}", flush=True)

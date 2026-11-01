@@ -240,3 +240,58 @@ def test_retag_replays_current_tagger_and_drops_non_fx():
     assert set(out["event_id"]) == {"real"}          # both false positives dropped
     assert "EUR" in out.iloc[0]["currencies"]        # and the real one is (re)tagged
     assert "central_bank" in out.iloc[0]["categories"]
+
+
+def test_slice_schedule_fetches_only_scheduled_weekday_hours(tmp_path):
+    # 2024-01-05 is a Friday, 2024-01-06 a Saturday.
+    calls: list[tuple[datetime, datetime]] = []
+
+    def fetch_fn(query, start, end, max_records):
+        calls.append((start, end))
+        return []
+
+    fake = FakeTime()
+    report = backfill(datetime(2024, 1, 5, tzinfo=UTC), datetime(2024, 1, 7, tzinfo=UTC),
+                      shard_dir=tmp_path, window_hours=1, slice_hours=[9, 13, 0],
+                      weekdays_only=True, fetch_fn=fetch_fn, clock=fake.clock, sleep=fake.sleep)
+    # Friday windows ending 09:00, 13:00 and Saturday 00:00 (starts Friday 23:00); none on Saturday.
+    assert [(s.hour, e.hour) for s, e in calls] == [(8, 9), (12, 13), (23, 0)]
+    assert report.windows == 3 and report.completed == 3
+    assert {p.stem for p in tmp_path.glob("*.done")} == {
+        "20240105T080000", "20240105T120000", "20240105T230000"}
+
+
+def test_slice_schedule_resume_refetches_only_missing_slices(tmp_path):
+    calls: list[datetime] = []
+
+    def flaky(query, start, end, max_records):
+        calls.append(start)
+        if start.hour == 12 and len(calls) <= 2:
+            raise ValueError("permanent")
+        return []
+
+    fake = FakeTime()
+    kwargs = dict(shard_dir=tmp_path, window_hours=1, slice_hours=[9, 13], clock=fake.clock,
+                  sleep=fake.sleep)
+    first = backfill(datetime(2024, 1, 8, tzinfo=UTC), datetime(2024, 1, 9, tzinfo=UTC),
+                     fetch_fn=flaky, **kwargs)
+    assert first.failed == 1 and first.completed == 1
+    calls.clear()
+    second = backfill(datetime(2024, 1, 8, tzinfo=UTC), datetime(2024, 1, 9, tzinfo=UTC),
+                      fetch_fn=lambda *a: calls.append(a[1]) or [], **kwargs)
+    assert second.already_done == 1 and second.completed == 1
+    assert [c.hour for c in calls] == [12]
+
+
+def test_query_rejection_fails_the_window_at_once_instead_of_retrying(tmp_path):
+    from research.data.gdelt import GdeltQueryRejected
+    calls = []
+
+    def rejected(query, start, end, max_records):
+        calls.append(start)
+        return decode_payload("Your query was too short or too long.")
+
+    report, _ = _run(tmp_path, rejected, end_day=2)
+    assert report.failed == 1 and len(calls) == 1 and report.throttled == 0
+    with pytest.raises(GdeltQueryRejected):
+        decode_payload("Your query was too short or too long.")

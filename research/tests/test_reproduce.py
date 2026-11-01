@@ -11,7 +11,7 @@ from research import reproduce as rp
 from research.data.histdata import zip_path
 
 BEFORE = rp.GDELT_CUTOFF_UTC - timedelta(hours=1)
-AFTER_ALL = rp.H6B_WINDOW_END_UTC + timedelta(hours=1)
+AFTER_ALL = max(rp.H6B_WINDOW_END_UTC, rp.GDELT_CUTOFF_UTC) + timedelta(hours=1)   # every gate open
 STEP = {s.name: s for s in rp.STEPS}
 
 

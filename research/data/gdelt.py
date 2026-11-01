@@ -27,6 +27,16 @@ DEFAULT_QUERY = (
     'OR "US dollar" OR euro OR "Indian rupee") sourcelang:eng'
 )
 
+# Currency-focused query (DEVIATION 3, 2026-11-02): built a priori from the study currencies'
+# terms in data/tagging.py, so the 250-article cap per request is spent on headlines the tagger
+# can attribute to a currency instead of general inflation/rates news it then discards. An 18-term
+# version was refused by the API ("Your query was too short or too long."), so it is 8 terms.
+CURRENCY_QUERY = (
+    '(dollar OR euro OR yen OR sterling OR forex OR "exchange rate" OR ECB OR "Federal Reserve") '
+    'sourcelang:eng'
+)
+QUERIES = {"default": DEFAULT_QUERY, "currency": CURRENCY_QUERY}
+
 _MOBILE_KEYS = ("url", "title", "seendate", "domain", "sourcecountry", "language")
 
 
@@ -95,6 +105,14 @@ def _request(query: str, start: datetime, end: datetime, max_records: int) -> ur
     return urllib.request.Request(f"{DOC_API}?{params}", headers={"user-agent": "fx-research/0.1"})
 
 
+class GdeltQueryRejected(ValueError):
+    """The API refused the query itself ("Your query was too short or too long."). Not
+    throttling: retrying cannot succeed, so the window fails at once (no sentinel)."""
+
+
+_QUERY_REJECTED = re.compile(r"query was too short or too long|invalid query|query .* not valid", re.IGNORECASE)
+
+
 class GdeltMalformedPayload(ValueError):
     """A JSON-looking body that cannot be parsed even after repair. Not throttling: the window
     is recorded as failed (no sentinel), so a later run retries it."""
@@ -117,6 +135,8 @@ def decode_payload(body: str) -> dict:
     if not text:
         return {"articles": []}
     if not text.startswith("{"):
+        if _QUERY_REJECTED.search(text):
+            raise GdeltQueryRejected(text[:160])
         raise GdeltRateLimited(text[:160])
     for candidate in (text, _INVALID_ESCAPE.sub(r"\\\\", text)):
         try:
