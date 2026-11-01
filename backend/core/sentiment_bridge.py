@@ -463,6 +463,35 @@ class SentimentBridge:
             {"pair": normalize_pair(pair), "window_minutes": window_minutes},
         )
 
+    def latest_release(self, pair: str, max_age_minutes: float = 60.0) -> dict[str, Any] | None:
+        """Newest analysis filed under `pair` whose score came from a matched economic release
+        (semantic service SEMANTIC_REACTION_V2, basis "release"), if its release is recent."""
+        normalized_pair = normalize_pair(pair)
+        now = self._clock()
+        with self._state_lock:
+            history = [dict(item) for item in self._analysis_history.get(normalized_pair, [])]
+        best: dict[str, Any] | None = None
+        for analysis in history:
+            score = analysis.get("pair_score") if isinstance(analysis.get("pair_score"), dict) else {}
+            release = score.get("release") if isinstance(score.get("release"), dict) else None
+            if score.get("basis") != "release" or release is None:
+                continue
+            released = _parse_iso_datetime(release.get("release_utc"))
+            if released is None:
+                continue
+            age = (now - released).total_seconds() / 60.0
+            if age < 0 or age > max_age_minutes:
+                continue
+            if best is None or age < best["minutes_since_release"]:
+                best = {"event": release.get("release_event"), "currency": release.get("release_currency"),
+                        "release_utc": release.get("release_utc"), "minutes_since_release": round(age, 2),
+                        "standardized_surprise": release.get("standardized_surprise"),
+                        "direction": score.get("release_direction"), "p_direction": score.get("p_direction"),
+                        "expected_move_bps": score.get("expected_move_bps"),
+                        "post_arrival_move_bps": score.get("post_arrival_move_bps"),
+                        "priced_in": bool(score.get("priced_in", age >= 1.0))}
+        return best
+
     def get_window_bias(self, pair: str, window_minutes: int) -> dict[str, Any]:
         """Aggregate locally mirrored analyses into a directional window bias.
 
@@ -1043,6 +1072,9 @@ class SentimentBridge:
                 self._handle_feed_event(event)
 
     def _handle_feed_event(self, event: dict[str, Any]) -> None:
+        # Synthetic demo headlines are never analysed, logged or fed to the ranking channels.
+        if str(event.get("provenance", "")).strip().lower() == "synthetic":
+            return
         tracked_pairs = self._tracked_pairs_for_feed_event(event)
         normalized_by_pair: list[tuple[str, dict[str, Any]]] = []
         for tracked_pair in tracked_pairs:
@@ -1124,8 +1156,11 @@ class SentimentBridge:
         currency_pairs: list[str] | None = None,
     ) -> dict[str, Any] | None:
         primary_pair = str(event.get("pair", "USD/INR"))
+        headline_text = str(event.get("headline", "")).strip()
+        summary_text = str(event.get("summary") or "").strip()
         payload = {
-            "article_text": str(event.get("headline", "")).strip(),
+            "article_text": f"{headline_text}\n\n{summary_text}" if summary_text and summary_text != headline_text
+            else headline_text,
             "headline": str(event.get("headline", "")).strip(),
             "external_id": str(event.get("event_id", "")).strip() or None,
             "currency_pair": primary_pair,
@@ -1161,6 +1196,8 @@ class SentimentBridge:
             "headline": event.get("headline"),
             "upstream_status": event.get("upstream_status"),
             "upstream_note": event.get("upstream_note"),
+            "publisher_time": event.get("publisher_time"),
+            "feed_url": event.get("feed_url"),
         }
         return analysis
 
@@ -1184,6 +1221,11 @@ class SentimentBridge:
             "upstream_note": str(event.get("upstream_note", "")),
             "last_upstream_item_at": event.get("last_upstream_item_at"),
             "feed_checked_at": event.get("feed_checked_at"),
+            # Receipt time is `timestamp`; the publisher's own time, the feed and the summary are
+            # kept for the arrival-latency study and for agency items whose figures sit in the summary.
+            "publisher_time": event.get("publisher_time"),
+            "feed_url": event.get("feed_url"),
+            "summary": str(event.get("summary") or "")[:600],
         }
 
     def _ensure_runtime_cache_loaded(self, pair: str) -> None:
@@ -1484,6 +1526,7 @@ def _prediction_log_row(record: dict[str, Any], logged_at: datetime) -> dict[str
     """Compact, self-contained row: enough to score the prediction against later prices."""
     feed = record.get("feed") if isinstance(record.get("feed"), dict) else {}
     pair_score = record.get("pair_score") if isinstance(record.get("pair_score"), dict) else {}
+    release = pair_score.get("release") if isinstance(pair_score.get("release"), dict) else {}
     return {
         "logged_at": _isoformat(logged_at),
         "event_id": record.get("event_id"),
@@ -1502,6 +1545,19 @@ def _prediction_log_row(record: dict[str, Any], logged_at: datetime) -> dict[str
         "horizon_minutes": pair_score.get("horizon_minutes"),
         "source": feed.get("source"),
         "provider": feed.get("provider"),
+        # Structured release fields (SEMANTIC_REACTION_V2); None for news-basis or V1 analyses,
+        # so the prospective test can score the release model on its own predictions.
+        "basis": pair_score.get("basis"),
+        "release_event": release.get("release_event"),
+        "release_utc": release.get("release_utc"),
+        "minutes_since_release": release.get("minutes_since_release"),
+        "publisher_time": feed.get("publisher_time"),
+        "feed_url": feed.get("feed_url"),
+        "standardized_surprise": release.get("standardized_surprise"),
+        "release_direction": pair_score.get("release_direction"),
+        "p_direction": pair_score.get("p_direction"),
+        "expected_move_bps": pair_score.get("expected_move_bps"),
+        "priced_in": pair_score.get("priced_in"),
     }
 
 

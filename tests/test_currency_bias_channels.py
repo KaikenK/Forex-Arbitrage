@@ -172,3 +172,17 @@ def test_bridge_treats_a_501_as_capability_off(monkeypatch):
     assert bridge.fetch_currency_index() is None
     monkeypatch.setattr(bridge, "_fetch_json", lambda *a, **k: {"enabled": True, "pairs": {}})
     assert bridge.fetch_currency_index() == {"enabled": True, "pairs": {}}
+
+
+def test_release_channel_is_shadow_only_and_records_exposure_alignment():
+    release = {"event": "CPI m/m", "currency": "USD", "minutes_since_release": 3.0, "standardized_surprise": 1.5,
+               "direction": -1, "p_direction": 0.72, "expected_move_bps": 14.0, "priced_in": True}
+    result = ch.release_channel(release, ch.residual_exposure("cross_source"))
+    assert result.penalty == 0.0
+    assert result.inputs["exposure_with_release_move"] is False      # long the pair, release moved it down
+    assert ch.release_channel(None, 1).reason == "no matched release"
+    snap = ch.channel_snapshot("EUR/USD", "cross_source", window_bias=None, client=None, applied=False,
+                               release=release)
+    assert snap["release_channel"]["penalty"] == 0.0
+    assert ch.channel_snapshot("EUR/USD", "cross_source", window_bias=None, client=None,
+                               applied=False)["release_channel"] is None

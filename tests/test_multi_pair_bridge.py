@@ -152,3 +152,22 @@ def test_service_url_contract(tmp_path, monkeypatch):
     monkeypatch.setenv("SEMANTIC_API_PREFIX", "")
     legacy = SentimentBridge()
     assert legacy._service_url("/feed") == "http://legacy:9000/feed", "legacy unversioned news_stream"
+
+
+def test_synthetic_demo_headlines_are_never_analysed_or_logged(tmp_path, monkeypatch):
+    bridge = _bridge(tmp_path)
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(bridge, "_post_json", _fake_service(calls))
+    bridge._handle_feed_event({**_macro_event(), "provenance": "synthetic", "provider": "synthetic"})
+    bridge._analysis_queue.join()
+    assert calls == []
+
+
+def test_summary_and_publisher_time_reach_the_service_and_the_log(tmp_path, monkeypatch):
+    bridge = _bridge(tmp_path)
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(bridge, "_post_json", _fake_service(calls))
+    event = {**_macro_event(), "pair": "EUR/USD", "summary": "Payrolls rose 254,000.",
+             "publisher_time": "2026-10-15T12:30:05+00:00", "feed_url": "https://investinglive.com/feed/news"}
+    bridge._process_analysis_job((("EUR/USD", bridge._normalize_feed_event("EUR/USD", event)),))
+    assert calls and calls[0][1]["article_text"] == "US payrolls beat expectations\n\nPayrolls rose 254,000."

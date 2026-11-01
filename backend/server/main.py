@@ -272,6 +272,7 @@ from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snap
 
 currency_bias_client = CurrencyBiasClient(sentiment_bridge)
 _window_bias_cache: Dict[str, Dict[str, Any]] = {}
+_release_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
 
 
@@ -283,6 +284,7 @@ async def refresh_semantic_snapshot_cache() -> None:
         try:
             for pair in sorted(_sentiment_pair_allowlist):
                 _window_bias_cache[pair] = (await client.get_bias(pair)).to_dict()
+                _release_cache[pair] = await asyncio.to_thread(sentiment_bridge.latest_release, pair)
             await asyncio.to_thread(currency_bias_client.refresh)
         except asyncio.CancelledError:
             raise
@@ -295,7 +297,8 @@ def _semantic_snapshot(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         pair = normalize_pair(str((row.get("symbols") or [""])[0]))
         return channel_snapshot(pair, str(row.get("type")), window_bias=_window_bias_cache.get(pair),
-                                client=currency_bias_client, applied=currency_bias_enabled())
+                                client=currency_bias_client, applied=currency_bias_enabled(),
+                                release=_release_cache.get(pair))
     except Exception as e:      # the log must never fail because of the snapshot
         logger.warning(f"Semantic snapshot failed: {e}")
         return None

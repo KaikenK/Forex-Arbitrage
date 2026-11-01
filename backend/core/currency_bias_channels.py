@@ -127,6 +127,28 @@ def direction_channel(pair_payload: Optional[Dict[str, Any]], residual: int) -> 
     return ChannelResult("direction", penalty, f"{label} bias opposes a {'long' if residual > 0 else 'short'} residual", inputs)
 
 
+def release_channel(release: Optional[Dict[str, Any]], residual: int) -> ChannelResult:
+    """Matched economic release for the pair (semantic service SEMANTIC_REACTION_V2). SHADOW ONLY.
+
+    The research walk-forward (RESEARCH_TRACKER section 6, RQ results 2026-11-02) found the
+    release's direction is right 68% of the time over the 15 min after the release but carries
+    no signal from 15 min on (49%), and post-arrival volatility is predicted no better than by
+    the pair's same-clock baseline. An article reports the release after the move, so neither
+    its direction nor its surprise size is used to penalise; the release window itself is
+    already priced by the risk channel's release_proximity. Recorded so RQ5 can test it.
+    """
+    if not release:
+        return ChannelResult("release", 0.0, "no matched release", {})
+    direction = int(release.get("direction") or 0)
+    inputs = {k: release.get(k) for k in ("event", "currency", "minutes_since_release", "standardized_surprise",
+                                          "direction", "p_direction", "expected_move_bps", "priced_in")}
+    inputs["residual_exposure"] = residual
+    inputs["exposure_with_release_move"] = (None if residual == 0 or direction == 0
+                                            else (direction > 0) == (residual > 0))
+    reason = f"{release.get('currency')} {release.get('event')} {release.get('minutes_since_release')} min ago (shadow)"
+    return ChannelResult("release", 0.0, reason, inputs)
+
+
 class CurrencyBiasClient:
     """Cached /currency-index lookups. `cached()` never touches the network."""
 
@@ -166,7 +188,8 @@ class CurrencyBiasClient:
 
 
 def channel_snapshot(pair: str, opportunity_type: str, *, window_bias: Optional[Dict[str, Any]],
-                     client: Optional[CurrencyBiasClient], applied: bool) -> Dict[str, Any]:
+                     client: Optional[CurrencyBiasClient], applied: bool,
+                     release: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """What the log records per opportunity: both channels + window bias, cached values only."""
     payload = client.cached(pair) if client is not None else None
     risk = risk_channel(payload)
@@ -181,4 +204,6 @@ def channel_snapshot(pair: str, opportunity_type: str, *, window_bias: Optional[
             k: payload.get(k) for k in ("relative_bias", "label", "confidence", "components")},
         "risk_channel": risk.to_dict() if payload is not None else None,
         "direction_channel": direction.to_dict() if payload is not None else None,
+        "release_channel": (release_channel(release, residual_exposure(opportunity_type)).to_dict()
+                            if release else None),
     }
