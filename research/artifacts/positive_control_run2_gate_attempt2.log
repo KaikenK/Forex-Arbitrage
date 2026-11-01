@@ -1,0 +1,38 @@
+﻿US releases: 1482 -> 5928 pair observations across ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF']
+  EUR/USD: 1432/1482 aligned, 207,940 bars
+  GBP/USD: 1430/1482 aligned, 207,819 bars
+  USD/JPY: 1429/1482 aligned, 207,921 bars
+  USD/CHF: 1437/1482 aligned, 207,624 bars
+
+Pooled sign-oriented beta (bps of the releasing currency per +1 sigma good-news surprise):
+  pair        1m beta  p          5m beta  p         15m beta  p         30m beta  p         60m beta  p        120m beta  p       
+  EUR/USD     +2.08 7.8e-05       +2.14 4.4e-04       +2.40 1.2e-03       +2.18 5.4e-03       +2.43 8.1e-03       +7.14 2.1e-07  
+  GBP/USD     +2.19 7.2e-05       +2.07 1.7e-03       +2.07 1.1e-02       +1.86 3.6e-02       +1.95 6.1e-02       +5.53 2.4e-04  
+  USD/JPY     +2.67 1.1e-05       +2.65 8.3e-05       +3.16 2.0e-04       +3.31 2.0e-04       +3.92 2.4e-04       +9.39 1.2e-07  
+  USD/CHF     +2.01 6.2e-05       +2.04 1.9e-04       +2.45 1.0e-04       +2.38 4.2e-04       +2.85 1.0e-03       +7.79 6.6e-09  
+
+Robustness - pooled oriented beta on observed release times only (no imputed times):
+  EUR/USD     +1.32 1.6e-03       +1.41 8.4e-03       +1.51 1.4e-02       +1.37 4.5e-02       +2.02 1.5e-02       +6.17 5.9e-06    (n=622, clusters=545)
+  GBP/USD     +1.39 1.8e-03       +1.39 1.4e-02       +1.48 2.7e-02       +1.30 9.9e-02       +2.02 3.6e-02       +5.45 2.1e-04    (n=612, clusters=536)
+  USD/JPY     +1.88 4.3e-05       +1.91 6.7e-04       +2.49 1.8e-04       +2.60 3.3e-04       +3.52 1.1e-04       +9.02 1.6e-07    (n=622, clusters=543)
+  USD/CHF     +1.27 1.8e-03       +1.48 2.1e-03       +1.63 1.2e-03       +1.61 4.1e-03       +2.37 2.8e-03       +7.20 2.9e-07    (n=620, clusters=540)
+
+Placebo (-5 min -> release), pooled oriented:
+  EUR/USD   beta +0.035 bps  p 0.714  (n=1369, clusters=774)
+  GBP/USD   beta -0.107 bps  p 0.505  (n=1370, clusters=772)
+  USD/JPY   beta +0.120 bps  p 0.183  (n=1366, clusters=772)
+  USD/CHF   beta +0.018 bps  p 0.867  (n=1377, clusters=775)
+
+Per-indicator 5-min beta (raw surprise, raw pair return):
+  Non-Farm Employment Change    EUR/USD:  -2.43 (p 2e-01)  GBP/USD:  -0.99 (p 5e-01)  USD/JPY:  +1.53 (p 5e-01)  USD/CHF:  +1.31 (p 4e-01)  
+  Unemployment Rate             EUR/USD:  +1.11 (p 2e-01)  GBP/USD:  +0.65 (p 6e-01)  USD/JPY:  +0.18 (p 9e-01)  USD/CHF:  -0.38 (p 7e-01)  
+  Average Hourly Earnings m/m   EUR/USD:  -1.98 (p 2e-01)  GBP/USD:  -2.79 (p 1e-01)  USD/JPY:  +2.50 (p 2e-01)  USD/CHF:  +2.43 (p 2e-01)  
+  CPI m/m                       EUR/USD:  -7.56 (p 2e-02)  GBP/USD:  -7.78 (p 3e-02)  USD/JPY:  +7.96 (p 3e-02)  USD/CHF:  +5.70 (p 4e-02)  
+  Core CPI m/m                  EUR/USD:  -5.18 (p 3e-02)  GBP/USD:  -5.29 (p 4e-02)  USD/JPY:  +5.18 (p 3e-02)  USD/CHF:  +3.98 (p 5e-02)  
+  Retail Sales m/m              EUR/USD:  -0.73 (p 1e-01)  GBP/USD:  -0.06 (p 9e-01)  USD/JPY:  +0.92 (p 1e-01)  USD/CHF:  +0.67 (p 1e-01)  
+  Unemployment Claims           EUR/USD:  -1.01 (p 3e-01)  GBP/USD:  -1.11 (p 4e-01)  USD/JPY:  +0.52 (p 6e-01)  USD/CHF:  +0.48 (p 6e-01)  
+  ISM Manufacturing PMI         EUR/USD:  -3.09 (p 1e-03)  GBP/USD:  -1.89 (p 3e-03)  USD/JPY:  +5.29 (p 3e-03)  USD/CHF:  +3.88 (p 7e-04)  
+
+GATE: {'a_nfp_negative_significant': False, 'b_pooled_positive_significant': True, 'c_placebo_insignificant': True, 'PASS': False}
+
+Written: C:\Users\xyreo\OneDrive\Desktop\Nikhil\PES\capstone\Forex-Arbitrage\research\artifacts\positive_control.json

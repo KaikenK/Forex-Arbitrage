@@ -1,0 +1,28 @@
+{
+  "built_at": "2026-10-24T16:40:44.002448+00:00",
+  "command": "python -m research.build_features",
+  "store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\events.parquet",
+  "store_events": 6782,
+  "store_hash": "bf1763c994f9ed7c",
+  "shards": 368,
+  "store_range": [
+    "2018-01-01 23:00:00+00:00",
+    "2019-01-30 00:15:00+00:00"
+  ],
+  "usd_policy": "none",
+  "horizons_minutes": [
+    1440,
+    2880,
+    7200
+  ],
+  "rows": 2402,
+  "rows_by_pair": {
+    "EUR/USD": 742,
+    "USD/INR": 565,
+    "GBP/USD": 415,
+    "USD/JPY": 347,
+    "AUD/USD": 311,
+    "USD/CHF": 22
+  },
+  "study_rows": 2091
+}

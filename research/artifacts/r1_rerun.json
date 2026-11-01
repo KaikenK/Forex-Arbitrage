@@ -1,0 +1,422 @@
+[
+  {
+    "pair": "USD/INR",
+    "ticker": "USDINR=X",
+    "store": "research\\artifacts\\calendar_events.parquet.bak-20261024-173354",
+    "design": "legacy (raw, unoriented)",
+    "exclude_pandemic_window": false,
+    "releases": 1608,
+    "release_dates": 932,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 1.4265325534420885,
+        "se_bps": 1.2882866441142418,
+        "p": 0.26844597254237734,
+        "q_bh": 0.5368919450847547
+      },
+      {
+        "offset": -1,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 0.3364832338338108,
+        "se_bps": 1.1897997002360523,
+        "p": 0.7773879426079146,
+        "q_bh": 0.7773879426079146
+      },
+      {
+        "offset": 0,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 0.6181685082291914,
+        "se_bps": 1.1736982897562938,
+        "p": 0.5985382702466225,
+        "q_bh": 0.7773879426079146
+      },
+      {
+        "offset": 1,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 0.6157760010692743,
+        "se_bps": 1.762506027270952,
+        "p": 0.7268866121593723,
+        "q_bh": 0.7773879426079146
+      },
+      {
+        "offset": 2,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 3.435425709019768,
+        "se_bps": 1.286482931838186,
+        "p": 0.007708138027152902,
+        "q_bh": 0.046248828162917414
+      },
+      {
+        "offset": 3,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -1.9323644526961605,
+        "se_bps": 1.081416566296643,
+        "p": 0.07428173087207485,
+        "q_bh": 0.22284519261622454
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": 1.3513220179921965,
+      "p": 0.2976602600489242,
+      "n": 1608
+    }
+  },
+  {
+    "pair": "EUR/USD",
+    "ticker": "EURUSD=X",
+    "store": "research\\artifacts\\calendar_events.parquet.bak-20261024-173354",
+    "design": "legacy (raw, unoriented)",
+    "exclude_pandemic_window": false,
+    "releases": 1608,
+    "release_dates": 932,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -1.3360274353377228,
+        "se_bps": 1.446059800889567,
+        "p": 0.35577317081943416,
+        "q_bh": 0.4361304427511607
+      },
+      {
+        "offset": -1,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -2.1722562441819298,
+        "se_bps": 1.3441863125965572,
+        "p": 0.10642487047396529,
+        "q_bh": 0.21284974094793055
+      },
+      {
+        "offset": 0,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": 0.3476485383049674,
+        "se_bps": 1.1161154248172789,
+        "p": 0.7555048622215739,
+        "q_bh": 0.7555048622215739
+      },
+      {
+        "offset": 1,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -2.394358339963739,
+        "se_bps": 1.3869896691110764,
+        "p": 0.08462545852089454,
+        "q_bh": 0.21284974094793055
+      },
+      {
+        "offset": 2,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -3.2910128034939525,
+        "se_bps": 1.535432729911569,
+        "p": 0.03234132155910055,
+        "q_bh": 0.1940479293546033
+      },
+      {
+        "offset": 3,
+        "n": 1608,
+        "clusters": 932,
+        "beta_bps": -1.1816641984539413,
+        "se_bps": 1.2995721327939074,
+        "p": 0.3634420356259673,
+        "q_bh": 0.4361304427511607
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": 0.3125123761912189,
+      "p": 0.7417064130294373,
+      "n": 1608
+    }
+  },
+  {
+    "pair": "USD/INR",
+    "ticker": "USDINR=X",
+    "store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\calendar_events.parquet",
+    "design": "sign-oriented (USD's return per good-news sigma)",
+    "exclude_pandemic_window": false,
+    "releases": 1435,
+    "release_dates": 809,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 1.1104574010696906,
+        "se_bps": 0.8856700912205033,
+        "p": 0.2102756029161775,
+        "q_bh": 0.252330723499413
+      },
+      {
+        "offset": -1,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": -1.7679658930659,
+        "se_bps": 1.2278064503290913,
+        "p": 0.15027209750850568,
+        "q_bh": 0.252330723499413
+      },
+      {
+        "offset": 0,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 1.4439353603133898,
+        "se_bps": 1.1315598596763936,
+        "p": 0.20230190195932077,
+        "q_bh": 0.252330723499413
+      },
+      {
+        "offset": 1,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 2.227016909209211,
+        "se_bps": 1.1780084093230023,
+        "p": 0.0590496203963446,
+        "q_bh": 0.1771488611890338
+      },
+      {
+        "offset": 2,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 0.7929513946506961,
+        "se_bps": 1.0290761312696692,
+        "p": 0.4412008024354148,
+        "q_bh": 0.4412008024354148
+      },
+      {
+        "offset": 3,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": -2.8160247052796037,
+        "se_bps": 0.9045275214484946,
+        "p": 0.0019155701784050346,
+        "q_bh": 0.011493421070430207
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": 2.3817516839059465,
+      "p": 0.05762254417832525,
+      "n": 1435
+    }
+  },
+  {
+    "pair": "USD/INR",
+    "ticker": "USDINR=X",
+    "store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\calendar_events.parquet",
+    "design": "sign-oriented (USD's return per good-news sigma)",
+    "exclude_pandemic_window": true,
+    "releases": 1267,
+    "release_dates": 713,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 0.7457195934398723,
+        "se_bps": 0.8844962417891484,
+        "p": 0.399455142840979,
+        "q_bh": 0.5991827142614685
+      },
+      {
+        "offset": -1,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": -0.481333069080685,
+        "se_bps": 1.0616823262695463,
+        "p": 0.6504217246580039,
+        "q_bh": 0.7055355012211081
+      },
+      {
+        "offset": 0,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 1.4722249721887477,
+        "se_bps": 1.0297897336402027,
+        "p": 0.15326000170242599,
+        "q_bh": 0.30652000340485197
+      },
+      {
+        "offset": 1,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 2.1930458794557226,
+        "se_bps": 1.1213504591581827,
+        "p": 0.05088903786713802,
+        "q_bh": 0.18894942535320508
+      },
+      {
+        "offset": 2,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 0.357352137653783,
+        "se_bps": 0.9453499034752962,
+        "p": 0.7055355012211081,
+        "q_bh": 0.7055355012211081
+      },
+      {
+        "offset": 3,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": -1.7505748107175894,
+        "se_bps": 0.9400448553391276,
+        "p": 0.06298314178440169,
+        "q_bh": 0.18894942535320508
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": -0.8868503555800149,
+      "p": 0.3763628015419641,
+      "n": 1267
+    }
+  },
+  {
+    "pair": "EUR/USD",
+    "ticker": "EURUSD=X",
+    "store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\calendar_events.parquet",
+    "design": "sign-oriented (USD's return per good-news sigma)",
+    "exclude_pandemic_window": false,
+    "releases": 1435,
+    "release_dates": 809,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 1.000198856552113,
+        "se_bps": 1.1942175982994139,
+        "p": 0.40253965656177765,
+        "q_bh": 0.4935729744233733
+      },
+      {
+        "offset": -1,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 0.8407221038568764,
+        "se_bps": 1.0227575245108358,
+        "p": 0.4113108120194777,
+        "q_bh": 0.4935729744233733
+      },
+      {
+        "offset": 0,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": -0.5589923559851218,
+        "se_bps": 0.9784193454408429,
+        "p": 0.5679403655515498,
+        "q_bh": 0.5679403655515498
+      },
+      {
+        "offset": 1,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 5.667686573162292,
+        "se_bps": 1.2373801259624344,
+        "p": 5.3731212720014e-06,
+        "q_bh": 3.2238727632008396e-05
+      },
+      {
+        "offset": 2,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": 1.9629816131590765,
+        "se_bps": 0.9876468379001363,
+        "p": 0.04720043509766366,
+        "q_bh": 0.09440087019532732
+      },
+      {
+        "offset": 3,
+        "n": 1435,
+        "clusters": 809,
+        "beta_bps": -3.0091385379941173,
+        "se_bps": 0.9703894638208842,
+        "p": 0.0019959315863634507,
+        "q_bh": 0.0059877947590903525
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": -0.03435909470316446,
+      "p": 0.9732701022194123,
+      "n": 1435
+    }
+  },
+  {
+    "pair": "EUR/USD",
+    "ticker": "EURUSD=X",
+    "store": "C:\\Users\\xyreo\\OneDrive\\Desktop\\Nikhil\\PES\\capstone\\Forex-Arbitrage\\research\\artifacts\\calendar_events.parquet",
+    "design": "sign-oriented (USD's return per good-news sigma)",
+    "exclude_pandemic_window": true,
+    "releases": 1267,
+    "release_dates": 713,
+    "offsets": [
+      {
+        "offset": -2,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 1.6569626776031303,
+        "se_bps": 1.457746884264999,
+        "p": 0.25606282644102074,
+        "q_bh": 0.3447743092001304
+      },
+      {
+        "offset": -1,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 1.6458015864317819,
+        "se_bps": 1.545594175257977,
+        "p": 0.287311924333442,
+        "q_bh": 0.3447743092001304
+      },
+      {
+        "offset": 0,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 0.5285264856930512,
+        "se_bps": 1.451358088415571,
+        "p": 0.7158466901489736,
+        "q_bh": 0.7158466901489736
+      },
+      {
+        "offset": 1,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 8.949251198222518,
+        "se_bps": 1.8890761455908267,
+        "p": 2.614176416964978e-06,
+        "q_bh": 1.568505850178987e-05
+      },
+      {
+        "offset": 2,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": 2.3255523974487575,
+        "se_bps": 1.4332163522466226,
+        "p": 0.10511528476631207,
+        "q_bh": 0.21023056953262417
+      },
+      {
+        "offset": 3,
+        "n": 1267,
+        "clusters": 713,
+        "beta_bps": -2.6764554423212696,
+        "se_bps": 1.2718096511412345,
+        "p": 0.03568946639876193,
+        "q_bh": 0.10706839919628579
+      }
+    ],
+    "magnitude_bar0": {
+      "beta_bps": -0.21052648208366537,
+      "p": 0.8816062561182341,
+      "n": 1267
+    }
+  }
+]

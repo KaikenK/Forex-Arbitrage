@@ -1,0 +1,50 @@
+﻿US releases: 1482 -> 5928 pair observations across ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF']
+  EUR/USD: 1432/1482 aligned, 207,940 bars
+  GBP/USD: 1430/1482 aligned, 207,819 bars
+  USD/JPY: 1429/1482 aligned, 207,921 bars
+  USD/CHF: 1437/1482 aligned, 207,624 bars
+
+Pooled sign-oriented beta (bps of the releasing currency per +1 sigma good-news surprise):
+  pair        1m beta  p          5m beta  p         15m beta  p         30m beta  p         60m beta  p        120m beta  p       
+  EUR/USD     +1.70 7.8e-07       +1.73 1.2e-05       +1.85 7.3e-05       +1.54 2.1e-03       +1.72 2.7e-03       +5.00 1.2e-08  
+  GBP/USD     +1.72 1.1e-06       +1.68 6.2e-05       +1.58 2.0e-03       +1.38 1.3e-02       +1.32 4.3e-02       +3.89 4.1e-05  
+  USD/JPY     +2.15 8.2e-08       +2.18 1.4e-06       +2.51 8.4e-06       +2.48 2.9e-05       +2.90 3.8e-05       +6.80 2.0e-09  
+  USD/CHF     +1.68 4.6e-07       +1.72 3.2e-06       +2.00 2.3e-06       +1.83 9.3e-05       +2.12 2.1e-04       +5.64 1.6e-10  
+
+Robustness - pooled oriented beta on observed release times only (no imputed times):
+  EUR/USD     +1.17 2.0e-04       +1.19 2.6e-03       +1.27 5.9e-03       +1.05 4.5e-02       +1.65 9.3e-03       +4.83 5.2e-06    (n=622, clusters=545)
+  GBP/USD     +1.19 2.2e-04       +1.18 4.5e-03       +1.18 1.9e-02       +1.01 9.2e-02       +1.53 3.9e-02       +4.17 3.4e-04    (n=612, clusters=536)
+  USD/JPY     +1.59 4.0e-06       +1.67 7.9e-05       +2.13 2.8e-05       +2.12 1.7e-04       +2.79 3.9e-05       +7.18 3.0e-08    (n=622, clusters=543)
+  USD/CHF     +1.16 2.0e-04       +1.28 5.3e-04       +1.42 3.7e-04       +1.31 4.8e-03       +2.00 1.1e-03       +5.78 1.4e-07    (n=620, clusters=540)
+
+Robustness (Option A) - pooled oriented beta excluding the 2020-03..2021-06 window:
+  EUR/USD     +3.27 1.6e-07       +3.32 5.4e-06       +3.32 1.3e-04       +3.15 6.3e-04       +3.80 3.8e-04       +8.48 1.8e-08    (n=1205, clusters=682)
+  GBP/USD     +3.37 1.3e-07       +3.32 1.4e-05       +3.03 1.6e-03       +2.90 4.3e-03       +3.24 7.1e-03       +7.47 6.9e-06    (n=1198, clusters=672)
+  USD/JPY     +4.08 1.4e-08       +4.21 2.0e-07       +4.65 6.8e-06       +4.85 1.1e-05       +5.50 2.6e-05      +12.22 2.8e-09    (n=1201, clusters=678)
+  USD/CHF     +3.25 6.5e-08       +3.38 4.9e-07       +3.52 7.8e-06       +3.57 4.2e-05       +4.47 2.5e-05       +9.85 3.0e-10    (n=1207, clusters=676)
+
+Payrolls 5-min beta excluding the window (raw surprise, raw pair return; non-gating):
+  EUR/USD   beta -5.16 bps/sigma  p 0.0038  (n=68)
+  GBP/USD   beta -4.14 bps/sigma  p 0.0144  (n=70)
+  USD/JPY   beta +5.61 bps/sigma  p 0.00651  (n=68)
+  USD/CHF   beta +4.68 bps/sigma  p 0.00441  (n=68)
+
+Placebo (-5 min -> release), pooled oriented:
+  EUR/USD   beta +0.026 bps  p 0.674  (n=1369, clusters=774)
+  GBP/USD   beta -0.039 bps  p 0.700  (n=1370, clusters=772)
+  USD/JPY   beta +0.098 bps  p 0.109  (n=1366, clusters=772)
+  USD/CHF   beta -0.008 bps  p 0.912  (n=1377, clusters=775)
+
+Per-indicator 5-min beta (raw surprise, raw pair return):
+  Non-Farm Employment Change    EUR/USD:  -2.55 (p 5e-03)  GBP/USD:  -1.97 (p 3e-02)  USD/JPY:  +2.77 (p 1e-02)  USD/CHF:  +2.19 (p 1e-02)  
+  Unemployment Rate             EUR/USD:  +0.98 (p 1e-01)  GBP/USD:  +0.96 (p 2e-01)  USD/JPY:  -0.48 (p 5e-01)  USD/CHF:  -0.69 (p 3e-01)  
+  Average Hourly Earnings m/m   EUR/USD:  -1.85 (p 9e-02)  GBP/USD:  -2.41 (p 3e-02)  USD/JPY:  +2.20 (p 1e-01)  USD/CHF:  +2.21 (p 6e-02)  
+  CPI m/m                       EUR/USD:  -7.25 (p 2e-02)  GBP/USD:  -7.46 (p 3e-02)  USD/JPY:  +7.63 (p 3e-02)  USD/CHF:  +5.47 (p 4e-02)  
+  Core CPI m/m                  EUR/USD:  -4.74 (p 3e-02)  GBP/USD:  -4.86 (p 4e-02)  USD/JPY:  +4.76 (p 3e-02)  USD/CHF:  +3.66 (p 5e-02)  
+  Retail Sales m/m              EUR/USD:  -0.55 (p 2e-01)  GBP/USD:  -0.20 (p 6e-01)  USD/JPY:  +0.84 (p 7e-02)  USD/CHF:  +0.59 (p 1e-01)  
+  Unemployment Claims           EUR/USD:  -0.01 (p 1e+00)  GBP/USD:  +0.02 (p 1e+00)  USD/JPY:  -0.59 (p 3e-01)  USD/CHF:  -0.40 (p 4e-01)  
+  ISM Manufacturing PMI         EUR/USD:  -2.93 (p 1e-03)  GBP/USD:  -1.79 (p 3e-03)  USD/JPY:  +5.01 (p 3e-03)  USD/CHF:  +3.68 (p 7e-04)  
+
+GATE: {'a_nfp_negative_significant': True, 'b_pooled_positive_significant': True, 'c_placebo_insignificant': True, 'PASS': True}
+
+Written: C:\Users\xyreo\OneDrive\Desktop\Nikhil\PES\capstone\Forex-Arbitrage\research\artifacts\positive_control.json

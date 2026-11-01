@@ -90,6 +90,73 @@ of two currency-level sentiments rather than a property of the pair.
 - **Precedent**: Baker, Bloom & Davis (2016) news-based policy-uncertainty index; the Citi
   Economic Surprise Index.
 
+### RQ1–RQ5 — Article → affected pairs, direction, magnitude, confidence *(pre-registered 2026-11-02 IST, before any RQ result exists; project owner set the goal 2026-11-01)*
+
+The semantic wing's job is: an article arrives → for each pair, is it affected, which way, how
+far, how sure. RQ1–RQ5 test exactly that. They are the paper's primary questions; H1, H5, H6
+become the unscheduled-news arm (§6 DEVIATION 3). **Disclosure:** H2 and the positive control
+already used the 2018-01..2025-04 release sample, and the structured design below is motivated
+by them; the out-of-sample evidence is the walk-forward, plus the prospective live tests.
+
+**Historical unit.** Each high-impact, exact-time release (incl. validated release-clock fills)
+with an Option A standardized surprise `z` ≠ 0, currency ∈ {USD, EUR, GBP, JPY, CHF},
+2018-01-01..2025-04-30, × each of the four majors (EUR/USD, GBP/USD, USD/JPY, USD/CHF).
+Returns from HistData M1 (bars stamped at close, New York DST-corrected), log returns in bps,
+reference = last bar closing at/before the release; bar lags ≤ 2 min entry / ≤ 5 min exit, fail
+closed. SEs and bootstrap CIs cluster by release moment (same timestamp). USD/INR: no intraday
+data, so not in RQ1–RQ4 (limitation).
+
+**Horizons.** Release-time returns r(0,h), h ∈ {1, 5, 15, 30, 60, 120} min; **primary h = 15**.
+Arrival-time returns r(15, 15+h), h ∈ {15, 45, 105} (an article is assumed to arrive 15 min
+after the release); **primary = r(15, 60)**. Non-primary horizons BH-corrected.
+
+**Model (fixed).** Expanding-window, monthly walk-forward; the first 12 months training-only (as
+C5); every fit uses only releases strictly before the test month.
+- Direction: ŝ = sign(β̂_{cat,pair} · z), β̂ from an OLS of the pair's signed return on z within
+  category × pair (category = `data/tagging.py` first category); fewer than 20 training releases
+  in a cell → β̂ of the pooled-category pair model.
+- Expected move: |r| = a + b·|z| + c·v, per category × pair (same fallback), v = mean |r| over
+  the same clock window on the previous 20 weekdays (≥ 10 required, as C3/C4).
+- Confidence: p = P(ŝ correct) from a logistic regression of correctness on |z| and log(1+|z|),
+  per category (fallback pooled), fitted on training folds only.
+- Interval: split-conformal on |r| residuals, calibration set = the last 12 training months;
+  nominal 80% and 90%.
+- Horizon output: the release-time cumulative profile (mean oriented move at each h) and the
+  arrival-time residual move.
+
+**RQ1 — affected pairs.** Label affected = |r(0,15)| > 2 × v. Rule = pair contains the release
+currency (USD → all four). Report precision/recall/F1 of the rule; AUC of the model's expected
+move as a score for "affected"; spillover rates for pairs not containing the currency.
+**RQ2 — direction.** Sign accuracy (realised r ≠ 0) and AUC of ŝ·p vs realised sign, against:
+majority class (training), theory rule sign(z)·news_sign (`sign_conventions.news_sign`), and
+coin flip. Release-time and arrival-time. Accuracy by |z| tercile.
+**RQ3 — magnitude.** MAE and Spearman of expected vs realised |r|, against: training mean per
+pair, category × pair training mean, v alone. Model-minus-baseline absolute-error difference with
+release-moment-clustered SE.
+**RQ4 — confidence.** ECE (10 equal-mass bins), Brier, reliability curve; conformal coverage at
+80/90% (pass band ±5 pp, reported, not a gate).
+**RQ2-E2E — real headlines (secondary).** Release headlines in the GDELT slice sample (below)
+matched to a calendar release (same currency and category, timestamp within 60 min after it):
+extractor success rate and accuracy of the extracted actual vs the calendar actual (exact to the
+published precision); direction accuracy from the article timestamp of (i) the structured
+pipeline, (ii) FinBERT polarity oriented to the currency, (iii) the current text model
+(`ArtifactReactionScorer`, pooled_multipair artifact).
+**RQ5 — ranking value (descriptive).** On recorded Arbex opportunities (H6b sample, plus
+recordings to 2026-11-18 reported separately as an extension): still-crossed AUC of
+detector-only vs + the new risk channel vs + direction/stale-leg channel; bootstrap by day.
+
+**Prospective test of the deployed (before) model.** Every row of
+`sentiment_assets/runtime/predictions/live_predictions.jsonl` with `published_at` from 2026-10-25
+up to the new model's deployment and direction ≠ 0. Outcome = log return of the pair from the
+first Yahoo hourly bar opening at/after `published_at` to the first bar at/after `published_at` +
+`horizon_minutes` (EURUSD=X, GBPUSD=X, JPY=X, CHF=X, INR=X; pair orientation applied); rows whose
+outcome bar does not exist yet are dropped. Metrics: sign accuracy vs 50% and Spearman IC of
+`market_score`, clustered by UTC date; reliability of `confidence`. The new model gets the same
+test on its own logged predictions from deployment to 2026-11-18. Descriptive (few date clusters).
+
+**Stop condition.** One model specification as above; no re-specification after any test-month
+result is seen. Negative results reported.
+
 ---
 
 ## 3. Scope boundary
@@ -213,6 +280,16 @@ Never re-litigate a logged decision without a new entry stating what changed.
 | 2026-10-25 | **Full-stack end-to-end test passed; two live-channel fixes made before the H6b window opened (before market open, no recorder file read).** | Stack: semantic service, live backend + recorder, Redis (dedicated `arbex-redis` container, localhost only, no persistence), Redis opportunity scorer, dashboard. A synthetic opportunity (`e2e-synthetic-1`, sent only to `arbex.raw_opps`, never to the recorder log) was scored end to end with news bias from 11 live articles; flag-on run showed both channels in the ranking reason; fallback held while the service restarted. **Fix 1 — risk channel saturated:** the absolute rule (2 bps free, cap at ~17 bps) hit its cap on ordinary news (47 bps observed), so it could not rank. Now relative: penalty = 0.06 × clip((expected / pair's 24 h median expected move − 1) / 2, 0, 1); no magnitude penalty while the baseline has < 20 items; release term unchanged. **Fix 2 — live settings aligned with H6 C7/C8** (`no_data_value=z_zero`, `novelty_missing=drop_headline`), so the live signal is the one the paper tests; only the z-score stays causal. H6b therefore evaluates the channels as defined from this restart on. Dashboard fixes: evaluation crash on the weights-only model (metrics now from `training_report.json`, live-served views only), benchmark no longer read from the out-of-repo `news_stream` folder. |
 | 2026-10-28 | **DEVIATION 1 — GDELT sample cutoff moved from 2026-10-31 00:00 IST to 2026-11-02 00:00 IST (2026-11-01 18:30 UTC), by the project owner.** This is the only change to the locked H1/H5/H6 protocol; the cutoff will not move again. | *Reason:* the laptop was off 2026-10-25 23:20 → 2026-10-28 22:55 IST, so ~3 days of download time were lost to an outage, not to anything in the data. *Why it is not results-driven:* no H1, H5 or H6 analysis has run on real data, the GDELT sample has not been frozen or scored, and no coverage-dependent statistic has been computed — the only information used is the download count (514/1,461 windows). Everything else in the locked protocol is unchanged, including the H6b window end (2026-11-05 00:00 IST). Code: `freeze_gdelt_sample.CUTOFF_UTC`, `reproduce.GDELT_CUTOFF_UTC`. |
 | 2026-10-25 | **Code home.** Research code is copied into the `semantic-microservice` branch (`research/`) at milestones; until results are final, the original checkout's `research/` stays the working copy (the live backfill and artifacts live there). Data artifacts are never committed; small result JSONs, logs and manifests are. | Keeps the paper reproducible from the repo while the long-running jobs keep their paths. |
+| 2026-11-01 | **DEVIATION 2 — GDELT sample cutoff moved from 2026-11-02 00:00 IST to 2026-11-04 00:00 IST (2026-11-03 18:30 UTC), by the project owner.** This overrides DEVIATION 1's statement that the cutoff would not move again; that statement is now false and is left in place, not edited. | *Reason:* further outages after DEVIATION 1 (laptop off 29 Oct 06:51 → 31 Oct 13:57, ~1.5 h on 31 Oct, Wi-Fi off 1 Nov 04:36 → 06:50, laptop off 1 Nov 12:02 → 19:48 IST) left coverage at ~890/1,461 windows (to ~mid-2020) under the 2 Nov cutoff. *Why it is not results-driven:* decided 2026-11-01 ~19:55 IST, before the freeze: no H1, H5 or H6 analysis has run, nothing has been scored, no shard content has been read. *What it changes:* only `CUTOFF_UTC` (`freeze_gdelt_sample.py`), `GDELT_CUTOFF_UTC` (`reproduce.py`), and the backfill loop's stop time. Every other locked clause, including the H6b window end (2026-11-05 00:00 IST), is unchanged. Coverage at the new cutoff is reported as is. *Reviewer note:* two cutoff moves are disclosed in the paper's methods section with both reasons; results under the 2 Nov cutoff (shards with `completed_at` < 2026-11-01 18:30 UTC) are reported as a robustness check, so a reader can confirm the extension did not change the conclusions. |
+| 2026-11-02 | **DEVIATION 3 — GDELT news sample re-collected as a time-stratified slice sample; H1, H5, H6 become the unscheduled-news arm of RQ1–RQ5 (project owner set the article→reaction goal 2026-11-01).** Found by a timestamp-only coverage check (no headline text, price or score read): every 24 h DOC request (`sort=datedesc`, `maxrecords=250`, broad query) returns only the ~12 minutes before 00:00 UTC — in a 169-day sample 88% of kept headlines fall 23:00–01:00 UTC, median per-day span 0.2 h. The daily sample is therefore not a sample of the trading day; it is kept only as the defect exhibit (paper §data errors) and is never used for an H1/H5/H6 result. | **New sample:** 1 h windows whose end falls on a fixed UTC hour set, weekdays only (`gdelt_backfill --window-hours 1 --slice-hours … --weekdays-only`, shard dir `artifacts/gdelt_slices`). Each slice = the last 250 matching articles before the hour, so the sample is spread over the trading day and selected by clock time, not content. Slice hours, period and query are fixed from pilot throughput and yield only (count and time span per slice, never headline content), recorded below before the full run. **Cutoff:** downloads stop and the freeze runs at 2026-11-10 23:59 IST; supersedes DEVIATION 2's cutoff and its promised 2 Nov robustness check (that check was for the daily sample, now withdrawn). **H1/H5/H6:** every other locked clause unchanged; the H1 sample period becomes the slice period; C17 counts a scheduled slice as the missing unit. H6b (window end 2026-11-05 00:00 IST) unchanged. |
+| 2026-11-02 | **DEVIATION 3 slice design fixed (from pilot throughput and per-slice counts only; no headline text read).** | Pilot 1 (default query, 7 slices from 2024-01-01): ~21 slices/h under GDELT throttling, 4.7 currency-tagged headlines per slice. **Period** 2023-07-01..2025-04-30 (ends with the calendar store, inside HistData; ≈ 3,700 slices ≈ 7–8 days at the pilot rate, so it fits before the cutoff with margin; ≥ 12 training months for C5). **Slices:** weekdays, 1 h windows ending 07, 09, 11, 13, 14, 15, 17, 20 UTC (13–15 UTC cover the minutes after 12:30/13:30/14:00 UTC US releases). **Query rule, fixed before pilot 2 finished:** `data/gdelt.CURRENCY_QUERY` (built a priori from the study-currency terms of `data/tagging.py`, so the 250-article cap is spent on taggable headlines) if the pilot on the same 7 windows completes ≥ 5 slices, else the default query; the choice is written to `artifacts/gdelt_slices_query_choice.txt`. Shard dir `artifacts/gdelt_slices_main`; loop `research/run_slices_loop.ps1` stops at 2026-11-10 23:59 IST. Pilot dirs (`gdelt_slices`, `gdelt_slices_q2pilot`) are not part of the sample. |
+| 2026-11-02 | **Slice query rule amended before any slice of the main sample exists.** | The 18-term currency query was refused by the API ("Your query was too short or too long."); the downloader misread that plain-text reply as throttling and retried (fixed: `GdeltQueryRejected` is now permanent, test added). Pilot 2 therefore produced 0 slices and was stopped. `CURRENCY_QUERY` is now 8 terms (dollar, euro, yen, sterling, forex, "exchange rate", ECB, "Federal Reserve"). **Rule:** `run_slices_loop.ps1` probes it once (`probe_gdelt_query`, waiting out 429s up to 90 min): JSON reply → currency query, refusal → default query; the choice is written to `artifacts/gdelt_slices_query_choice.txt` and reused on every restart so the sample never mixes queries. No headline content informs the choice. |
+| 2026-11-02 | **RQ clarifications C20–C25 (implementation details the RQ text left open; decided before any RQ result exists).** Not deviations. | **C20** β and move cells are keyed by (release currency, category, pair), fallback (currency, pair): a USD and a EUR inflation surprise move EUR/USD in opposite directions, so a category × pair cell pooling currencies cancels by construction; β is through the origin (only sign(β·z) is used). **C21** the confidence logistic is fitted on the training rows' in-sample correctness under the same fold's β̂. **C22** conformal: the move model is refitted on training minus its last 12 months, the absolute residuals on those 12 months give the finite-sample quantile, and the interval is centred on that split model; intervals exist only for test months with > 12 training months. **C23** reference price = first bar at/after the release (bars stamped at close, so it is the close of the minute ending at the release), entry lag ≤ 2 min — identical to H2 and the positive control. **C24** baseline "v alone" = OLS of \|r\| on 1 + v per pair; RQ2–RQ4 use own pairs (pair contains the release currency); RQ1 uses all four pairs; RQ1's AUC score is the raw expected move. **C25** JPY (3 releases) and CHF (30) mostly fall back or abstain; abstentions are counted and reported, not imputed. |
+| 2026-11-02 | **RQ1–RQ4 RESULTS (historical walk-forward, one pass, `run_reaction_eval`, `artifacts/reaction_eval.json`).** 1,385 releases with z ≠ 0 × 4 majors; 76 test months (2019-01..2025-04); release-moment clusters ≈ 900. Reported as is, including negatives. | **RQ2 direction, release-time 15 m (primary):** model 63.5% [60.2, 66.6] (AUC 0.668) vs theory rule sign(z)·news_sign 68.4% [65.4, 71.3] vs majority 51.5%. **The learned β model is worse than the a-priori theory rule** (they agree on 82% of rows; the disagreements are noisy cells). Accuracy rises with |z| (58% → 65% → 68% by tercile) and decays with horizon (1 m 68.2%, 120 m 57.7%; theory 75.2% → 61.0%), all BH q < 0.001. **Arrival-time (article 15 min after release), primary 15→60 m: 48.8% [46.6, 51.0], p = 0.27 — no direction left to predict;** 15→30 m 47.9% (q = 0.095), 15→120 m 50.2%. Mean move in the predicted direction is 7–8 bps from 1 m to 120 m and ≈ 0 after arrival (−0.14 bps, p = 0.68): H3 confirmed out of sample. **RQ3 magnitude, 15 m:** model Spearman 0.287 vs pair mean 0.189, cell mean 0.242, v-fit 0.285; MAE model 12.01 vs 11.54 / 11.59 / 11.85 bps — **no MAE gain over any baseline** (model − pair-mean +0.47 bps, p = 0.15). Arrival-time: the same-clock volatility baseline beats the model (MAE 7.11 vs 7.40, p < 0.001). **RQ4 confidence, 15 m:** ECE 0.041 (calibrated) but Brier 0.234 vs 0.232 for a constant rate — calibrated, no resolution at 15 m; at 1 m Brier 0.207 vs 0.217. Conformal coverage 76.5% at nominal 80%, 86.9% at 90% (within the ±5 pp band, slightly under). **RQ1 affected pairs:** the currency rule has recall 0.90, precision 0.41, F1 0.56; affected rate 41% own vs 19% cross (a EUR release moves GBP/USD and USD/JPY abnormally ~22% of the time); AUC of the expected move for 'affected' 0.558. *Product consequence (engineering, not a paper claim):* the live release scorer uses the theory-rule direction with a calibration map for its correctness, and the same-clock baseline for post-arrival volatility; the paper reports the learned model as pre-registered and the comparison as found. |
+| 2026-11-02 | **ARRIVAL-LATENCY STUDY PRE-REGISTERED (before any latency value is computed; fields deployed 2026-11-02 03:19 IST).** RQ2's arrival-time result assumed an article arrives 15 min after its release; this measures the real delay and re-tests at it. | **Sample:** `live_predictions.jsonl` rows with basis = release and signal_scope = article, logged 2026-11-02 03:19 IST → 2026-11-13 23:59 IST; one row per (release_event, release_utc, feed_url), earliest receipt kept. **Measures:** receipt latency = our receipt time (`published_at`) − `release_utc`; publisher latency = `publisher_time` − `release_utc`; per source and overall: median, IQR, share within 1/2/5/15 min; and per release the FIRST receipt across all sources (the system's effective latency). Live match coverage = share of high-impact study-currency calendar rows in the window (weekly archive, `calendar/archive/`) with ≥ 1 matched headline within 90 min. **Observed offset a\*** = median over releases of the first receipt, rounded UP to {1, 2, 3, 5, 10, 15} min; if < 10 distinct releases are matched, a\* is not estimated and the 15-min assumption stands (reported). **Re-test (RQ2-arrival-observed, secondary):** `run_reaction_eval` arrival targets with offset a\*: r(a\*, a\*+15) and r(a\*, a\*+45) (primary), same model, folds and baselines; one run on 2026-11-14. **Feeds changed at the same deployment** (from the 2026-11-02 live inventory, `research/paper/news_sources.md`): dead feeds removed, ForexLive → investinglive.com, central-bank and BLS/BEA/Census feeds added, TLS via certifi (ECB/SNB/Eurostat had failed verification), Finnhub enabled in the service (key was missing). |
+| 2026-11-02 | **FINDING — synthetic demo headlines in the live pipeline; fixed 2026-11-02 03:23 IST.** The service's SSE feed filled every quiet 5 s with made-up USD/INR headlines (provenance `synthetic`), and the backend analysed them like real news. Of 14,486 rows in `live_predictions.jsonl` (2026-10-25 → 2026-11-02), **13,311 (92%) are synthetic**; real: 1,095 RSS + 80 Finnhub rows (455 article-level). They also fed the live window bias and, through the analysis observer, the service's currency index, i.e. the inputs of every H6b `semantic_snapshot` logged before the fix. No outcome or recorder data has been examined. | **Fix:** synthetic items are opt-in (`SEMANTIC_SYNTHETIC_FEED=1`, demo only; off, the stream sends keep-alives); the backend drops any `synthetic` item before analysis; real items are no longer paced 4–8 s apart (a release headline had queued behind the refill backlog). Tests added. **Clarifications decided before any outcome is joined:** **C27** the prospective test excludes rows with provider/provenance `synthetic` (they are not articles). **C28** H6b is reported for its locked window as pre-registered, with the contamination disclosed, AND for the clean sub-window 2026-11-02 03:23 IST → 2026-11-05 00:00 IST; neither is given more weight after results. **C29** the arrival-latency study counts receipt as the item's fetch time (`published_at`) and also reports the backend's processing time (`logged_at` − release) because the two differed while pacing was on. |
+| 2026-11-02 | **C30 — RQ2-E2E details (decided before any E2E result; `run_rq2_e2e.py`, tests `test_rq2_e2e.py`).** Not a deviation. | Candidate = frozen slice headline whose `data/tagging` currency and category match a high-impact exact-time store release released ≤ 60 min before it. Extractor = the live `release_extractor`, run on the headline against the store rows of that window, forecast strings rebuilt with the indicator's unit (% for m/m, y/y, q/q, rates, CPI/PPI/PCE; K-count for *Change*, *Claims*, openings, permits, starts; plain otherwise), σ from the store. Correct actual = |extracted − calendar actual| ≤ 0.05 (%, plain) or 500 (counts). Direction targets: **r(t, t + 60 min)** from the article's GDELT time t on each own pair (primary), and r(release, +15 min) for the structured pipeline; a model that gives no direction abstains (counted). Also reported on the rows where all three models give a direction. **Known limitation, stated now:** GDELT ingestion keeps only headlines the tagger attributes to a currency, so plain release headlines ("US CPI rises 0.5%") without a currency or central-bank word never enter the sample; E2E covers only release headlines that also name the currency. |
+| 2026-11-02 | **DEVIATION 3 implemented in code; C31 (decided before any H1/H5/H6 result).** | `freeze_gdelt_sample.py` now freezes the slice sample: shard dir `artifacts/gdelt_slices_main`, schedule taken from `gdelt_backfill.scheduled_window` (3,824 scheduled slices, 2023-07-01..2025-04-30), cutoff 2026-11-10 18:29 UTC; `missing_windows` = dates with any scheduled slice missing, `missing_slices` listed; `reproduce.py` gate moved to the same cutoff. H1 and H6 need no further change (H1 rows are events; H6 reads SAMPLE_START/END and C17 from the freeze). **C31** H5 drops weekdays listed in `missing_windows` (a data gap, not a no-news day — the unit C17 drops for H6); days with every slice present keep the locked "no news = 0"; the count dropped is reported. Also: `run_reaction_eval --arrival-offset N` (arrival-latency re-test; offset 15 reproduces the primary arrival tables exactly apart from the BH q-value key only the full run adds). Research suite 239 passing. |
 
 ---
 
@@ -234,6 +311,43 @@ Write ideas here instead of building them. Revisit only after M6 is done.
 - **Uptime gaps (reported as is, per the locked coverage rule)**: laptop off 2026-10-25 23:20 →
   2026-10-28 22:55 IST — no GDELT download and no recorder data in that span (Mon–Wed trading
   lost for H6b). GDELT at restart: 514/1,461 windows, 15,446 events (Jan 2018 → mid-2019).
+  Second gap: off 2026-10-29 06:51 → 2026-10-31 13:57 IST (Thu–Fri trading lost for H6b;
+  GDELT at restart 620/1,461). On the 2026-10-31 network Kraken refuses connections
+  (WinError 10054) while TrueFX and GDELT are reachable — crossed books need both venues, so
+  H6b collection depends on Kraken being reachable after the Sunday market open.
+  Third gap: jobs stopped 2026-10-31 ~14:09 → 15:31 IST (host terminal tabs closed). FX
+  market closed (Saturday), so no recorder data lost; GDELT throughput only (~20 windows).
+  Integrity check after restart: 677 sentinels, 676 shards (the extra is 20190202, a
+  confirmed-empty window), no orphan or zero-byte shards, all recording files end on a
+  complete JSON line.
+  2026-10-31 20:58 IST: the backfill had skipped 23 days inside its covered range (windows that
+  failed after GDELT throttling, plus ~20:40 local network drop); failed windows carry no
+  sentinel, so the backfill was restarted to re-fetch them chronologically before continuing.
+  Mechanical and result-blind (no data inspected); total window throughput unchanged.
+  2026-11-01 02:15 IST: ~20% of windows were still exhausting the 6-try limit under throttling
+  (21 gaps at 764 sentinels). Added `--max-attempts` (default unchanged at 6) and restarted
+  with 12, so throttled windows are retried in place instead of left as holes. Fetch logic,
+  query and window definition unchanged; no data inspected.
+  2026-11-01: Wi-Fi disconnected 04:36 → 06:50 IST (WLAN event log); recorder polls failed
+  with DNS errors and GDELT windows in that span exhausted their retries (13 holes at 795
+  sentinels). From 08:30 IST the backfill runs as a loop of 30-window runs, each re-planned
+  from 2018, so failed days are retried before new ones; the loop stops at the cutoff.
+  Fourth gap: laptop off 2026-11-01 12:02 → 19:48 IST (Sunday, FX closed: no recorder data
+  lost; ~95 GDELT windows of throughput lost). At restart 840/1,461 windows, gap-free to
+  2020-04-20, no temp or zero-byte shards. Network after restart: phone hotspot.
+  **Release model deployed 2026-11-02 02:39 IST (2026-11-01 21:09 UTC)**, before the Monday FX
+  open: semantic service restarted with SEMANTIC_REACTION_V2=1 (release extractor + scorer,
+  euro/pound pair-attribution fix), backend restarted with release fields in
+  `live_predictions.jsonl` and a shadow `release_channel` in each opportunity's
+  `semantic_snapshot` (penalty 0; risk and direction channels unchanged, so H6b is unaffected).
+  This timestamp ends the prospective "before" window (V1 rows published 2026-10-25 → 2026-11-01
+  21:09 UTC). Two synthetic test POSTs to /v1/analyze at 02:40 IST went to the service history
+  only (not the backend prediction log). Recorder gap ≈ 1 min, market closed.
+  **Slice download started 2026-11-02 ~03:05 IST:** the probe was accepted, so the sample uses
+  `CURRENCY_QUERY` (choice file written 02:53 IST); first 10 slices: 14.1 currency-tagged
+  headlines per slice vs 4.7 under the default query in pilot 1 (counts only), ~21 slices/h.
+  Services restarted 03:19 and 03:23 IST (feeds, publisher time, Finnhub, synthetic off;
+  recorder gaps < 1 min each, before the 03:30 IST open). At 03:24 IST Kraken legs healthy.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.

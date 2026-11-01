@@ -1,0 +1,546 @@
+{
+  "design": "H2 and H3 on US high-impact releases across the four majors (RESEARCH_TRACKER \u00a72).\n\n  H2 \u2014 per-category CAR with release-clustered SEs and Benjamini-Hochberg FDR.\n       Supported if >= 2 categories survive FDR at q <= 0.05. One pass.\n  H3 \u2014 reaction half-life per category, scheduled events only.\n       Supported if half-life CIs are disjoint between >= 2 categories. One pass.\n\nOperationalisation, fixed before this ran (2026-10-24):\n  - Sample: the positive-control sample \u2014 US high-impact releases with an exact time and an\n    Option A standardized surprise, each studied in EUR/USD, GBP/USD, USD/JPY, USD/CHF\n    (HistData M1 stamped at bar close; entry lag <= 2 min, exit lag <= 5 min).\n  - Categories: `data/tagging.tag_categories` of the indicator name (multi-label).\n  - CAR: sign-oriented return (see eventstudy/category_reactions.py) in bps, at\n    1/5/15/30/60/120 min, pooled across the four pairs, clustered by release date.\n  - FDR grid: every category x horizon cell with >= MIN_CLUSTERS release dates. A category\n    \"survives\" if any of its cells has q <= 0.05 with a positive oriented CAR.\n  - H3: pre-registered decay half-life (= atlas._half_life) with a 1,000-draw release-\n    clustered bootstrap 95% CI; time-to-half-peak reported as secondary, not pre-registered.\n  - Robustness (non-gating): the same grid excluding the Option A pandemic window.\n\nRun: python -m research.run_h2h3\n",
+  "n_observations": 3811,
+  "horizons": [
+    1,
+    5,
+    15,
+    30,
+    60,
+    120
+  ],
+  "min_clusters": 30,
+  "h2": {
+    "cells": [
+      {
+        "category": "employment",
+        "horizon": 1,
+        "n": 1261,
+        "clusters": 256,
+        "car_bps": 3.6260815657471444,
+        "se_bps": 0.8103740987560479,
+        "t": 4.474577323378553,
+        "p": 1.154441752607671e-05,
+        "q_bh": 4.8949818652435164e-05,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 5,
+        "n": 1261,
+        "clusters": 256,
+        "car_bps": 3.9259120836913937,
+        "se_bps": 0.8912416286149629,
+        "t": 4.404991819998883,
+        "p": 1.5583953444848443e-05,
+        "q_bh": 4.8949818652435164e-05,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 15,
+        "n": 1261,
+        "clusters": 256,
+        "car_bps": 3.5776559343914465,
+        "se_bps": 0.9874171879814732,
+        "t": 3.623246564813265,
+        "p": 0.0003510597571788447,
+        "q_bh": 0.0005265896357682671,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 30,
+        "n": 1260,
+        "clusters": 256,
+        "car_bps": 3.233385510910935,
+        "se_bps": 1.1052880279169175,
+        "t": 2.9253782084338136,
+        "p": 0.003750295981219234,
+        "q_bh": 0.004677002801480447,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 60,
+        "n": 1226,
+        "clusters": 243,
+        "car_bps": 3.3501057985617124,
+        "se_bps": 1.1643653602790311,
+        "t": 2.8771946614410493,
+        "p": 0.004370585882248146,
+        "q_bh": 0.004869475958769779,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 120,
+        "n": 1238,
+        "clusters": 250,
+        "car_bps": 8.154523433215386,
+        "se_bps": 1.8702505027156566,
+        "t": 4.360123641926463,
+        "p": 1.9036040587058117e-05,
+        "q_bh": 4.8949818652435164e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 1,
+        "n": 1623,
+        "clusters": 337,
+        "car_bps": 1.9897688710394814,
+        "se_bps": 0.4080518405051426,
+        "t": 4.876264909321993,
+        "p": 1.6710825895465019e-06,
+        "q_bh": 1.4983536915118026e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 5,
+        "n": 1623,
+        "clusters": 337,
+        "car_bps": 2.202304219410586,
+        "se_bps": 0.45969873595991073,
+        "t": 4.790755438584986,
+        "p": 2.497256152519671e-06,
+        "q_bh": 1.4983536915118026e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 15,
+        "n": 1623,
+        "clusters": 337,
+        "car_bps": 2.190031708432037,
+        "se_bps": 0.5048255947864859,
+        "t": 4.338194677625849,
+        "p": 1.902339665212381e-05,
+        "q_bh": 4.8949818652435164e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 30,
+        "n": 1615,
+        "clusters": 333,
+        "car_bps": 2.4041473057433462,
+        "se_bps": 0.6072903855647983,
+        "t": 3.9588100896862,
+        "p": 9.217603290109926e-05,
+        "q_bh": 0.00018435206580219853,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 60,
+        "n": 1587,
+        "clusters": 326,
+        "car_bps": 3.018049997655969,
+        "se_bps": 0.7900507111586752,
+        "t": 3.820071237237097,
+        "p": 0.0001598103739394357,
+        "q_bh": 0.0002615078846281675,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 120,
+        "n": 1620,
+        "clusters": 336,
+        "car_bps": 6.257719326863667,
+        "se_bps": 1.1801741650867827,
+        "t": 5.302369355292159,
+        "p": 2.0798378379444676e-07,
+        "q_bh": 3.7437081083000415e-06,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 1,
+        "n": 911,
+        "clusters": 132,
+        "car_bps": 7.592007877701543,
+        "se_bps": 1.9403572711513877,
+        "t": 3.91268556083825,
+        "p": 0.0001459284294708015,
+        "q_bh": 0.0002615078846281675,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 5,
+        "n": 911,
+        "clusters": 132,
+        "car_bps": 7.21612955134405,
+        "se_bps": 2.240140208426534,
+        "t": 3.221284776818783,
+        "p": 0.0016099008046536155,
+        "q_bh": 0.002229093421828083,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 15,
+        "n": 911,
+        "clusters": 132,
+        "car_bps": 7.469046961365567,
+        "se_bps": 2.8313010005962633,
+        "t": 2.6380264619666396,
+        "p": 0.009348992461493476,
+        "q_bh": 0.009348992461493476,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 30,
+        "n": 911,
+        "clusters": 132,
+        "car_bps": 8.484367604111164,
+        "se_bps": 2.8872185145295415,
+        "t": 2.938595593445635,
+        "p": 0.0038975023345670387,
+        "q_bh": 0.004677002801480447,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 60,
+        "n": 883,
+        "clusters": 124,
+        "car_bps": 9.7222685964214,
+        "se_bps": 3.367867011243844,
+        "t": 2.88677330903001,
+        "p": 0.004598949516615903,
+        "q_bh": 0.004869475958769779,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 120,
+        "n": 894,
+        "clusters": 129,
+        "car_bps": 19.773202885249553,
+        "se_bps": 4.593917792677012,
+        "t": 4.304213479128698,
+        "p": 3.301865231006845e-05,
+        "q_bh": 7.429196769765401e-05,
+        "survives": true
+      }
+    ],
+    "tested_categories": [
+      "employment",
+      "growth",
+      "inflation"
+    ],
+    "surviving_categories": [
+      "employment",
+      "growth",
+      "inflation"
+    ],
+    "supported": true
+  },
+  "h2_excluding_pandemic_window": {
+    "cells": [
+      {
+        "category": "employment",
+        "horizon": 1,
+        "n": 1081,
+        "clusters": 226,
+        "car_bps": 4.035294961303041,
+        "se_bps": 0.9305654426095729,
+        "t": 4.336390302638915,
+        "p": 2.1860898316623877e-05,
+        "q_bh": 7.43918318858716e-05,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 5,
+        "n": 1081,
+        "clusters": 226,
+        "car_bps": 4.338959457999364,
+        "se_bps": 1.016338929982569,
+        "t": 4.269205212943856,
+        "p": 2.8930156844505624e-05,
+        "q_bh": 7.43918318858716e-05,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 15,
+        "n": 1081,
+        "clusters": 226,
+        "car_bps": 3.9878838600948168,
+        "se_bps": 1.1445584767385317,
+        "t": 3.484211546323489,
+        "p": 0.0005931263600543334,
+        "q_bh": 0.0008896895400815,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 30,
+        "n": 1080,
+        "clusters": 226,
+        "car_bps": 3.858500178049415,
+        "se_bps": 1.2721619731268599,
+        "t": 3.0330258721423404,
+        "p": 0.00270539364209947,
+        "q_bh": 0.003246472370519364,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 60,
+        "n": 1046,
+        "clusters": 213,
+        "car_bps": 4.20055644798667,
+        "se_bps": 1.3373926435192445,
+        "t": 3.140855057295091,
+        "p": 0.001925011628340356,
+        "q_bh": 0.0024750149507233145,
+        "survives": true
+      },
+      {
+        "category": "employment",
+        "horizon": 120,
+        "n": 1058,
+        "clusters": 220,
+        "car_bps": 8.590330122233894,
+        "se_bps": 2.151583370094733,
+        "t": 3.9925620552903167,
+        "p": 8.92157269604704e-05,
+        "q_bh": 0.0001784314539209408,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 1,
+        "n": 1363,
+        "clusters": 288,
+        "car_bps": 2.247765941563941,
+        "se_bps": 0.47723470776130167,
+        "t": 4.709980026616599,
+        "p": 3.86360358130322e-06,
+        "q_bh": 2.3181621487819318e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 5,
+        "n": 1363,
+        "clusters": 288,
+        "car_bps": 2.5528599303525326,
+        "se_bps": 0.5377751092446484,
+        "t": 4.747077145199682,
+        "p": 3.2614261820713262e-06,
+        "q_bh": 2.3181621487819318e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 15,
+        "n": 1363,
+        "clusters": 288,
+        "car_bps": 2.4357709659768703,
+        "se_bps": 0.5854995259422068,
+        "t": 4.160158732933456,
+        "p": 4.206068282246816e-05,
+        "q_bh": 9.463653635055336e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 30,
+        "n": 1355,
+        "clusters": 284,
+        "car_bps": 2.721234774115701,
+        "se_bps": 0.69577450071525,
+        "t": 3.9110872435225716,
+        "p": 0.00011509870710663286,
+        "q_bh": 0.000203383813198464,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 60,
+        "n": 1327,
+        "clusters": 277,
+        "car_bps": 3.853892082381517,
+        "se_bps": 0.9038509933073883,
+        "t": 4.2638577718206445,
+        "p": 2.7618683967526986e-05,
+        "q_bh": 7.43918318858716e-05,
+        "survives": true
+      },
+      {
+        "category": "growth",
+        "horizon": 120,
+        "n": 1360,
+        "clusters": 287,
+        "car_bps": 7.215556600431518,
+        "se_bps": 1.3488943372391706,
+        "t": 5.349237817396321,
+        "p": 1.811490440652985e-07,
+        "q_bh": 3.260682793175373e-06,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 1,
+        "n": 803,
+        "clusters": 120,
+        "car_bps": 8.591117378267626,
+        "se_bps": 2.165039488967147,
+        "t": 3.968111169356131,
+        "p": 0.00012429010806572801,
+        "q_bh": 0.000203383813198464,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 5,
+        "n": 803,
+        "clusters": 120,
+        "car_bps": 8.080931958834213,
+        "se_bps": 2.5105347880684117,
+        "t": 3.218808995294436,
+        "p": 0.0016591575385660731,
+        "q_bh": 0.0022972950533991783,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 15,
+        "n": 803,
+        "clusters": 120,
+        "car_bps": 8.32727515072885,
+        "se_bps": 3.1908149670008576,
+        "t": 2.6097643507532826,
+        "p": 0.010223948857547332,
+        "q_bh": 0.010223948857547332,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 30,
+        "n": 803,
+        "clusters": 120,
+        "car_bps": 9.323261038113971,
+        "se_bps": 3.2516917973528665,
+        "t": 2.8672031727311427,
+        "p": 0.0048994459414463945,
+        "q_bh": 0.005511876684127194,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 60,
+        "n": 775,
+        "clusters": 112,
+        "car_bps": 10.708727737136707,
+        "se_bps": 3.806564669403898,
+        "t": 2.813226272815083,
+        "p": 0.005802381769128018,
+        "q_bh": 0.006143698343782608,
+        "survives": true
+      },
+      {
+        "category": "inflation",
+        "horizon": 120,
+        "n": 786,
+        "clusters": 117,
+        "car_bps": 22.296465632489966,
+        "se_bps": 5.08156602664186,
+        "t": 4.387715423866003,
+        "p": 2.5375728039043145e-05,
+        "q_bh": 7.43918318858716e-05,
+        "survives": true
+      }
+    ],
+    "tested_categories": [
+      "employment",
+      "growth",
+      "inflation"
+    ],
+    "surviving_categories": [
+      "employment",
+      "growth",
+      "inflation"
+    ],
+    "supported": true
+  },
+  "h3": {
+    "half_life": {
+      "employment": {
+        "point": null,
+        "ci_low": null,
+        "ci_high": null,
+        "undefined_share": 0.998
+      },
+      "growth": {
+        "point": null,
+        "ci_low": null,
+        "ci_high": null,
+        "undefined_share": 1.0
+      },
+      "inflation": {
+        "point": null,
+        "ci_low": null,
+        "ci_high": null,
+        "undefined_share": 1.0
+      }
+    },
+    "time_to_half_peak": {
+      "employment": {
+        "point": 120.0,
+        "ci_low": 1.0,
+        "ci_high": 120.0,
+        "undefined_share": 0.0
+      },
+      "growth": {
+        "point": 120.0,
+        "ci_low": 1.0,
+        "ci_high": 120.0,
+        "undefined_share": 0.0
+      },
+      "inflation": {
+        "point": 120.0,
+        "ci_low": 1.0,
+        "ci_high": 120.0,
+        "undefined_share": 0.0
+      }
+    },
+    "curves_bps": {
+      "employment": {
+        "1": 3.6260815657471444,
+        "5": 3.9259120836913923,
+        "15": 3.577655934391447,
+        "30": 3.2333855109109355,
+        "60": 3.3501057985617138,
+        "120": 8.154523433215383
+      },
+      "growth": {
+        "1": 1.9897688710394814,
+        "5": 2.202304219410586,
+        "15": 2.190031708432037,
+        "30": 2.4041473057433462,
+        "60": 3.0180499976559694,
+        "120": 6.2577193268636675
+      },
+      "inflation": {
+        "1": 7.592007877701543,
+        "5": 7.216129551344052,
+        "15": 7.469046961365566,
+        "30": 8.484367604111162,
+        "60": 9.722268596421397,
+        "120": 19.773202885249546
+      }
+    },
+    "half_life_disjoint_pairs": [],
+    "time_to_half_peak_disjoint_pairs": [],
+    "supported": false
+  }
+}

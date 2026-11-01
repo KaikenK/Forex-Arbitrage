@@ -1,0 +1,1265 @@
+{
+ "counts": {
+  "raw_events": 462,
+  "canonical": 441,
+  "novelty_scored": 413,
+  "news_days": 144,
+  "span": "2018-01-01 to 2018-12-26"
+ },
+ "novelty_stats": {
+  "count": 413.0,
+  "mean": 0.5701,
+  "std": 0.1057,
+  "min": 0.23,
+  "25%": 0.4957,
+  "50%": 0.5704,
+  "75%": 0.6518,
+  "max": 0.8583
+ },
+ "most_novel": [
+  {
+   "headline": "RBI governor Urjit Patel skips parliamentary panel meeting",
+   "date": "2018-05-18",
+   "sentiment": 0.0,
+   "novelty": 0.8583,
+   "max_similarity": 0.2252,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "dnaindia.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "CEO succession : Axis Bank board recommends 3 names for RBI nod",
+   "date": "2018-07-11",
+   "sentiment": 0.0,
+   "novelty": 0.8203,
+   "max_similarity": 0.217,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "financialexpress.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Option to interim dividend from RBI is open : Subhash Garg",
+   "date": "2018-08-09",
+   "sentiment": 0.0,
+   "novelty": 0.8021,
+   "max_similarity": 0.2758,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "moneycontrol.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Nine in the race for RBI deputy governor post , interview today",
+   "date": "2018-05-10",
+   "sentiment": 0.0,
+   "novelty": 0.8002,
+   "max_similarity": 0.3001,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "mydigitalfc.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "PNB Scam RBI Declines To Share Copies Of Inspection Reports",
+   "date": "2018-05-13",
+   "sentiment": -0.6,
+   "novelty": 0.7956,
+   "max_similarity": 0.2977,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "businessworld.in",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Rupee sheds 3 paise against US dollar in early trade",
+   "date": "2018-03-16",
+   "sentiment": 0.0,
+   "novelty": 0.7773,
+   "max_similarity": 0.3658,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "zeebiz.com",
+   "source": "gdelt"
+  }
+ ],
+ "least_novel": [
+  {
+   "headline": "Rupee plunges to yet another record low of 71 . 10 vs USD",
+   "date": "2018-09-03",
+   "sentiment": -0.95,
+   "novelty": 0.23,
+   "max_similarity": 0.8558,
+   "coverage_count": 2,
+   "categories": "",
+   "domain": "kaumudiglobal.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Rupee closes at historic low of 71 against dollar",
+   "date": "2018-09-01",
+   "sentiment": 0.0,
+   "novelty": 0.2779,
+   "max_similarity": 0.8984,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "khaleejtimes.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "RBI board meeting today : Govt to push for governance reforms in RBI",
+   "date": "2018-11-19",
+   "sentiment": 0.0,
+   "novelty": 0.3085,
+   "max_similarity": 0.7707,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "indianexpress.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Indian rupee touches record low as Asia markets tumble",
+   "date": "2018-09-01",
+   "sentiment": -0.9,
+   "novelty": 0.3094,
+   "max_similarity": 0.7296,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "dailytimes.com.pk",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Indian Rupee slumps to record low of 71 per dollar",
+   "date": "2018-08-31",
+   "sentiment": -0.9,
+   "novelty": 0.3095,
+   "max_similarity": 0.7368,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "iphonefresh.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Crucial RBI board meet today , to iron out differences with government",
+   "date": "2018-11-19",
+   "sentiment": 0.0,
+   "novelty": 0.3303,
+   "max_similarity": 0.801,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "dnaindia.com",
+   "source": "gdelt"
+  }
+ ],
+ "most_positive": [
+  {
+   "headline": "Sensex surges 577 points as RBI keeps rate unchanged , lowers inflation forecast Latest News - NewsNow . in",
+   "date": "2018-04-05",
+   "sentiment": 1.0,
+   "novelty": 0.6665,
+   "max_similarity": 0.3987,
+   "coverage_count": 1,
+   "categories": "central_bank;inflation",
+   "domain": "newsnow.in",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Indian rupee surges 18 paise on bullish RBI growth call",
+   "date": "2018-04-06",
+   "sentiment": 1.0,
+   "novelty": 0.6158,
+   "max_similarity": 0.4013,
+   "coverage_count": 1,
+   "categories": "central_bank",
+   "domain": "moneycontrol.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Markets , rupee surge as PM Modi plans economic review meet this week",
+   "date": "2018-09-12",
+   "sentiment": 1.0,
+   "novelty": 0.5221,
+   "max_similarity": 0.5862,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "newindianexpress.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Surge in FPIs will positively impact rupee : DEA Secy",
+   "date": "2018-09-22",
+   "sentiment": 1.0,
+   "novelty": 0.5133,
+   "max_similarity": 0.5338,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "business-standard.com",
+   "source": "gdelt"
+  }
+ ],
+ "most_negative": [
+  {
+   "headline": "Rupee plunges below 67 against dollar as oil hits $75",
+   "date": "2018-05-07",
+   "sentiment": -1.0,
+   "novelty": 0.7298,
+   "max_similarity": 0.454,
+   "coverage_count": 1,
+   "categories": "commodity",
+   "domain": "indianexpress.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Rupee turbulence sharpens , plunges 38 paise to 68 . 42 a dollar",
+   "date": "2018-05-23",
+   "sentiment": -1.0,
+   "novelty": 0.5912,
+   "max_similarity": 0.4589,
+   "coverage_count": 2,
+   "categories": "",
+   "domain": "kaumudiglobal.com",
+   "source": "gdelt"
+  },
+  {
+   "headline": "Fake rupee note seizure in Switzerland plunges to just 3 in a year",
+   "date": "2018-06-17",
+   "sentiment": -1.0,
+   "novelty": 0.7557,
+   "max_similarity": 0.3333,
+   "coverage_count": 1,
+   "categories": "",
+   "domain": "indiatoday.in",
+   "source": "gdelt"
+  },
+  {
+   "headline": "All - time low against US Dollar : Rupee plunges past 69 - mark on oil prices and trade wars",
+   "date": "2018-06-28",
+   "sentiment": -1.0,
+   "novelty": 0.6162,
+   "max_similarity": 0.4488,
+   "coverage_count": 1,
+   "categories": "geopolitical;commodity",
+   "domain": "indianexpress.com",
+   "source": "gdelt"
+  }
+ ],
+ "categories": {
+  "central_bank": 205,
+  "commodity": 25,
+  "inflation": 23,
+  "rate_decision": 18,
+  "geopolitical": 14,
+  "trade": 7
+ },
+ "daily": [
+  {
+   "date": "2018-01-01",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 34.53
+  },
+  {
+   "date": "2018-01-02",
+   "novelty": null,
+   "sentiment": 0.6,
+   "news": 1,
+   "abs_ret_bps": 4.2
+  },
+  {
+   "date": "2018-01-05",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 7.81
+  },
+  {
+   "date": "2018-01-12",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 13.79
+  },
+  {
+   "date": "2018-01-16",
+   "novelty": null,
+   "sentiment": -0.45,
+   "news": 2,
+   "abs_ret_bps": 10.58
+  },
+  {
+   "date": "2018-01-18",
+   "novelty": 0.7638,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 26.46
+  },
+  {
+   "date": "2018-02-07",
+   "novelty": null,
+   "sentiment": -0.3,
+   "news": 2,
+   "abs_ret_bps": 52.04
+  },
+  {
+   "date": "2018-02-08",
+   "novelty": 0.5702,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 34.39
+  },
+  {
+   "date": "2018-02-09",
+   "novelty": 0.5958,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 37.46
+  },
+  {
+   "date": "2018-02-12",
+   "novelty": 0.6166,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 35.57
+  },
+  {
+   "date": "2018-02-13",
+   "novelty": 0.5233,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 11.24
+  },
+  {
+   "date": "2018-02-19",
+   "novelty": 0.6577,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 76.55
+  },
+  {
+   "date": "2018-02-20",
+   "novelty": 0.6374,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 19.42
+  },
+  {
+   "date": "2018-02-21",
+   "novelty": 0.5575,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 55.81
+  },
+  {
+   "date": "2018-02-22",
+   "novelty": 0.4221,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 4.62
+  },
+  {
+   "date": "2018-02-23",
+   "novelty": 0.6087,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 8.69
+  },
+  {
+   "date": "2018-02-26",
+   "novelty": 0.6005,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 38.24
+  },
+  {
+   "date": "2018-02-27",
+   "novelty": 0.7322,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 11.96
+  },
+  {
+   "date": "2018-02-28",
+   "novelty": 0.6877,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 20.01
+  },
+  {
+   "date": "2018-03-01",
+   "novelty": 0.5784,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 50.84
+  },
+  {
+   "date": "2018-03-06",
+   "novelty": 0.7082,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 28.07
+  },
+  {
+   "date": "2018-03-13",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 2.99
+  },
+  {
+   "date": "2018-03-14",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 18.08
+  },
+  {
+   "date": "2018-03-15",
+   "novelty": 0.5464,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 1.34
+  },
+  {
+   "date": "2018-03-16",
+   "novelty": 0.7654,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 27.39
+  },
+  {
+   "date": "2018-03-20",
+   "novelty": 0.6796,
+   "sentiment": -0.95,
+   "news": 1,
+   "abs_ret_bps": 22.3
+  },
+  {
+   "date": "2018-03-21",
+   "novelty": 0.5898,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 3.42
+  },
+  {
+   "date": "2018-03-22",
+   "novelty": 0.5334,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 25.57
+  },
+  {
+   "date": "2018-03-23",
+   "novelty": 0.5221,
+   "sentiment": 0.4,
+   "news": 1,
+   "abs_ret_bps": 14.51
+  },
+  {
+   "date": "2018-03-27",
+   "novelty": 0.775,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 49.22
+  },
+  {
+   "date": "2018-04-02",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 11.61
+  },
+  {
+   "date": "2018-04-03",
+   "novelty": null,
+   "sentiment": 0.6,
+   "news": 1,
+   "abs_ret_bps": 5.3
+  },
+  {
+   "date": "2018-04-04",
+   "novelty": 0.5759,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 36.08
+  },
+  {
+   "date": "2018-04-05",
+   "novelty": 0.5857,
+   "sentiment": 0.3333,
+   "news": 3,
+   "abs_ret_bps": 13.87
+  },
+  {
+   "date": "2018-04-06",
+   "novelty": 0.5685,
+   "sentiment": 0.34,
+   "news": 5,
+   "abs_ret_bps": 20.54
+  },
+  {
+   "date": "2018-04-10",
+   "novelty": 0.5402,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 5.32
+  },
+  {
+   "date": "2018-04-12",
+   "novelty": 0.4939,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 40.77
+  },
+  {
+   "date": "2018-04-13",
+   "novelty": 0.6513,
+   "sentiment": -0.35,
+   "news": 2,
+   "abs_ret_bps": 13.15
+  },
+  {
+   "date": "2018-04-17",
+   "novelty": 0.5101,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 35.85
+  },
+  {
+   "date": "2018-04-19",
+   "novelty": 0.6561,
+   "sentiment": -0.9,
+   "news": 1,
+   "abs_ret_bps": 51.01
+  },
+  {
+   "date": "2018-04-20",
+   "novelty": 0.6568,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 15.88
+  },
+  {
+   "date": "2018-04-25",
+   "novelty": 0.6656,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 19.67
+  },
+  {
+   "date": "2018-04-26",
+   "novelty": 0.6586,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 74.32
+  },
+  {
+   "date": "2018-05-02",
+   "novelty": 0.596,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 50.97
+  },
+  {
+   "date": "2018-05-07",
+   "novelty": 0.7298,
+   "sentiment": -1.0,
+   "news": 1,
+   "abs_ret_bps": 22.58
+  },
+  {
+   "date": "2018-05-08",
+   "novelty": 0.672,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 46.14
+  },
+  {
+   "date": "2018-05-09",
+   "novelty": 0.6726,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 6.51
+  },
+  {
+   "date": "2018-05-10",
+   "novelty": 0.7269,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 68.12
+  },
+  {
+   "date": "2018-05-14",
+   "novelty": 0.6569,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 1.16
+  },
+  {
+   "date": "2018-05-16",
+   "novelty": 0.6985,
+   "sentiment": 0.7,
+   "news": 1,
+   "abs_ret_bps": 115.55
+  },
+  {
+   "date": "2018-05-18",
+   "novelty": 0.8583,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 11.75
+  },
+  {
+   "date": "2018-05-23",
+   "novelty": 0.5912,
+   "sentiment": -1.0,
+   "news": 1,
+   "abs_ret_bps": 4.39
+  },
+  {
+   "date": "2018-05-28",
+   "novelty": 0.7074,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 78.87
+  },
+  {
+   "date": "2018-05-31",
+   "novelty": 0.6284,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 102.74
+  },
+  {
+   "date": "2018-06-04",
+   "novelty": 0.6815,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 75.63
+  },
+  {
+   "date": "2018-06-05",
+   "novelty": 0.5398,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 20.17
+  },
+  {
+   "date": "2018-06-07",
+   "novelty": 0.5908,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 38.74
+  },
+  {
+   "date": "2018-06-08",
+   "novelty": 0.5251,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 86.77
+  },
+  {
+   "date": "2018-06-11",
+   "novelty": 0.5858,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 14.83
+  },
+  {
+   "date": "2018-06-14",
+   "novelty": 0.669,
+   "sentiment": 0.7,
+   "news": 1,
+   "abs_ret_bps": 19.14
+  },
+  {
+   "date": "2018-06-20",
+   "novelty": 0.7073,
+   "sentiment": -0.9,
+   "news": 1,
+   "abs_ret_bps": 5.88
+  },
+  {
+   "date": "2018-06-25",
+   "novelty": 0.5796,
+   "sentiment": -0.7,
+   "news": 1,
+   "abs_ret_bps": 3.67
+  },
+  {
+   "date": "2018-06-26",
+   "novelty": 0.6482,
+   "sentiment": 0.05,
+   "news": 3,
+   "abs_ret_bps": 71.49
+  },
+  {
+   "date": "2018-06-28",
+   "novelty": 0.5929,
+   "sentiment": -0.6333,
+   "news": 3,
+   "abs_ret_bps": 127.99
+  },
+  {
+   "date": "2018-06-29",
+   "novelty": 0.5474,
+   "sentiment": -0.2083,
+   "news": 6,
+   "abs_ret_bps": 64.02
+  },
+  {
+   "date": "2018-07-02",
+   "novelty": 0.501,
+   "sentiment": -0.5,
+   "news": 1,
+   "abs_ret_bps": 52.58
+  },
+  {
+   "date": "2018-07-03",
+   "novelty": 0.6874,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 37.96
+  },
+  {
+   "date": "2018-07-04",
+   "novelty": 0.4323,
+   "sentiment": -0.4,
+   "news": 2,
+   "abs_ret_bps": 19.68
+  },
+  {
+   "date": "2018-07-09",
+   "novelty": 0.5994,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 45.61
+  },
+  {
+   "date": "2018-07-11",
+   "novelty": 0.8203,
+   "sentiment": 0.35,
+   "news": 2,
+   "abs_ret_bps": 34.98
+  },
+  {
+   "date": "2018-07-12",
+   "novelty": 0.6274,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 26.12
+  },
+  {
+   "date": "2018-07-17",
+   "novelty": 0.6118,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 34.06
+  },
+  {
+   "date": "2018-07-19",
+   "novelty": null,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 37.96
+  },
+  {
+   "date": "2018-07-20",
+   "novelty": 0.6476,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 46.58
+  },
+  {
+   "date": "2018-07-26",
+   "novelty": 0.5743,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 4.36
+  },
+  {
+   "date": "2018-07-30",
+   "novelty": 0.6032,
+   "sentiment": 0.18,
+   "news": 5,
+   "abs_ret_bps": 18.18
+  },
+  {
+   "date": "2018-08-01",
+   "novelty": 0.442,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 27.4
+  },
+  {
+   "date": "2018-08-02",
+   "novelty": 0.4862,
+   "sentiment": 0.15,
+   "news": 4,
+   "abs_ret_bps": 27.7
+  },
+  {
+   "date": "2018-08-03",
+   "novelty": 0.5543,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 45.15
+  },
+  {
+   "date": "2018-08-09",
+   "novelty": 0.772,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 20.55
+  },
+  {
+   "date": "2018-08-14",
+   "novelty": 0.6509,
+   "sentiment": -0.2625,
+   "news": 4,
+   "abs_ret_bps": 125.08
+  },
+  {
+   "date": "2018-08-15",
+   "novelty": 0.7341,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 0.13
+  },
+  {
+   "date": "2018-08-16",
+   "novelty": 0.6141,
+   "sentiment": 0.0167,
+   "news": 6,
+   "abs_ret_bps": 101.5
+  },
+  {
+   "date": "2018-08-17",
+   "novelty": 0.584,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 92.7
+  },
+  {
+   "date": "2018-08-21",
+   "novelty": 0.5382,
+   "sentiment": -0.3,
+   "news": 2,
+   "abs_ret_bps": 6.45
+  },
+  {
+   "date": "2018-08-23",
+   "novelty": 0.5665,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 2.86
+  },
+  {
+   "date": "2018-08-24",
+   "novelty": 0.4851,
+   "sentiment": -0.5,
+   "news": 3,
+   "abs_ret_bps": 69.49
+  },
+  {
+   "date": "2018-08-27",
+   "novelty": 0.732,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 72.57
+  },
+  {
+   "date": "2018-08-28",
+   "novelty": 0.4692,
+   "sentiment": -0.9,
+   "news": 1,
+   "abs_ret_bps": 25.8
+  },
+  {
+   "date": "2018-08-29",
+   "novelty": 0.5676,
+   "sentiment": -0.3,
+   "news": 3,
+   "abs_ret_bps": 85.07
+  },
+  {
+   "date": "2018-08-30",
+   "novelty": 0.5351,
+   "sentiment": -0.1591,
+   "news": 11,
+   "abs_ret_bps": 52.45
+  },
+  {
+   "date": "2018-08-31",
+   "novelty": 0.4624,
+   "sentiment": -0.5,
+   "news": 5,
+   "abs_ret_bps": 69.81
+  },
+  {
+   "date": "2018-09-03",
+   "novelty": 0.4403,
+   "sentiment": -0.31,
+   "news": 5,
+   "abs_ret_bps": 57.42
+  },
+  {
+   "date": "2018-09-04",
+   "novelty": 0.5326,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 10.56
+  },
+  {
+   "date": "2018-09-05",
+   "novelty": 0.5176,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 95.68
+  },
+  {
+   "date": "2018-09-06",
+   "novelty": 0.4537,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 19.51
+  },
+  {
+   "date": "2018-09-07",
+   "novelty": 0.4955,
+   "sentiment": -0.12,
+   "news": 5,
+   "abs_ret_bps": 6.8
+  },
+  {
+   "date": "2018-09-10",
+   "novelty": 0.5615,
+   "sentiment": -0.3,
+   "news": 3,
+   "abs_ret_bps": 21.7
+  },
+  {
+   "date": "2018-09-11",
+   "novelty": 0.5318,
+   "sentiment": -0.3875,
+   "news": 8,
+   "abs_ret_bps": 48.55
+  },
+  {
+   "date": "2018-09-12",
+   "novelty": 0.5774,
+   "sentiment": 0.425,
+   "news": 4,
+   "abs_ret_bps": 75.23
+  },
+  {
+   "date": "2018-09-13",
+   "novelty": 0.4548,
+   "sentiment": 0.8,
+   "news": 1,
+   "abs_ret_bps": 145.88
+  },
+  {
+   "date": "2018-09-14",
+   "novelty": 0.6605,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 14.22
+  },
+  {
+   "date": "2018-09-17",
+   "novelty": 0.5312,
+   "sentiment": -0.25,
+   "news": 6,
+   "abs_ret_bps": 9.37
+  },
+  {
+   "date": "2018-09-18",
+   "novelty": 0.4451,
+   "sentiment": -0.6,
+   "news": 1,
+   "abs_ret_bps": 61.0
+  },
+  {
+   "date": "2018-09-19",
+   "novelty": 0.5392,
+   "sentiment": 0.225,
+   "news": 4,
+   "abs_ret_bps": 80.68
+  },
+  {
+   "date": "2018-09-20",
+   "novelty": 0.4815,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 105.99
+  },
+  {
+   "date": "2018-09-21",
+   "novelty": 0.576,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 86.39
+  },
+  {
+   "date": "2018-09-24",
+   "novelty": 0.6217,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 71.11
+  },
+  {
+   "date": "2018-09-25",
+   "novelty": 0.5299,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 148.14
+  },
+  {
+   "date": "2018-09-27",
+   "novelty": 0.4573,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 43.78
+  },
+  {
+   "date": "2018-09-28",
+   "novelty": 0.5373,
+   "sentiment": -0.8,
+   "news": 1,
+   "abs_ret_bps": 24.74
+  },
+  {
+   "date": "2018-10-01",
+   "novelty": 0.5466,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 61.0
+  },
+  {
+   "date": "2018-10-02",
+   "novelty": 0.567,
+   "sentiment": -0.35,
+   "news": 2,
+   "abs_ret_bps": 172.4
+  },
+  {
+   "date": "2018-10-03",
+   "novelty": 0.602,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 64.4
+  },
+  {
+   "date": "2018-10-04",
+   "novelty": 0.5514,
+   "sentiment": 0.1167,
+   "news": 6,
+   "abs_ret_bps": 77.78
+  },
+  {
+   "date": "2018-10-05",
+   "novelty": 0.485,
+   "sentiment": -0.3333,
+   "news": 6,
+   "abs_ret_bps": 50.1
+  },
+  {
+   "date": "2018-10-08",
+   "novelty": 0.4241,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 61.57
+  },
+  {
+   "date": "2018-10-09",
+   "novelty": 0.469,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 17.22
+  },
+  {
+   "date": "2018-10-11",
+   "novelty": 0.5538,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 6.71
+  },
+  {
+   "date": "2018-10-12",
+   "novelty": 0.5824,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 58.98
+  },
+  {
+   "date": "2018-10-17",
+   "novelty": 0.6652,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 84.3
+  },
+  {
+   "date": "2018-10-22",
+   "novelty": 0.6817,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 93.72
+  },
+  {
+   "date": "2018-10-24",
+   "novelty": 0.7104,
+   "sentiment": -1.0,
+   "news": 1,
+   "abs_ret_bps": 86.41
+  },
+  {
+   "date": "2018-10-29",
+   "novelty": 0.6518,
+   "sentiment": -0.1,
+   "news": 3,
+   "abs_ret_bps": 13.0
+  },
+  {
+   "date": "2018-10-31",
+   "novelty": 0.6108,
+   "sentiment": -0.3333,
+   "news": 3,
+   "abs_ret_bps": 8.07
+  },
+  {
+   "date": "2018-11-01",
+   "novelty": 0.5416,
+   "sentiment": -0.2,
+   "news": 3,
+   "abs_ret_bps": 57.03
+  },
+  {
+   "date": "2018-11-02",
+   "novelty": 0.6889,
+   "sentiment": 0.075,
+   "news": 2,
+   "abs_ret_bps": 102.61
+  },
+  {
+   "date": "2018-11-05",
+   "novelty": 0.5547,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 55.24
+  },
+  {
+   "date": "2018-11-07",
+   "novelty": 0.5004,
+   "sentiment": -0.9,
+   "news": 1,
+   "abs_ret_bps": 50.78
+  },
+  {
+   "date": "2018-11-09",
+   "novelty": 0.5752,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 71.84
+  },
+  {
+   "date": "2018-11-14",
+   "novelty": 0.6425,
+   "sentiment": 0.15,
+   "news": 4,
+   "abs_ret_bps": 86.09
+  },
+  {
+   "date": "2018-11-15",
+   "novelty": 0.669,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 20.68
+  },
+  {
+   "date": "2018-11-16",
+   "novelty": 0.4823,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 70.21
+  },
+  {
+   "date": "2018-11-19",
+   "novelty": 0.3194,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 16.23
+  },
+  {
+   "date": "2018-11-21",
+   "novelty": 0.4687,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 38.36
+  },
+  {
+   "date": "2018-12-03",
+   "novelty": 0.5378,
+   "sentiment": -0.0833,
+   "news": 6,
+   "abs_ret_bps": 22.88
+  },
+  {
+   "date": "2018-12-07",
+   "novelty": 0.4718,
+   "sentiment": -0.55,
+   "news": 2,
+   "abs_ret_bps": 16.93
+  },
+  {
+   "date": "2018-12-11",
+   "novelty": 0.6591,
+   "sentiment": 0.0,
+   "news": 4,
+   "abs_ret_bps": 191.27
+  },
+  {
+   "date": "2018-12-12",
+   "novelty": 0.5628,
+   "sentiment": -0.18,
+   "news": 5,
+   "abs_ret_bps": 15.12
+  },
+  {
+   "date": "2018-12-13",
+   "novelty": 0.4734,
+   "sentiment": 0.0,
+   "news": 3,
+   "abs_ret_bps": 64.72
+  },
+  {
+   "date": "2018-12-14",
+   "novelty": 0.5171,
+   "sentiment": 0.0,
+   "news": 2,
+   "abs_ret_bps": 83.58
+  },
+  {
+   "date": "2018-12-19",
+   "novelty": 0.5555,
+   "sentiment": 0.2,
+   "news": 3,
+   "abs_ret_bps": 142.48
+  },
+  {
+   "date": "2018-12-20",
+   "novelty": 0.5168,
+   "sentiment": 0.2333,
+   "news": 3,
+   "abs_ret_bps": 16.37
+  },
+  {
+   "date": "2018-12-26",
+   "novelty": 0.6066,
+   "sentiment": 0.0,
+   "news": 1,
+   "abs_ret_bps": 0.0
+  }
+ ]
+}
