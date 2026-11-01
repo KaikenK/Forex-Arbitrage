@@ -41,12 +41,15 @@ def _score(ctx: rp.Context, stage: str, sha: str = "abc") -> None:
 def test_every_step_names_a_real_module_and_the_order_is_the_protocol_order() -> None:
     root = Path(rp.__file__).resolve().parent
     for step in rp.STEPS:
-        module = step.args[0].split(".", 1)[1]
-        assert (root / f"{module}.py").exists(), step.name
+        module = step.args[0].split(".")[1:]                      # research.paper.make_paper_assets
+        assert root.joinpath(*module[:-1], f"{module[-1]}.py").exists(), step.name
     order = [s.name for s in rp.STEPS]
     assert order.index("calendar") < order.index("positive_control") < order.index("h2h3")
     assert order.index("freeze") < order.index("score_dedup") < order.index("score_finbert") < order.index("h1_primary")
-    assert order.index("h1_primary") < order.index("h1_decide") and order[-1] == "h6b"
+    assert order.index("h1_primary") < order.index("h1_decide") and order.index("h6") < order.index("h6b")
+    assert order.index("reaction_eval") < order.index("rq2_e2e") and order.index("score_finbert") < order.index("rq2_e2e")
+    assert order.index("arrival_latency") < order.index("arrival_retest")
+    assert order.index("reaction_eval") < order.index("paper_assets")
 
 
 def test_list_works_now_against_the_real_tree() -> None:

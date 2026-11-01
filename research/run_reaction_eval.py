@@ -315,10 +315,18 @@ def main() -> int:
     parser.add_argument("--rebuild-panel", action="store_true")
     parser.add_argument("--export-only", action="store_true",
                         help="refit and write reaction_model.json from the cached panel and eval")
+    parser.add_argument("--arrival-offset-from", type=Path, default=None,
+                        help="read the offset from arrival_latency.json (observed_offset_min)")
     parser.add_argument("--arrival-offset", type=int, default=None,
                         help="arrival-latency re-test: assumed minutes from release to article (default: the "
                              f"pre-registered {ARRIVAL_OFFSET_MIN}, full run)")
     args = parser.parse_args()
+    if args.arrival_offset_from is not None:
+        offset = json.loads(args.arrival_offset_from.read_text(encoding="utf-8")).get("observed_offset_min")
+        if offset is None:
+            print("arrival latency study estimated no offset (< 10 releases); the 15-min assumption stands")
+            return 0
+        args.arrival_offset = int(offset)
     if args.arrival_offset is not None:
         return run_arrival_offset(args.arrival_offset, rebuild=args.rebuild_panel)
     if PANEL.exists() and not args.rebuild_panel:

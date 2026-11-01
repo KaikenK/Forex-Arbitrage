@@ -27,6 +27,9 @@ RESEARCH = Path(__file__).resolve().parent
 ARTIFACTS = RESEARCH / "artifacts"
 H6B_WINDOW_END_UTC = datetime(2026, 11, 4, 18, 30, tzinfo=UTC)
 GDELT_CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)   # 2026-11-10 23:59 IST (DEVIATION 3)
+LATENCY_SAMPLE_END_UTC = datetime(2026, 11, 13, 18, 29, tzinfo=UTC)   # arrival-latency study (§6)
+LIVE_SCORING_FROM_UTC = datetime(2026, 11, 17, 18, 30, tzinfo=UTC)    # 2026-11-18 00:00 IST
+V1_DEPLOYMENT_END = "2026-11-01T21:09:00+00:00"                        # release model deployed (§8)
 HISTDATA_YEARS = range(2018, 2026)
 MAJORS = ("EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF")
 
@@ -113,6 +116,12 @@ def _h6b_window_closed(ctx: Context) -> str | None:
     return None
 
 
+def _not_before(moment: datetime, what: str) -> Gate:
+    def gate(ctx: Context) -> str | None:
+        return None if ctx.now >= moment else f"{what} not before {moment.isoformat()}"
+    return gate
+
+
 def _all(*gates: Gate) -> Gate:
     def gate(ctx: Context) -> str | None:
         for g in gates:
@@ -191,6 +200,27 @@ STEPS: tuple[Step, ...] = (
          _all(CALENDAR, _histdata, _scored("dedup", "finbert", "embed")), heavy=True),
     Step("h6b", "Table: H6b prospective ranking (exploratory)", ("research.run_h6b",), "h6b_results.json",
          _h6b_window_closed),
+    Step("reaction_eval", "Tables: RQ1-RQ4 direction, magnitude, confidence, affected pairs; live export",
+         ("research.run_reaction_eval",), "reaction_eval.json", _all(CALENDAR, _histdata), heavy=True),
+    Step("rq2_e2e", "Table: RQ2-E2E real release headlines (structured vs FinBERT vs V1 vs V1-clean)",
+         ("research.run_rq2_e2e",), "rq2_e2e.json", _all(CALENDAR, _histdata, _scored("dedup", "finbert")), heavy=True),
+    Step("arrival_latency", "Table: release-to-arrival latency of live news",
+         ("research.measure_arrival_latency",), "arrival_latency.json",
+         _not_before(LATENCY_SAMPLE_END_UTC, "latency sample closes")),
+    Step("arrival_retest", "Table: RQ2 arrival-time re-test at the observed latency",
+         ("research.run_reaction_eval", "--arrival-offset-from", "research/artifacts/arrival_latency.json"),
+         "reaction_eval_arrival<offset>.json", _all(_exists("arrival_latency.json", "step: arrival_latency"), _histdata),
+         heavy=True),
+    Step("live_scoring_v1", "Table: prospective test of the deployed V1 model",
+         ("research.score_live_predictions", "--basis", "v1", "--until", V1_DEPLOYMENT_END),
+         "live_predictions_score_v1.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
+    Step("live_scoring_release", "Table: prospective test of the release model",
+         ("research.score_live_predictions", "--basis", "release", "--since", V1_DEPLOYMENT_END),
+         "live_predictions_score_release.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
+    Step("feed_inventory", "Table: news-source inventory (appendix)", ("research.feed_inventory",),
+         "feed_inventory.json", lambda ctx: None),
+    Step("paper_assets", "Paper tables and figures (LaTeX)", ("research.paper.make_paper_assets",),
+         "../paper/latex/tables", _exists("reaction_eval.json", "step: reaction_eval")),
 )
 
 

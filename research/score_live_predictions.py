@@ -11,7 +11,7 @@ was joined:
              reliability of the confidence field
 Descriptive only: few date clusters.
 
-Run: python -m research.score_live_predictions --predictions <jsonl> [--basis v1|release]
+Run: python -m research.score_live_predictions [--predictions <jsonl>] [--basis v1|release]
 """
 from __future__ import annotations
 
@@ -80,13 +80,16 @@ def outcome(bars: pd.Series, start: pd.Timestamp, horizon_min: float) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--predictions", type=Path, required=True)
+    parser.add_argument("--predictions", type=Path, default=None, help="default: the backend's prediction log")
     parser.add_argument("--since", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=DEFAULT_SINCE)
     parser.add_argument("--until", type=lambda s: datetime.fromisoformat(s).astimezone(UTC),
                         default=datetime.now(UTC))
     parser.add_argument("--basis", choices=["v1", "release"], default="v1")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
+    if args.predictions is None:
+        from research.measure_arrival_latency import default_predictions_path
+        args.predictions = default_predictions_path()
 
     frame = load_rows(args.predictions, since=args.since, until=args.until, basis=args.basis)
     end = datetime.now(UTC)

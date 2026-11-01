@@ -38,6 +38,13 @@ time and never while the live semantic service or backend is running.
 | H5 currency sentiment factor (same-day, explanatory) | `h5_lexicon`, `h5_finbert`, `h5_decide` | `h5_results.json` | scores stamped with the freeze hash |
 | H6 currency bias forecast + horizon | `h6` | `h6_results.json`, `h6_horizon.json` | scores stamped with the freeze hash |
 | H6b prospective ranking (exploratory) | `h6b` | `h6b_results.json` | after 2026-11-05 00:00 IST |
+| RQ1–RQ4 release → per-pair direction, magnitude, confidence, affected pairs; live export | `reaction_eval` | `reaction_eval.json`, `reaction_model.json` (copy to `services/semantic/artifacts/release_reaction/`) | calendar, HistData |
+| RQ2-E2E real release headlines (structured vs FinBERT vs V1 vs V1-clean) | `rq2_e2e` | `rq2_e2e.json` | frozen sample, FinBERT scores |
+| Release-to-arrival latency of live news | `arrival_latency` | `arrival_latency.json` | after 2026-11-13 23:59 IST |
+| RQ2 arrival-time re-test at the observed latency | `arrival_retest` | `reaction_eval_arrival<offset>.json` | `arrival_latency.json` |
+| Prospective test: deployed V1 / release model | `live_scoring_v1`, `live_scoring_release` | `live_predictions_score_{v1,release}.json` | after 2026-11-18 00:00 IST |
+| News-source inventory (appendix) | `feed_inventory` | `feed_inventory.json`, `paper/news_sources.md` | none |
+| Paper tables and figures (LaTeX) | `paper_assets` | `research/paper/latex/{tables,figures}/` | `reaction_eval.json` |
 
 After `h6`, copy `h6_horizon.json` to `services/semantic/artifacts/` (or point
 `SEMANTIC_CURRENCY_BIAS_HORIZON` at it) so the live currency index reports the measured horizon.

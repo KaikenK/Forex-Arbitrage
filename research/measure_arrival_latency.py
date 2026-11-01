@@ -8,7 +8,7 @@ Rows: `live_predictions.jsonl` with basis = release and signal_scope = article, 
 Observed offset a* = median effective latency rounded UP to {1, 2, 3, 5, 10, 15}; not estimated
 with fewer than MIN_RELEASES distinct releases. Coverage uses the weekly calendar archive.
 
-Run: python -m research.measure_arrival_latency --predictions <jsonl> --calendar-archive <dir>
+Run: python -m research.measure_arrival_latency [--predictions <jsonl>] [--calendar-archive <dir>]
 """
 from __future__ import annotations
 
@@ -27,6 +27,24 @@ MIN_RELEASES = 10
 STUDY_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CHF", "INR"}
 SINCE = datetime(2026, 11, 1, 21, 49, tzinfo=UTC)          # 2026-11-02 03:19 IST
 UNTIL = datetime(2026, 11, 13, 18, 29, tzinfo=UTC)         # 2026-11-13 23:59 IST
+
+
+def default_predictions_path() -> Path:
+    """The backend's prediction log: this repo's copy, or the semantic worktree's, newest first."""
+    repo = Path(__file__).resolve().parents[1]
+    candidates = [p for p in (repo / "sentiment_assets" / "runtime" / "predictions" / "live_predictions.jsonl",
+                              repo.parent / "Forex-Arbitrage-semantic" / "sentiment_assets" / "runtime" / "predictions"
+                              / "live_predictions.jsonl") if p.exists()]
+    return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else repo / "sentiment_assets" / "runtime" / "predictions" / "live_predictions.jsonl"
+
+
+def default_calendar_archive() -> Path:
+    """Weekly ForexFactory copies kept by the semantic service (retrieval.cache_paths.cache_root)."""
+    import os
+
+    override = os.environ.get("ARBEX_CACHE_DIR")
+    base = Path(override) if override else Path(os.environ.get("LOCALAPPDATA", Path.home() / ".cache")) / "arbex"
+    return base / "calendar" / "archive"
 
 
 def observed_offset(minutes: list[float]) -> int | None:
@@ -83,11 +101,13 @@ def calendar_coverage(archive: Path | None, matched: set[tuple[str, str]], since
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--predictions", type=Path, required=True)
-    parser.add_argument("--calendar-archive", type=Path, default=None)
+    parser.add_argument("--predictions", type=Path, default=None, help="default: default_predictions_path()")
+    parser.add_argument("--calendar-archive", type=Path, default=None, help="default: default_calendar_archive()")
     parser.add_argument("--since", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=SINCE)
     parser.add_argument("--until", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=UNTIL)
     args = parser.parse_args()
+    args.predictions = args.predictions or default_predictions_path()
+    args.calendar_archive = args.calendar_archive or default_calendar_archive()
     frame = load(args.predictions, args.since, args.until)
     first = frame.groupby(["release_event", "release_utc"])["receipt_latency_min"].min() if len(frame) else pd.Series(dtype=float)
     matched = {(e, t.isoformat()) for e, t in first.index} if len(first) else set()
