@@ -54,6 +54,10 @@ services/semantic/artifacts/*
 !services/semantic/artifacts/usdinr_targeted_expanded/
 services/semantic/artifacts/usdinr_targeted_expanded/*
 !services/semantic/artifacts/usdinr_targeted_expanded/reaction_model_artifact.json
+# Release reaction model (SEMANTIC_REACTION_V2), exported by research/run_reaction_eval.py
+!services/semantic/artifacts/release_reaction/
+services/semantic/artifacts/release_reaction/*
+!services/semantic/artifacts/release_reaction/reaction_model.json
 !services/semantic/artifacts/pooled_multipair/
 services/semantic/artifacts/pooled_multipair/*
 !services/semantic/artifacts/pooled_multipair/reaction_model_artifact.json

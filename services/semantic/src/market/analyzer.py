@@ -22,6 +22,7 @@ from .models import MarketReactionSignal
 from .models import RiskFlag
 from .models import TradingSignal
 from .schemas import AnalysisContext
+from .pairs import canonical_pair
 from .schemas import SentimentInference
 
 PAIR_SEPARATOR = "/"
@@ -129,8 +130,16 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
         min_evidence_count: int = DEFAULT_MIN_EVIDENCE_COUNT,
         stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
         ambiguous_symbol_count: int = DEFAULT_AMBIGUOUS_SYMBOL_COUNT,
+        release_augmenter: object | None = None,
     ) -> None:
-        """Initializes the unified article analyzer dependencies."""
+        """Initializes the unified article analyzer dependencies.
+
+        `release_augmenter` (SEMANTIC_REACTION_V2): when the headline reports a scheduled
+        release on the live calendar, each pair's score gains the structured release fields
+        (direction, p_direction, expected_move_bps, move_interval_bps, priced_in, ...) and
+        basis "release"; every other analysis gets basis "news". Existing fields are unchanged.
+        """
+        self._release_augmenter = release_augmenter
         self._sentiment_scorer = sentiment_scorer
         self._reaction_scorer = reaction_scorer
         self._evidence_retriever = evidence_retriever
@@ -179,6 +188,9 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
             }
             for signal in signals
         }
+        if self._release_augmenter is not None:
+            _apply_release_scores(pair_scores, self._release_augmenter, scored_event, resolved_symbols,
+                                  source_url=context.article.source_url or "")
         # Pairs the caller asked for explicitly are deliberate, not ambiguous mappings.
         requested_extra = {pair.strip().upper() for pair in (context.article.currency_pairs or [])}
         requested_extra.discard(resolved_symbols[0] if resolved_symbols else "")
@@ -217,6 +229,31 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
             signal_rationale=signal_rationale,
             pair_scores=pair_scores,
         )
+
+
+def _apply_release_scores(pair_scores: dict, augmenter, event: UnifiedNewsEvent, symbols: list[str],
+                          *, source_url: str = "") -> None:
+    """Merge structured release scores into `pair_scores` (V2 fields only; V1 fields kept)."""
+    pairs = _ordered_unique(list(pair_scores) + [s for s in symbols if "/" in s])
+    try:
+        release = augmenter.score(event.headline or "", event.published_at, pairs,
+                                  body=event.body or "", source_url=source_url)
+    except Exception as exc:                       # never let the augmenter break /analyze
+        UnifiedArticleAnalyzer.logger.warning("release_augmenter_failed", error=str(exc))
+        release = {}
+    for pair in pairs:
+        entry = pair_scores.setdefault(pair, {})
+        if pair in release:
+            r = release[pair]
+            entry.update({"basis": "release", "release": {k: r[k] for k in (
+                "release_event", "release_currency", "release_utc", "actual", "forecast",
+                "standardized_surprise", "minutes_since_release")},
+                "release_direction": r["direction"], "p_direction": r["p_direction"],
+                "expected_move_bps": r["expected_move_bps"], "move_interval_bps": r["move_interval_bps"],
+                "priced_in": r["priced_in"], "post_arrival_move_bps": r["post_arrival_move_bps"],
+                "horizon": r["horizon"]})
+        else:
+            entry.update({"basis": "news", "p_direction": None})
 
 
 def _primary_signals(signals: list[MarketReactionSignal], resolved_symbols: list[str]) -> list[MarketReactionSignal]:
@@ -258,8 +295,7 @@ def _extract_pairs(event: UnifiedNewsEvent, explicit_pair: str | None) -> list[s
     unique_mentions = _ordered_unique(currency_mentions)
     if len(unique_mentions) >= 2 and not pairs:
         for index, base_currency in enumerate(unique_mentions[:-1]):
-            quote_currency = unique_mentions[index + 1]
-            pairs.append(f"{base_currency}{PAIR_SEPARATOR}{quote_currency}")
+            pairs.append(canonical_pair(base_currency, unique_mentions[index + 1]))
 
     return _ordered_unique(pairs)
 

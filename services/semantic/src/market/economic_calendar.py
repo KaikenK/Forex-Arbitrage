@@ -167,6 +167,7 @@ class EconomicCalendar:
             self._last_error = f"{type(exc).__name__}: {exc}"[:300]
             return False
         self._write_atomic(raw, now)
+        self._archive_week(raw, rows)
         self._install(rows, now)
         self._last_error = None
         return True
@@ -183,6 +184,24 @@ class EconomicCalendar:
             finally:
                 if temp.exists():
                     temp.unlink()
+
+    def _archive_week(self, raw: bytes, rows: list) -> None:
+        """Keep one copy per ISO week (latest fetch wins), so past weeks stay auditable."""
+        releases, _ = parse_ff_calendar(rows)
+        stamps = [r.timestamp for r in releases if r.timestamp is not None]
+        if not stamps:
+            return
+        year, week, _ = datetime.fromtimestamp(min(stamps), UTC).isocalendar()
+        archive = self._dir / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        target = archive / f"ff_calendar_{year}-W{week:02d}.json"
+        temp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+        try:
+            temp.write_bytes(raw)
+            os.replace(temp, target)
+        finally:
+            if temp.exists():
+                temp.unlink()
 
     def start(self) -> None:
         """Background refresher (daemon). Safe to call once at service startup."""
@@ -236,6 +255,11 @@ class EconomicCalendar:
             if now <= ts <= now + hours * 3600:
                 out.append({**asdict(release), "minutes_from_now": round((ts - now) / 60.0, 1)})
         return out
+
+    def releases_between(self, start_ts: float, end_ts: float) -> list[CalendarRelease]:
+        """Time-known rows with start_ts <= release time <= end_ts (for headline matching)."""
+        with self._lock:
+            return [r for r in self._releases if r.timestamp is not None and start_ts <= r.timestamp <= end_ts]
 
     def proximity(self, currencies: Iterable[str]) -> dict[str, object]:
         """Next / last high-impact, time-known release of any of `currencies`, and whether

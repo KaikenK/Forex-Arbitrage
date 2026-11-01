@@ -63,6 +63,7 @@ def build_runtime_service(
     history_store: JsonlAnalysisHistoryStore | None = None,
     analysis_observer=None,
     sentiment_tap=None,
+    release_augmenter=None,
 ) -> UnifiedArticleAnalysisService:
     """Builds a local runtime analysis service from trained artifacts.
 
@@ -111,6 +112,7 @@ def build_runtime_service(
         sentiment_scorer=sentiment_scorer,
         reaction_scorer=final_scorer,
         evidence_retriever=evidence_retriever,
+        release_augmenter=release_augmenter,
     )
     return UnifiedArticleAnalysisService(analyzer=analyzer, history_store=history_store,
                                          analysis_observer=analysis_observer)

@@ -497,8 +497,16 @@ def main():
     # Per-currency market bias (H6 formula) on /v1/currency-index. Off by default, so the
     # service behaves exactly as before; SEMANTIC_ENABLE_CURRENCY_INDEX is the older alias.
     currency_bias_enabled = _env_flag("SEMANTIC_CURRENCY_BIAS", _env_flag("SEMANTIC_ENABLE_CURRENCY_INDEX", False))
-    calendar = _build_economic_calendar() if currency_bias_enabled else None
+    # Structured release scoring on /analyze (headline → calendar release → per-pair direction,
+    # calibrated p_direction, expected move). Off by default; needs the live calendar.
+    reaction_v2_enabled = _env_flag("SEMANTIC_REACTION_V2", False)
+    calendar = _build_economic_calendar() if (currency_bias_enabled or reaction_v2_enabled) else None
     tracker = _build_currency_bias_tracker(embedder, calendar) if currency_bias_enabled else None
+    release_augmenter = None
+    if reaction_v2_enabled:
+        from market.release_reaction_scorer import ReleaseAugmenter, ReleaseReactionModel
+        release_augmenter = ReleaseAugmenter(calendar, ReleaseReactionModel.load(
+            _env_path("SEMANTIC_RELEASE_ARTIFACT", PROJECT_ROOT / "artifacts" / "release_reaction" / "reaction_model.json")))
     tap, observer = tracker.hooks() if tracker is not None else (None, None)
     service = build_runtime_service(
         reaction_artifact_path=args.reaction_artifact.resolve(),
@@ -509,6 +517,7 @@ def main():
         history_store=history_store,
         analysis_observer=observer,
         sentiment_tap=tap,
+        release_augmenter=release_augmenter,
     )
     evaluation_payload = _load_evaluation_from_artifact(args.reaction_artifact.resolve())
 
@@ -540,7 +549,8 @@ def main():
     # either way so the backend can detect the capability.
     service_info = build_service_info(
         args.reaction_artifact.resolve(),
-        {**runtime_flags, "currency_index": currency_bias_enabled, "economic_calendar": calendar is not None},
+        {**runtime_flags, "currency_index": currency_bias_enabled, "economic_calendar": calendar is not None,
+         "reaction_v2": release_augmenter is not None},
     )
     api_app = build_app(service, dashboard_data, runtime_flags, service_info=service_info,
                         currency_index_provider=tracker.snapshot if tracker is not None else None,
