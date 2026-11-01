@@ -12,7 +12,8 @@ Pre-registered in RESEARCH_TRACKER §2 (RQ2-E2E, 2026-11-02) with clarification 
   direction   from the article time t, r(t, t + 60 min) on each own pair (HistData M1) for
               (i) the structured pipeline (theory sign of the extracted z, as live),
               (ii) FinBERT polarity of the headline oriented to the currency (frozen scores),
-              (iii) the V1 text model (`ArtifactReactionScorer`, pooled_multipair artifact);
+              (iii) the V1 text model (`ArtifactReactionScorer`, pooled_multipair artifact), and
+              (iv) V1-clean, the same model retrained without the synthetic rows (C32);
               plus release-time r(release, +15 min) for the structured pipeline
   clustering  release moment; bootstrap CIs
 
@@ -50,6 +51,9 @@ SERVICE_SRC = next((p for p in (_REPO / "services" / "semantic" / "src",
                                 _REPO.parent / "Forex-Arbitrage-semantic" / "services" / "semantic" / "src")
                     if p.exists()), _REPO / "services" / "semantic" / "src")
 V1_ARTIFACT = SERVICE_SRC.parent / "artifacts" / "pooled_multipair" / "reaction_model_artifact.json"
+# C32: the same model retrained without the 190 synthetic USD/INR rows; never deployed.
+V1_CLEAN_ARTIFACT = SERVICE_SRC.parent / "artifacts" / "pooled_multipair_clean" / "reaction_model_artifact.json"
+MODELS = ("structured", "finbert", "v1_text_model", "v1_clean_text_model")
 RELEASE_WINDOW = timedelta(minutes=60)
 ARTICLE_HORIZON_MIN = 60
 RELEASE_HORIZON_MIN = 15
@@ -233,11 +237,11 @@ def direction_summary(rows: pd.DataFrame, column: str, target: str) -> dict:
 
 def evaluate(rows: pd.DataFrame) -> dict:
     out = {"article_time_r60": {}, "release_time_r15": {}}
-    for name in ("structured", "finbert", "v1_text_model"):
+    for name in MODELS:
         out["article_time_r60"][name] = direction_summary(rows, f"dir_{name}", "r_article")
-    common = rows[[f"dir_{n}" for n in ("structured", "finbert", "v1_text_model")]].notna().all(axis=1)
+    common = rows[[f"dir_{n}" for n in MODELS]].notna().all(axis=1)
     out["article_time_r60_common_rows"] = {name: direction_summary(rows[common], f"dir_{name}", "r_article")
-                                           for name in ("structured", "finbert", "v1_text_model")}
+                                           for name in MODELS}
     out["release_time_r15"]["structured"] = direction_summary(rows, "dir_structured", "r_release")
     return out
 
@@ -276,9 +280,11 @@ def main() -> int:
                            for p, pair, c in zip(rows["polarity"], rows["pair"], rows["currency"])]
     v1 = v1_text_model_directions(rows)
     rows["dir_v1_text_model"] = [v1.get((str(e), p), np.nan) for e, p in zip(rows["event_id"], rows["pair"])]
+    v1_clean = v1_text_model_directions(rows, V1_CLEAN_ARTIFACT)
+    rows["dir_v1_clean_text_model"] = [v1_clean.get((str(e), p), np.nan) for e, p in zip(rows["event_id"], rows["pair"])]
 
     result = {
-        "pre_registration": "RESEARCH_TRACKER §2 RQ2-E2E (2026-11-02) + C30",
+        "pre_registration": "RESEARCH_TRACKER §2 RQ2-E2E (2026-11-02) + C30, C32",
         "freeze_sha256": freeze["sha256"], "computed_at": datetime.now(UTC).isoformat(),
         "candidates": int(len(cands)), "candidate_moments": int(cands["moment"].nunique()) if len(cands) else 0,
         "extraction": {"matched": float(extracted["matched"].mean()) if len(extracted) else None,

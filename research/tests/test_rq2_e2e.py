@@ -86,6 +86,7 @@ def test_returns_and_summary_on_synthetic_bars():
                               for r in rows.itertuples(index=False)]
     rows["dir_finbert"] = np.nan
     rows["dir_v1_text_model"] = np.nan
+    rows["dir_v1_clean_text_model"] = np.nan
     summary = e2e.evaluate(rows)
     assert summary["article_time_r60"]["structured"]["accuracy"] == pytest.approx(1.0)
     assert summary["release_time_r15"]["structured"]["n"] == 4
