@@ -189,12 +189,16 @@ class CurrencyBiasClient:
 
 def channel_snapshot(pair: str, opportunity_type: str, *, window_bias: Optional[Dict[str, Any]],
                      client: Optional[CurrencyBiasClient], applied: bool,
-                     release: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """What the log records per opportunity: both channels + window bias, cached values only."""
+                     release: Optional[Dict[str, Any]] = None,
+                     window_bias_v2: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """What the log records per opportunity: both channels + window bias, cached values only.
+    `window_bias_v2` (C35) is shadow: recorded with the residual exposure RQ5 needs, never applied."""
     payload = client.cached(pair) if client is not None else None
     risk = risk_channel(payload)
     direction = direction_channel(payload, residual_exposure(opportunity_type))
     return {
+        "window_bias_v2": (None if window_bias_v2 is None else
+                           {**window_bias_v2, "residual_exposure": residual_exposure(opportunity_type)}),
         "snapshot_at": time.time(),
         "applied": applied,
         "currency_bias_status": client.status if client is not None else "no_client",

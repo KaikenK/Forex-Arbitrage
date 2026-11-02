@@ -272,8 +272,18 @@ from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snap
 
 currency_bias_client = CurrencyBiasClient(sentiment_bridge)
 _window_bias_cache: Dict[str, Dict[str, Any]] = {}
+_window_bias_v2_cache: Dict[str, Dict[str, Any]] = {}
 _release_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
+WINDOW_V2_EXTRAS = ("source", "release_items", "news_items", "unoriented_items", "duplicates_dropped",
+                    "late_dropped", "expected_move_bps")
+
+
+def _window_bias_v2(client, pair: str) -> Dict[str, Any]:
+    """Window v2 (C35, shadow) through the live window's own penalty formula, so RQ5 compares inputs."""
+    payload = sentiment_bridge.get_window_bias_v2(pair, client._window_minutes)
+    bias = client._to_bias(pair=pair, payload=payload, freshness_seconds=0.0).to_dict()
+    return {**bias, **{key: payload.get(key) for key in WINDOW_V2_EXTRAS}}
 
 
 async def refresh_semantic_snapshot_cache() -> None:
@@ -285,6 +295,10 @@ async def refresh_semantic_snapshot_cache() -> None:
             for pair in sorted(_sentiment_pair_allowlist):
                 _window_bias_cache[pair] = (await client.get_bias(pair)).to_dict()
                 _release_cache[pair] = await asyncio.to_thread(sentiment_bridge.latest_release, pair)
+                try:
+                    _window_bias_v2_cache[pair] = await asyncio.to_thread(_window_bias_v2, client, pair)
+                except Exception as e:      # shadow only: never disturbs the live window
+                    logger.warning(f"Window bias v2 failed for {pair}: {e}")
             await asyncio.to_thread(currency_bias_client.refresh)
         except asyncio.CancelledError:
             raise
@@ -298,7 +312,8 @@ def _semantic_snapshot(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         pair = normalize_pair(str((row.get("symbols") or [""])[0]))
         return channel_snapshot(pair, str(row.get("type")), window_bias=_window_bias_cache.get(pair),
                                 client=currency_bias_client, applied=currency_bias_enabled(),
-                                release=_release_cache.get(pair))
+                                release=_release_cache.get(pair),
+                                window_bias_v2=_window_bias_v2_cache.get(pair))
     except Exception as e:      # the log must never fail because of the snapshot
         logger.warning(f"Semantic snapshot failed: {e}")
         return None

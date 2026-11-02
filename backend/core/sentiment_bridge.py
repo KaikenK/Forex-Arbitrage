@@ -492,6 +492,16 @@ class SentimentBridge:
                         "priced_in": bool(score.get("priced_in", age >= 1.0))}
         return best
 
+    def get_window_bias_v2(self, pair: str, window_minutes: int) -> dict[str, Any]:
+        """Window bias v2 (C35, shadow): see `backend.core.window_bias_v2`."""
+        from backend.core.window_bias_v2 import window_bias_v2
+
+        normalized_pair = normalize_pair(pair)
+        self._ensure_runtime_cache_loaded(normalized_pair)
+        with self._state_lock:
+            history = [dict(item) for item in self._analysis_history.get(normalized_pair, [])]
+        return window_bias_v2(history, normalized_pair, self._clock(), max(1, window_minutes))
+
     def get_window_bias(self, pair: str, window_minutes: int) -> dict[str, Any]:
         """Aggregate locally mirrored analyses into a directional window bias.
 
