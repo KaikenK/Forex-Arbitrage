@@ -1,0 +1,28 @@
+\section{Protocol deviations and clarifications}\label{app:deviations}
+All entries are dated in the append-only tracker (\texttt{research/RESEARCH\_TRACKER.md}, \S6) and
+were made before any result they could affect existed. \emph{Deviations} change a locked clause;
+\emph{clarifications} fill a gap the locked text left open without changing it. Clarification C26
+was never assigned.
+
+\begin{small}\noindent
+\begin{tabular}{@{}p{0.11\linewidth}p{0.85\linewidth}@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Deviations}}\\
+\midrule
+D1 & GDELT sample cutoff moved from 2026-10-31 to 2026-11-02 00:00 IST after a three-day laptop outage. \\
+D2 & Cutoff moved again, to 2026-11-04 00:00 IST, after further outages; D1's statement that it would not move again is left in place and declared false. \\
+D3 & Daily GDELT sample withdrawn (it covered only the minutes before midnight UTC, Figure~\ref{fig:gdelt}); re-collected as weekday one-hour slices ending 07, 09, 11, 13, 14, 15, 17, 20~UTC over 2023-07..2025-04 with a currency-focused query chosen by a pre-stated rule; cutoff 2026-11-10 23:59 IST; H1, H5, H6 become the unscheduled-news arm of RQ1--RQ5. \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Clarifications}}\\
+\midrule
+C1--C5 & H1: market-wrap terms match whole words; a USD-only headline is attributed to all four majors; control days are the previous 20 weekdays, at least 10 computable; the first 12 months are training-only. \\
+C6--C17 & H6: event window 24~h; a component with no data is neutral (0); headlines with undefined novelty are dropped; indirect currency attribution has relevance 0.5; z-scores use training-window statistics (live: expanding, $\geq30$ values); USD-only baseline headlines go to all majors; intraday lags 2/5~min; USD/INR target skips one bar; IC from the full model, tested by clustered rank regression; a signal whose news window touches a missing window is dropped. \\
+C18--C19 & H6b: channels nest cumulatively; opportunities with a one-sided next quote are dropped. \\
+C20--C25 & RQ1--RQ4: response cells keyed by (release currency, category, pair), $\beta$ through the origin; confidence fitted on in-sample correctness; split-conformal details; reference bar identical to H2; baseline ``$v$ alone'' is an OLS on $v$; RQ2--RQ4 use own pairs; abstentions counted, not imputed. \\
+C27--C29 & Live data: synthetic demo headlines excluded from the prospective test; H6b also reported on the clean window; latency counts the fetch time as receipt and reports processing time. \\
+C30 & RQ2-E2E: candidate definition, extractor run, tolerance and targets fixed before any result. \\
+C31 & H5: weekdays missing a scheduled slice are data gaps, not no-news days. \\
+C32 & A V1 text model retrained without synthetic rows is reported as a baseline; it is never deployed. \\
+\bottomrule
+\end{tabular}
+\end{small}
