@@ -25,14 +25,28 @@ BEFORE = CUTOFF_UTC - timedelta(hours=1)
 AFTER = CUTOFF_UTC + timedelta(minutes=1)
 
 
-def _event(event_id: str, headline: str = "ECB holds rates as euro steadies on inflation data") -> RawEvent:
-    return RawEvent(event_id=event_id, timestamp=datetime(2019, 1, 2, 12, tzinfo=UTC), headline=headline,
-                    source="gdelt", currencies=("EUR",))
+def _event(event_id: str, headline: str = "ECB holds rates as euro steadies on inflation data",
+           timestamp: datetime = datetime(2019, 1, 2, 12, tzinfo=UTC)) -> RawEvent:
+    return RawEvent(event_id=event_id, timestamp=timestamp, headline=headline, source="gdelt", currencies=("EUR",))
 
 
-def _shard(shard_dir, name: str, n_events: int, *, completed_at=None, mtime=None, confirmed_empty=True):
+def _month_days(name: str) -> list[date]:
+    first = datetime.strptime(name[:8], "%Y%m%d").date()
+    nxt = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
+    return [first + timedelta(days=i) for i in range((nxt - first).days)]
+
+
+def _shard(shard_dir, name: str, n_events: int, *, completed_at=None, mtime=None, confirmed_empty=True,
+           per_day: dict[date, int] | None = None):
+    """`n_events` events, one per day of the month in turn; `per_day` overrides the daily counts."""
+    days = _month_days(name)
+    stamps = ([datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=12)
+               for day, n in per_day.items() for _ in range(n)] if per_day is not None else
+              [datetime.combine(days[i % len(days)], datetime.min.time(), tzinfo=UTC) + timedelta(hours=12)
+               for i in range(n_events)])
+    n_events = len(stamps)
     if n_events:
-        pd.DataFrame([_event(f"{name}-{i}").to_row() for i in range(n_events)]).to_parquet(
+        pd.DataFrame([_event(f"{name}-{i}", timestamp=ts).to_row() for i, ts in enumerate(stamps)]).to_parquet(
             shard_dir / f"{name}.parquet", index=False)
     meta = {"count": n_events, "fetched_at": "2026-08-18T17:00:00+00:00"}
     if completed_at is not None:
@@ -45,51 +59,76 @@ def _shard(shard_dir, name: str, n_events: int, *, completed_at=None, mtime=None
         os.utime(sentinel, (mtime.timestamp(), mtime.timestamp()))
 
 
-# DEVIATION 4: one shard per calendar month 2018-01..2025-04, named by the month start.
+# DEVIATIONS 4-5: one shard per calendar month 2019-10..2025-04, named by the month start.
 @pytest.fixture
 def shards(tmp_path, monkeypatch):
     monkeypatch.setattr(freeze_mod, "DAILY_COUNTS", tmp_path / "no_counts.json")
-    _shard(tmp_path, "20180101T000000", 3, completed_at=BEFORE)
-    _shard(tmp_path, "20180201T000000", 2, completed_at=AFTER)                 # too late
-    _shard(tmp_path, "20180301T000000", 4, mtime=BEFORE)                       # old sentinel, mtime
-    _shard(tmp_path, "20180401T000000", 0, completed_at=BEFORE)                # confirmed empty
-    _shard(tmp_path, "20180501T000000", 0, mtime=BEFORE, confirmed_empty=False)  # unverified empty
-    _shard(tmp_path, "20180115T000000", 5, completed_at=BEFORE)                # not a month start
+    _shard(tmp_path, "20191001T000000", 3, completed_at=BEFORE)
+    _shard(tmp_path, "20191101T000000", 2, completed_at=AFTER)                 # too late
+    _shard(tmp_path, "20191201T000000", 4, mtime=BEFORE)                       # old sentinel, mtime
+    _shard(tmp_path, "20200101T000000", 0, completed_at=BEFORE)                # confirmed empty
+    _shard(tmp_path, "20200201T000000", 0, mtime=BEFORE, confirmed_empty=False)  # unverified empty
+    _shard(tmp_path, "20191015T000000", 5, completed_at=BEFORE)                # not a month start
+    _shard(tmp_path, "20190901T000000", 5, completed_at=BEFORE)                # before the sample (DEVIATION 5)
+    _shard(tmp_path, "20180101T000000", 0, completed_at=BEFORE)                # extraction month without titles
     _shard(tmp_path, "20250501T000000", 5, completed_at=BEFORE)                # after the period
     _shard(tmp_path, "20250401T000000", 1, mtime=AFTER)                        # old, mtime too late
     return tmp_path
 
 
-def test_expected_windows_are_the_88_months():
+def test_expected_windows_are_the_67_months():
     names = freeze_mod.expected_windows()
-    assert EXPECTED_WINDOWS == 88 and names[0] == "20180101T000000" and names[-1] == "20250401T000000"
+    assert EXPECTED_WINDOWS == 67 and names[0] == "20191001T000000" and names[-1] == "20250401T000000"
+    assert freeze_mod.SAMPLE_START == date(2019, 10, 1) and freeze_mod.SAMPLE_END == date(2025, 4, 30)
 
 
 def test_freeze_membership_follows_completion_time_and_months(shards):
     freeze = build_freeze(shards)
     names = [row["window"] for row in freeze["shards"]]
-    assert names == ["20180101T000000", "20180301T000000", "20180401T000000", "20180501T000000"]
-    assert freeze["excluded_completed_after_cutoff"] == ["20180201T000000", "20250401T000000"]
+    assert names == ["20191001T000000", "20191201T000000", "20200101T000000", "20200201T000000"]
+    assert freeze["excluded_completed_after_cutoff"] == ["20191101T000000", "20250401T000000"]
     assert freeze["completion_time_source_counts"] == {"completed_at": 2, "mtime": 2}
     assert freeze["events"] == 7
+    assert freeze["sample"] == ["2019-10-01", "2025-04-30"]
     assert freeze["coverage"] == round(4 / EXPECTED_WINDOWS, 4)
     assert freeze["unverified_empty_windows"] == 1
     assert freeze["coverage_excluding_unverified_empty"] == round(3 / EXPECTED_WINDOWS, 4)
     # Every day of a month without a frozen shard is a missing unit (C17/C31).
-    assert "2018-02-14" in freeze["missing_windows"] and "2018-01-14" not in freeze["missing_windows"]
+    assert "2019-11-14" in freeze["missing_windows"]
+    assert min(freeze["missing_windows"]) >= "2019-10-01" and max(freeze["missing_windows"]) <= "2025-04-30"
     assert len(freeze["missing_shards"]) == EXPECTED_WINDOWS - 4
     assert freeze["mtime_vs_fetched_at_seconds"]["n"] == 2
 
 
-def test_gkg_gap_days_from_daily_counts(shards, monkeypatch):
-    counts = {f"2018-01-{d:02d}": 300_000 for d in range(1, 32)}
-    counts["2018-01-20"] = 1_000                      # < 10% of the trailing median: a gap
-    counts.pop("2018-01-25")                          # absent: zero, a gap
+def test_gkg_gap_days_from_daily_counts(shards):
+    counts = {f"2019-10-{d:02d}": 300_000 for d in range(1, 32)}
+    counts["2019-10-20"] = 1_000                      # < 10% of the trailing median: a gap
+    counts.pop("2019-10-25")                          # absent: zero, a gap
     path = shards / "counts.json"
     path.write_text(json.dumps({"counts": counts}), encoding="utf-8")
-    monkeypatch.setattr(freeze_mod, "DAILY_COUNTS", path)
-    missing = build_freeze(shards)["missing_windows"]
-    assert "2018-01-20" in missing and "2018-01-25" in missing and "2018-01-21" not in missing
+    gaps = freeze_mod._missing_day_rules(["20191001T000000"], counts_path=path)["unfiltered_counts"]
+    assert "2019-10-20" in gaps and "2019-10-25" in gaps and "2019-10-21" not in gaps
+
+
+def test_tagged_event_gap_days_from_the_frozen_shards(tmp_path, monkeypatch):
+    """DEVIATION 5: a day with no tagged event, or fewer than 10% of its trailing 28-day median,
+    is a gap even when the unfiltered GKG count for that day is normal."""
+    monkeypatch.setattr(freeze_mod, "DAILY_COUNTS", tmp_path / "no_counts.json")
+    october = {day: 50 for day in _month_days("20191001T000000")}
+    october[date(2019, 10, 20)] = 2                   # < 10% of the trailing median of 50
+    del october[date(2019, 10, 25)]                   # no tagged event that day
+    _shard(tmp_path, "20191001T000000", 0, completed_at=BEFORE, per_day=october)
+    _shard(tmp_path, "20191101T000000", 0, completed_at=BEFORE,
+           per_day={day: 50 for day in _month_days("20191101T000000")})
+    _shard(tmp_path, "20191201T000000", 0, completed_at=BEFORE)                # frozen but empty
+    freeze = build_freeze(tmp_path)
+    missing = set(freeze["missing_windows"])
+    assert {"2019-10-20", "2019-10-25", "2019-12-01", "2019-12-31"} <= missing
+    assert not {"2019-10-21", "2019-11-14"} & missing
+    # Days from 2020-01-01 belong to missing months; December is frozen but has no tagged event.
+    assert freeze["missing_days_by_rule"]["missing_month"] == (date(2025, 4, 30) - date(2020, 1, 1)).days + 1
+    assert freeze["missing_days_by_rule"]["tagged_counts"] == 2 + (date(2025, 4, 30) - date(2019, 12, 1)).days + 1
+    assert freeze["missing_days_by_rule"]["unfiltered_counts"] == 0
 
 
 def test_write_refuses_before_the_cutoff_and_never_overwrites(shards, tmp_path):
@@ -106,7 +145,7 @@ def test_write_refuses_before_the_cutoff_and_never_overwrites(shards, tmp_path):
 def test_hash_detects_any_change_to_a_frozen_shard(shards):
     freeze = build_freeze(shards)
     verify_freeze(freeze, shards)
-    _shard(shards, "20180101T000000", 4, completed_at=BEFORE)       # rewritten after freezing
+    _shard(shards, "20191001T000000", 4, completed_at=BEFORE)       # rewritten after freezing
     with pytest.raises(FreezeError):
         verify_freeze(freeze, shards)
 
@@ -115,13 +154,13 @@ def test_frozen_events_come_only_from_listed_shards(shards):
     freeze = build_freeze(shards)
     events = load_frozen_events(freeze, shards)
     windows = {event_id.rsplit("-", 1)[0] for event_id in events["event_id"]}
-    assert windows == {"20180101T000000", "20180301T000000"}
+    assert windows == {"20191001T000000", "20191201T000000"}
     assert len(events) == 7
 
 
 def test_later_downloads_do_not_enter_an_existing_freeze(shards):
     freeze = build_freeze(shards)
-    _shard(shards, "20180601T000000", 9, completed_at=AFTER)
+    _shard(shards, "20200301T000000", 9, completed_at=AFTER)
     assert len(load_frozen_events(freeze, shards)) == 7
 
 

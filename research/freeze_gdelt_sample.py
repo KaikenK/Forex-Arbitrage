@@ -1,15 +1,19 @@
 """Freeze the H1/H5/H6 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
 PROTOCOL 2026-10-25; cutoff moved by DEVIATIONS 1-3; sample re-collected by DEVIATION 3 and again
-by DEVIATION 4, 2026-11-02, before any H1/H5/H6 result existed).
+by DEVIATION 4, 2026-11-02; period and gap rule amended by DEVIATION 5, 2026-11-02; all before any
+H1/H5/H6 result existed).
 
-Locked rule, as amended by DEVIATION 4: H1/H5/H6 use the GDELT GKG extraction on BigQuery
-(`arbex-gdelt.gdelt_fx.fx_headlines`), turned into one shard per month 2018-01..2025-04 by
-`gkg_ingest.py` (shard dir `artifacts/gdelt_gkg_shards`), counting only shards completed before the
-cutoff, 2026-11-10 23:59 IST (18:29 UTC). The shard list is frozen at the cutoff with a content
-hash. Coverage (months done / 88, events) is reported as is. `missing_windows` lists the UTC days
-that are data gaps (the unit C17/C31 drop): days of a missing month, and days whose unfiltered
-GKG count is zero or below 10% of the trailing 28-day median (`gkg_ingest.gap_days`, counts in
-`artifacts/gdelt_gkg_daily_counts.json`). Data written after the cutoff is not used.
+Locked rule, as amended by DEVIATIONS 4-5: H1/H5/H6 use the GDELT GKG extraction on BigQuery
+(`arbex-gdelt.gdelt_fx.fx_headlines`), turned into one shard per month by `gkg_ingest.py` (shard dir
+`artifacts/gdelt_gkg_shards`). The extraction covers 2018-01..2025-04, but GKG page titles start in
+September 2019, so the sample is 2019-10..2025-04 (67 months; earlier shards are ignored). Only
+shards completed before the cutoff, 2026-11-10 23:59 IST (18:29 UTC), count. The shard list is
+frozen at the cutoff with a content hash. Coverage (months done / 67, events) is reported as is.
+`missing_windows` lists the UTC days that are data gaps (the unit C17/C31 drop): days of a missing
+month; days whose unfiltered GKG count is zero or below 10% of the trailing 28-day median
+(DEVIATION 4, counts in `artifacts/gdelt_gkg_daily_counts.json`); and days whose tagged-event
+count in the frozen shards is zero or below 10% of its trailing 28-day median (DEVIATION 5). Both
+count rules are `gkg_ingest.gap_days`. Data written after the cutoff is not used.
 
 Run at or after the cutoff (it refuses earlier, and refuses to overwrite an existing freeze):
   python -m research.freeze_gdelt_sample
@@ -29,6 +33,7 @@ import argparse
 import hashlib
 import json
 import os
+from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -42,12 +47,12 @@ DAILY_COUNTS = gkg_ingest.DAILY_COUNTS
 FREEZE_PATH = ARTIFACTS / "gdelt_sample_freeze.json"
 
 CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)      # = 2026-11-10 23:59 IST (DEVIATIONS 3-4)
-SAMPLE_START = gkg_ingest.FIRST_MONTH
+SAMPLE_START = date(2019, 10, 1)                               # DEVIATION 5: first full month with titles
 SAMPLE_END = date(2025, 4, 30)                                 # inclusive
 SOURCE = "bigquery_gkg"
 
 
-def expected_windows(first: date = gkg_ingest.FIRST_MONTH, last: date = gkg_ingest.LAST_MONTH) -> list[str]:
+def expected_windows(first: date = SAMPLE_START, last: date = gkg_ingest.LAST_MONTH) -> list[str]:
     """One shard per month, named as `gkg_ingest` names them."""
     return [gkg_ingest.shard_name(m) for m in gkg_ingest.months(first, last)]
 
@@ -93,6 +98,7 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
     excluded_after_cutoff: list[str] = []
     sources = {"completed_at": 0, "mtime": 0}
     mtime_vs_fetched: list[float] = []
+    tagged_per_day: Counter[str] = Counter()
     for sentinel in sorted(Path(shard_dir).glob("*.done")):
         name = sentinel.stem
         if name not in EXPECTED:                      # off-schedule or outside the period
@@ -107,7 +113,11 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
             fetched = fetched if fetched.tzinfo else fetched.replace(tzinfo=UTC)
             mtime_vs_fetched.append(abs((completed - fetched).total_seconds()))
         shard = Path(shard_dir) / f"{name}.parquet"
-        events = len(pd.read_parquet(shard, columns=["event_id"])) if shard.exists() else 0
+        events = 0
+        if shard.exists():
+            stamps = pd.read_parquet(shard, columns=["timestamp"])["timestamp"]
+            events = len(stamps)
+            tagged_per_day.update(pd.to_datetime(stamps, utc=True).dt.strftime("%Y-%m-%d").value_counts().to_dict())
         qualifying.append({
             "window": name, "events": events, "completed_at": completed.isoformat(),
             "completed_at_source": source,
@@ -118,6 +128,7 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
         })
     names = [row["window"] for row in qualifying]
     unverified = sum(row["unverified_empty"] for row in qualifying)
+    rules = _missing_day_rules(names, tagged_counts=tagged_per_day)
     return {
         "cutoff_utc": cutoff.isoformat(),
         "sample": [SAMPLE_START.isoformat(), SAMPLE_END.isoformat()],
@@ -133,29 +144,34 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
             {"n": len(mtime_vs_fetched), "max": max(mtime_vs_fetched), "median": sorted(mtime_vs_fetched)[len(mtime_vs_fetched) // 2]}
             if mtime_vs_fetched else None),
         "excluded_completed_after_cutoff": excluded_after_cutoff,
-        "missing_windows": _missing_days(names),
+        "missing_windows": sorted(set().union(*rules.values())),
+        "missing_days_by_rule": {rule: len(days) for rule, days in rules.items()},
         "missing_shards": sorted(EXPECTED - set(names)),
         "sha256": content_hash(Path(shard_dir), names),
         "shards": qualifying,
     }
 
 
-def _missing_days(names: list[str], counts_path: Path | None = None) -> list[str]:
-    """ISO UTC dates that are data gaps (C17/C31): every day of a month without a frozen shard,
-    plus the GKG gap days by the DEVIATION 4 rule when the daily counts are available."""
-    days: set[str] = set()
+def _missing_day_rules(names: list[str], counts_path: Path | None = None,
+                       tagged_counts: dict[str, int] | None = None) -> dict[str, set[str]]:
+    """ISO UTC dates that are data gaps (C17/C31), by rule: every day of a month without a frozen
+    shard; the GKG gap days by the DEVIATION 4 rule when the unfiltered daily counts are
+    available; and the gap days of the frozen shards' own tagged-event counts (DEVIATION 5)."""
+    rules: dict[str, set[str]] = {"missing_month": set(), "unfiltered_counts": set(), "tagged_counts": set()}
     for name in sorted(EXPECTED - set(names)):
         month = datetime.strptime(name[:8], "%Y%m%d").date()
         nxt = date(month.year + (month.month == 12), month.month % 12 + 1, 1)
         day = month
         while day < nxt and day <= SAMPLE_END:
-            days.add(day.isoformat())
+            rules["missing_month"].add(day.isoformat())
             day += timedelta(days=1)
     path = DAILY_COUNTS if counts_path is None else counts_path
     if Path(path).exists():
         counts = json.loads(Path(path).read_text(encoding="utf-8"))["counts"]
-        days.update(gkg_ingest.gap_days(counts, SAMPLE_START, SAMPLE_END))
-    return sorted(days)
+        rules["unfiltered_counts"].update(gkg_ingest.gap_days(counts, SAMPLE_START, SAMPLE_END))
+    if tagged_counts:                                 # none: every month is missing anyway
+        rules["tagged_counts"].update(gkg_ingest.gap_days(dict(tagged_counts), SAMPLE_START, SAMPLE_END))
+    return rules
 
 
 def write_freeze(

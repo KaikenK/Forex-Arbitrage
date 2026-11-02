@@ -11,6 +11,10 @@ DOC ingestion; a URL that appears more than once keeps its earliest timestamp; c
 categories from the unchanged `data/tagging`; rows the tagger cannot attribute are dropped, as
 DOC ingestion drops them. Timestamps are GDELT's 15-minute batch time (UTC).
 
+GKG carries page titles only from September 2019, so the 2018-01..2019-08 shards are empty and
+2019-09 is partial; the H1/H5/H6 sample starts 2019-10 (DEVIATION 5,
+`freeze_gdelt_sample.SAMPLE_START`). Ingestion still covers the whole extraction.
+
 Runs where BigQuery credentials exist (Google Colab, see research/colab/). The table is read once
 through tabledata.list (no query quota) and split by month. Resumable: a month with a sentinel is
 skipped.
