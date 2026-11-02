@@ -376,6 +376,18 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   Kraken/TrueFX streams quoting within 1 min, `/health` reports `reaction_v2: true`.
   Integrity: 2026-11-02 `spot.jsonl` (43,134 lines) and `opportunities.jsonl` (264) parse
   line by line with no broken line at the gap. Counts and parse checks only; no outcomes read.
+  **C33 restart, 2026-11-02 (code 5bf51e7, same flags):** semantic service stopped ~23:05:30 IST,
+  back 23:06:29 (`reaction_v2: true`); backend stopped 23:07:13 (its uvicorn child ignored Ctrl-C
+  and was stopped by PID), back 23:07:27, all eight Kraken/TrueFX streams started. Recorder gap
+  13.6 s (largest gap between `recv_ts_ms` in the tail); today's `spot.jsonl` (125,830 lines) and
+  `opportunities.jsonl` (3,747) parse line by line. Live check (prediction log only): after the
+  restart both ISM headlines matched by publisher time (`minutes_since_release` 157.6, from
+  receipt), and the S&P Global headline was re-logged with basis `news`. **Observed, not yet
+  handled:** each restart re-emits the feeds' current items and the backend logs them again under
+  new event ids (935 of 988 rows after this restart repeat an earlier headline × pair; since
+  2026-11-01 21:09 UTC, 3,601 rows hold 1,255 distinct headline × pair, at most 5 copies).
+  The service log also shows fxstreet answering 429 and two refill loops polling at once (one
+  per open `/v1/feed` connection). Counts only; no outcomes read.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
