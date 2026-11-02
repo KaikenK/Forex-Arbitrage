@@ -171,6 +171,11 @@ def test_summary_and_publisher_time_reach_the_service_and_the_log(tmp_path, monk
              "publisher_time": "2026-10-15T12:30:05+00:00", "feed_url": "https://investinglive.com/feed/news"}
     bridge._process_analysis_job((("EUR/USD", bridge._normalize_feed_event("EUR/USD", event)),))
     assert calls and calls[0][1]["article_text"] == "US payrolls beat expectations\n\nPayrolls rose 254,000."
+    assert calls[0][1]["metadata"]["publisher_time"] == "2026-10-15T12:30:05+00:00"
+    calls.clear()
+    bare = bridge._normalize_feed_event("EUR/USD", {**event, "publisher_time": None})
+    bridge._process_analysis_job((("EUR/USD", bare),))
+    assert calls and "publisher_time" not in calls[0][1]["metadata"]
 
 
 def test_persisted_synthetic_records_are_skipped_on_load(tmp_path):

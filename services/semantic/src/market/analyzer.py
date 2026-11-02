@@ -190,7 +190,8 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
         }
         if self._release_augmenter is not None:
             _apply_release_scores(pair_scores, self._release_augmenter, scored_event, resolved_symbols,
-                                  source_url=context.article.source_url or "")
+                                  source_url=context.article.source_url or "",
+                                  publisher_time=_publisher_time(context.article.metadata))
         # Pairs the caller asked for explicitly are deliberate, not ambiguous mappings.
         requested_extra = {pair.strip().upper() for pair in (context.article.currency_pairs or [])}
         requested_extra.discard(resolved_symbols[0] if resolved_symbols else "")
@@ -231,13 +232,23 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
         )
 
 
+def _publisher_time(metadata: dict[str, str] | None) -> datetime | None:
+    """The feed's own publication time, which the backend sends as `metadata.publisher_time`."""
+    raw = (metadata or {}).get("publisher_time")
+    try:
+        stamp = datetime.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+    return stamp if stamp is not None and stamp.tzinfo is not None else None
+
+
 def _apply_release_scores(pair_scores: dict, augmenter, event: UnifiedNewsEvent, symbols: list[str],
-                          *, source_url: str = "") -> None:
+                          *, source_url: str = "", publisher_time: datetime | None = None) -> None:
     """Merge structured release scores into `pair_scores` (V2 fields only; V1 fields kept)."""
     pairs = _ordered_unique(list(pair_scores) + [s for s in symbols if "/" in s])
     try:
         release = augmenter.score(event.headline or "", event.published_at, pairs,
-                                  body=event.body or "", source_url=source_url)
+                                  body=event.body or "", source_url=source_url, publisher_time=publisher_time)
     except Exception as exc:                       # never let the augmenter break /analyze
         UnifiedArticleAnalyzer.logger.warning("release_augmenter_failed", error=str(exc))
         release = {}

@@ -68,6 +68,11 @@ _EVENT_FAMILY_RULES: tuple[tuple[str, str], ...] = (
     ("jolts", "jolts"),
 )
 
+# Families that name one survey or compiler. A calendar row with one is matched only by a
+# headline that names it too, and the other way round: "S&P Global manufacturing PMI" and
+# "ISM manufacturing PMI" are both "pmi", but only the second reports the ISM release.
+PROVIDER_FAMILIES = frozenset({"ism", "adp"})
+
 _YOY = re.compile(r"(?<![a-z])(y/y|yoy|year[- ]on[- ]year|year[- ]over[- ]year|annual|annually|from a year|"
                   r"a year earlier|12 months)(?![a-z])", re.IGNORECASE)
 _MOM = re.compile(r"(?<![a-z])(m/m|mom|month[- ]on[- ]month|monthly|from the previous month|"
@@ -237,8 +242,13 @@ def _first_mention(text: str, families: set[str]) -> int:
 
 
 def match_release(headline: str, published_at: datetime, calendar: Iterable[CalendarRow],
-                  sigma: Mapping[tuple[str, str], float]) -> ReleaseMatch | None:
-    """The single release this headline reports, or None when it is not clear which."""
+                  sigma: Mapping[tuple[str, str], float], *,
+                  received_at: datetime | None = None) -> ReleaseMatch | None:
+    """The single release this headline reports, or None when it is not clear which.
+
+    `published_at` decides which releases the article can report: the publisher's own time when
+    known, since an article written before a release cannot carry its figure. `received_at` (our
+    receipt time, default `published_at`) sets `minutes_since_release`."""
     currencies = headline_currencies(headline)
     families = headline_families(headline)
     if not currencies or not families:
@@ -250,7 +260,10 @@ def match_release(headline: str, published_at: datetime, calendar: Iterable[Cale
             continue
         if not (published_at - RELEASE_MATCH_WINDOW <= row.utc <= published_at + PUBLISH_CLOCK_SKEW):
             continue
-        shared = event_families(row.event) & families
+        row_families = event_families(row.event)
+        if (row_families ^ families) & PROVIDER_FAMILIES:
+            continue                                   # another survey's figure (see PROVIDER_FAMILIES)
+        shared = row_families & families
         forecast = parse_calendar_value(row.forecast)
         if not shared or forecast is None:
             continue
@@ -265,7 +278,7 @@ def match_release(headline: str, published_at: datetime, calendar: Iterable[Cale
             continue                                   # the number belongs to another indicator
         match = ReleaseMatch(currency=row.currency, event=row.event, release_utc=row.utc, actual=actual,
                              forecast=forecast.value, unit=forecast.unit, surprise=surprise, z=z,
-                             minutes_since_release=max(0.0, (published_at - row.utc).total_seconds() / 60))
+                             minutes_since_release=max(0.0, ((received_at or published_at) - row.utc).total_seconds() / 60))
         candidates.append((_format_score(row.event, headline), _first_mention(headline, shared), match))
     if not candidates:
         return None

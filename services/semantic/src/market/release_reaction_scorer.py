@@ -175,12 +175,19 @@ class ReleaseAugmenter:
         self._model = model
 
     def match(self, headline: str, published_at: datetime | None, *, body: str = "",
-              source_url: str = "") -> ReleaseMatch | None:
+              source_url: str = "", publisher_time: datetime | None = None) -> ReleaseMatch | None:
         """Headline first; if that fails, headline + summary (agency feeds put the figures in
-        the summary). An agency or central-bank source names its own currency."""
+        the summary). An agency or central-bank source names its own currency.
+
+        `published_at` is our receipt time. The candidate releases are anchored on the feed's
+        `publisher_time` when it is known and not ahead of receipt: feeds can reach us up to an
+        hour late (CDN caches), and a preview written before a release must not match it."""
         if not headline or published_at is None:
             return None
-        published = published_at.astimezone(UTC)
+        received = published_at.astimezone(UTC)
+        published = received
+        if publisher_time is not None and publisher_time.astimezone(UTC) <= received + PUBLISH_CLOCK_SKEW:
+            published = publisher_time.astimezone(UTC)
         start = (published - RELEASE_MATCH_WINDOW).timestamp()
         end = (published + PUBLISH_CLOCK_SKEW).timestamp()
         rows = [CalendarRow(currency=r.currency, event=r.event, utc=datetime.fromtimestamp(r.timestamp, UTC),
@@ -193,12 +200,13 @@ class ReleaseAugmenter:
         if body and body.strip() and body.strip() != headline.strip():
             texts.append(f"{prefix}{headline}. {body[:600]}")
         for text in texts:
-            match = match_release(text, published, rows, self._model.sigma)
+            match = match_release(text, published, rows, self._model.sigma, received_at=received)
             if match is not None:
                 return match
         return None
 
     def score(self, headline: str, published_at: datetime | None, pairs: list[str], *, body: str = "",
-              source_url: str = "") -> dict[str, dict[str, Any]]:
-        match = self.match(headline, published_at, body=body, source_url=source_url)
+              source_url: str = "", publisher_time: datetime | None = None) -> dict[str, dict[str, Any]]:
+        match = self.match(headline, published_at, body=body, source_url=source_url,
+                           publisher_time=publisher_time)
         return {} if match is None else self._model.score(match, pairs)

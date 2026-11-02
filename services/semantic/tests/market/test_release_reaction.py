@@ -68,6 +68,19 @@ def test_euro_area_headline_and_abstentions():
     assert match_release("US consumer prices rise sharply", RELEASE + timedelta(minutes=3), US_CPI_DAY, SIGMA) is None
 
 
+def test_a_named_survey_matches_only_its_own_release():
+    """2 Nov 2026: the S&P Global final PMI headline was matched to the ISM release."""
+    cal = _cal(("USD", "ISM Manufacturing PMI", "54.5", 0))
+    sigma = {**SIGMA, ("USD", "ISM Manufacturing PMI"): 1.7}
+    assert match_release("US S&P Global final manufacturing PMI for October 54.9 vs 56.0 preliminary",
+                         RELEASE + timedelta(minutes=6), cal, sigma) is None
+    ism = match_release("US ISM manufacturing PMI for October 55.5 versus 54.5 estimate",
+                        RELEASE + timedelta(minutes=1), cal, sigma)
+    assert ism.event == "ISM Manufacturing PMI" and ism.actual == pytest.approx(55.5)
+    assert match_release("ADP: US private employers added 120,000 jobs in September",
+                         RELEASE + timedelta(minutes=2), US_JOBS_DAY, SIGMA) is None
+
+
 @pytest.fixture(scope="module")
 def model() -> ReleaseReactionModel:
     return ReleaseReactionModel.load()
@@ -117,7 +130,7 @@ class _StubCalendar:
                 for r in self.rows if start_ts <= r.utc.timestamp() <= end_ts]
 
 
-def _analyze_with(augmenter, headline, published):
+def _analyze_with(augmenter, headline, published, metadata=None):
     import asyncio
 
     from market.analyzer import UnifiedArticleAnalyzer
@@ -131,7 +144,7 @@ def _analyze_with(augmenter, headline, published):
                                       evidence_retriever=EmptyEvidenceRetriever(),
                                       clock=lambda: published, release_augmenter=augmenter)
     article = ArticleInput(article_text=headline, headline=headline, currency_pair="EUR/USD",
-                           currency_pairs=["USD/JPY"], published_at=published)
+                           currency_pairs=["USD/JPY"], published_at=published, metadata=dict(metadata or {}))
     return asyncio.run(UnifiedArticleAnalysisService(analyzer=analyzer).analyze_article(article))
 
 
@@ -156,6 +169,27 @@ def test_analyzer_news_basis_without_match_and_flag_off_parity(model):
     assert news.pair_scores["EUR/USD"]["basis"] == "news" and news.pair_scores["EUR/USD"]["p_direction"] is None
     off = _analyze_with(None, "US consumer prices rise 0.5% in September", RELEASE + timedelta(minutes=3))
     assert "basis" not in off.pair_scores["EUR/USD"] and "release_direction" not in off.pair_scores["EUR/USD"]
+
+
+def test_publisher_time_anchors_the_release_window(model):
+    """Feeds reach us late (CDN caches). A preview written before the release must not match it
+    when it arrives after; a late report still matches, with minutes counted from receipt."""
+    from market.release_reaction_scorer import ReleaseAugmenter
+
+    augmenter = ReleaseAugmenter(_StubCalendar(US_CPI_DAY), model)
+    preview = "US consumer prices seen rising 0.3% in September"
+    received = RELEASE + timedelta(minutes=6)
+    assert augmenter.match(preview, received) is not None                     # receipt time alone
+    assert augmenter.match(preview, received, publisher_time=RELEASE - timedelta(minutes=15)) is None
+    late = augmenter.match("US consumer prices rise 0.4% in September", RELEASE + timedelta(minutes=40),
+                           publisher_time=RELEASE + timedelta(minutes=1))
+    assert late.event == "CPI m/m" and late.minutes_since_release == pytest.approx(40)
+    # A publisher clock ahead of our receipt is not trusted.
+    assert augmenter.match(preview, received, publisher_time=received + timedelta(hours=2)) is not None
+    analysis = _analyze_with(augmenter, preview, received,
+                             metadata={"publisher_time": (RELEASE - timedelta(minutes=15)).isoformat()})
+    assert analysis.pair_scores["EUR/USD"]["basis"] == "news"
+    assert _analyze_with(augmenter, preview, received).pair_scores["EUR/USD"]["basis"] == "release"
 
 
 # ---------------------------------------------------------------- agency items and feed metadata

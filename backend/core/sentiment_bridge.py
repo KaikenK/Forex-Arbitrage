@@ -1174,6 +1174,9 @@ class SentimentBridge:
                 "upstream_status": str(event.get("upstream_status", "unknown")),
             },
         }
+        if event.get("publisher_time"):
+            # `published_at` is our receipt time; the release matcher needs the publisher's own.
+            payload["metadata"]["publisher_time"] = str(event["publisher_time"])
         extra_pairs = [pair for pair in (currency_pairs or []) if normalize_pair(pair) != normalize_pair(primary_pair)]
         if extra_pairs:
             payload["currency_pairs"] = extra_pairs
