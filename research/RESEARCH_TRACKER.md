@@ -363,6 +363,15 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   files) while the BigQuery GKG route is decided. BigQuery facts so far (console, sandbox, no
   billing): GKG 2018-01..2025-04 with DATE, DocumentIdentifier, Extras scans 449.5 GB; Jan 2024 has
   11,467,906 titled rows, 59,453 with an FX/central-bank term in the title (counts only).
+  Fifth gap: recorder and semantic service down 2026-11-02 09:37 → 19:11 IST (04:07 → 13:41
+  UTC, Monday; last spot write 09:37:10, backend back 19:11:04, semantic 19:11:54). The laptop
+  was put away by the owner; no reboot (last boot 2026-11-01 19:48), the service processes
+  were gone at return. Lost for H6b and the prospective log: end of the Asian session and the
+  London morning, about 9.6 of the ~69 h clean window (C28). Restarted with the same flags
+  (SEMANTIC_REACTION_V2=1, SEMANTIC_CURRENCY_BIAS=1, same symbols and record dir); all eight
+  Kraken/TrueFX streams quoting within 1 min, `/health` reports `reaction_v2: true`.
+  Integrity: 2026-11-02 `spot.jsonl` (43,134 lines) and `opportunities.jsonl` (264) parse
+  line by line with no broken line at the gap. Counts and parse checks only; no outcomes read.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
