@@ -100,6 +100,9 @@ def window_bias_v2(history: Iterable[Mapping[str, Any]], pair: str, now: datetim
     duplicates = late = 0
     items: list[dict[str, Any]] = []
     for record in records:                                  # oldest first: keep the first analysis
+        produced_at = _parse(record.get("produced_at"))
+        if produced_at is not None and produced_at > now:
+            continue                                        # not analysed yet at `now` (replays)
         feed = record.get("feed") if isinstance(record.get("feed"), dict) else {}
         headline = str(feed.get("headline") or "")
         key = headline_key(headline)
@@ -112,8 +115,7 @@ def window_bias_v2(history: Iterable[Mapping[str, Any]], pair: str, now: datetim
         if stamp is None or stamp > now + PUBLISHER_SKEW:
             continue
         if stamp < start:
-            produced = _parse(record.get("produced_at"))
-            late += int(from_publisher and produced is not None and produced >= start)
+            late += int(from_publisher and produced_at is not None and produced_at >= start)
             continue
         kind, d, c = item_direction(record, pair)
         age = max(0.0, (now - stamp).total_seconds())

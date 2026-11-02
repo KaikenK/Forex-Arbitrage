@@ -44,6 +44,10 @@ def test_publisher_time_keeps_late_arrivals_out_and_distrusts_future_clocks():
     ]
     out = window_bias_v2(history, "EUR/USD", NOW)
     assert out["late_dropped"] == 1 and out["item_count"] == 1 and out["market_bias"] == pytest.approx(0.5)
+    # Evaluated before an item was analysed (a replay), it is not visible yet.
+    replay = window_bias_v2([_record("Euro rises as ECB signals hike", produced_min=+20, published_min=-5,
+                                     sentiment=0.4)], "EUR/USD", NOW)
+    assert replay["item_count"] == 0
 
 
 def test_release_item_carries_calibrated_direction_and_expected_move():
