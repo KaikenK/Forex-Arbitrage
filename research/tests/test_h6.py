@@ -295,6 +295,23 @@ def test_h6b_leg_parsing_outcome_and_auc():
     assert h.auc(np.array([0.1, 0.4, 0.35, 0.8]), np.array([0, 0, 1, 1])) == pytest.approx(0.75)
 
 
+def test_h6b_clean_window_drops_earlier_opportunities():
+    from research import run_h6b as h
+
+    quotes = {("kraken", "KRAKEN", "EURUSD"): ([0, 10**13], [{"bid": 1.1, "ask": 1.1001}] * 2),
+              ("truefx", "TRUEFX", "EURUSD"): ([0, 10**13], [{"bid": 1.1003, "ask": 1.1004}] * 2)}
+    snap = {"risk_channel": {"penalty": 0.0}, "direction_channel": {"penalty": 0.0}}
+    start = int(h.CLEAN_WINDOW_START_UTC.timestamp() * 1000)
+    opps = [{"timestamp_ms": start - 1000, "buy_source": "spot_kraken_eurusd", "sell_source": "spot_truefx_eurusd",
+             "confidence_score": 0.5, "semantic_snapshot": snap},
+            {"timestamp_ms": start + 1000, "buy_source": "spot_kraken_eurusd", "sell_source": "spot_truefx_eurusd",
+             "confidence_score": 0.5, "semantic_snapshot": snap}]
+    locked, _ = h.evaluation_rows(opps, quotes, one_sided="drop")
+    clean, skipped = h.evaluation_rows(opps, quotes, one_sided="drop", window_start=h.CLEAN_WINDOW_START_UTC)
+    assert len(locked) == 2 and len(clean) == 1 and skipped == {"before_window_start": 1}
+    assert h.CLEAN_WINDOW_START_UTC < h.WINDOW_END_UTC
+
+
 def test_h6b_bootstrap_is_deterministic_and_nested():
     from research import run_h6b as h
 

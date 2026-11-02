@@ -44,6 +44,10 @@ BOOTSTRAP_SEED = 20261025
 # up to 2026-11-05 00:00 IST. Data after the end is not used, and the script does not run
 # before it, so the recorder data is not examined early.
 WINDOW_END_UTC = datetime(2026, 11, 4, 18, 30, tzinfo=UTC)
+# C28 (§6, 2026-11-02): snapshots before this moment were computed from inputs contaminated by
+# synthetic demo headlines; H6b is reported for the locked window as pre-registered AND for the
+# clean sub-window from here to WINDOW_END_UTC, neither weighted more after results.
+CLEAN_WINDOW_START_UTC = datetime(2026, 11, 1, 21, 53, tzinfo=UTC)    # 2026-11-02 03:23 IST
 
 
 def default_recordings() -> Path:
@@ -180,12 +184,17 @@ def day_bootstrap(rows: Sequence[dict], scores: Mapping[str, np.ndarray], *,
 
 
 def evaluation_rows(opportunities: Sequence[dict], quotes, *, one_sided: str,
-                    window_end: datetime = WINDOW_END_UTC) -> tuple[list[dict], dict]:
+                    window_end: datetime = WINDOW_END_UTC,
+                    window_start: datetime | None = None) -> tuple[list[dict], dict]:
     rows, skipped = [], defaultdict(int)
     end_ms = int(window_end.timestamp() * 1000)
+    start_ms = None if window_start is None else int(window_start.timestamp() * 1000)
     for opp in opportunities:
         if int(opp.get("timestamp_ms") or 0) >= end_ms:
             skipped["after_window_end"] += 1
+            continue
+        if start_ms is not None and int(opp.get("timestamp_ms") or 0) < start_ms:
+            skipped["before_window_start"] += 1
             continue
         snapshot = opp.get("semantic_snapshot")
         if not isinstance(snapshot, dict):
@@ -221,17 +230,24 @@ def main() -> None:
     day_dirs = sorted(d for d in args.recordings.iterdir() if d.is_dir())
     quotes = load_quotes(day_dirs)
     opportunities = load_opportunities(day_dirs)
-    rows, skipped = evaluation_rows(opportunities, quotes, one_sided=str(H6B_UNRESOLVED["one_sided_next_quote"]))
     report = {"settings": dict(H6B_UNRESOLVED), "window_end_utc": WINDOW_END_UTC.isoformat(),
-              "opportunities": len(opportunities), "skipped": skipped,
+              "opportunities": len(opportunities),
               "framing": "exploratory, descriptive; not a decision test",
+              "venue_caveat": "TrueFX is an indicative feed: crosses are price discrepancies, not executable arbitrage",
               "generated_at": datetime.now(UTC).isoformat()}
-    if rows:
-        scores = model_scores(rows, str(H6B_UNRESOLVED["model_nesting"]))
-        report["ranking"] = day_bootstrap(rows, scores)
-        edges = [r["edge_pips"] for r in rows if r["edge_pips"] is not None]
-        report["realised_edge_pips"] = {"mean": float(np.mean(edges)) if edges else None,
-                                        "median": float(np.median(edges)) if edges else None, "n": len(edges)}
+    # C28: the pre-registered window, then the clean sub-window (synthetic-free channel inputs).
+    for label, start in (("locked_window", None), ("clean_window", CLEAN_WINDOW_START_UTC)):
+        rows, skipped = evaluation_rows(opportunities, quotes, window_start=start,
+                                        one_sided=str(H6B_UNRESOLVED["one_sided_next_quote"]))
+        section: dict = {"window_start_utc": None if start is None else start.isoformat(),
+                         "rows": len(rows), "days": len({r["day"] for r in rows}), "skipped": skipped}
+        if rows:
+            scores = model_scores(rows, str(H6B_UNRESOLVED["model_nesting"]))
+            section["ranking"] = day_bootstrap(rows, scores)
+            edges = [r["edge_pips"] for r in rows if r["edge_pips"] is not None]
+            section["realised_edge_pips"] = {"mean": float(np.mean(edges)) if edges else None,
+                                             "median": float(np.median(edges)) if edges else None, "n": len(edges)}
+        report[label] = section
     if args.predictions and args.predictions.exists():
         with args.predictions.open(encoding="utf-8") as handle:
             report["prediction_log_rows"] = sum(1 for _ in handle)
