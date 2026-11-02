@@ -389,6 +389,12 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   2026-11-01 21:09 UTC, 3,601 rows hold 1,255 distinct headline × pair, at most 5 copies).
   The service log also shows fxstreet answering 429 and two refill loops polling at once (one
   per open `/v1/feed` connection). Counts only; no outcomes read.
+  **FinBERT off in the live service (found 2026-11-03):** the service banner reads "FinBERT: OFF".
+  The gitignored `services/semantic/config.toml` holds only `[finnhub]`; the `[runtime]` section
+  of `config.toml.example` (`use_finbert = true`) was never carried over, so `serve.py` falls back
+  to its default (off) and live per-headline sentiment, and therefore the 30-minute window bias,
+  comes from the keyword scorer. No decision to run without FinBERT is logged; the model is cached
+  locally. Unchanged for now: switching it on changes the window-bias inputs inside the H6b window.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
