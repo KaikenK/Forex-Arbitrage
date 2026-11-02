@@ -63,3 +63,22 @@ def test_gap_rule_uses_the_trailing_median():
     counts["2024-03-11"] = 60_000           # 15%: not a gap
     gaps = gkg.gap_days(counts, date(2024, 3, 1), date(2024, 3, 31))
     assert "2024-03-10" in gaps and "2024-03-11" not in gaps and "2024-03-31" in gaps   # 31st absent
+
+
+def test_fetch_month_reads_the_table_once_and_splits_by_month(monkeypatch):
+    reads = []
+
+    def fake_table(client, project, table=gkg.TABLE):
+        reads.append(table)
+        frame = _rows()
+        frame["month"] = ["2024-01-01"] * 4 + ["2024-02-01"]
+        return frame
+
+    monkeypatch.setattr(gkg, "fetch_table", fake_table)
+    client = object()
+    jan = gkg.fetch_month(client, "proj", date(2024, 1, 1), _cache={})
+    cache: dict = {}
+    assert len(gkg.fetch_month(client, "proj", date(2024, 1, 1), _cache=cache)) == 4
+    assert len(gkg.fetch_month(client, "proj", date(2024, 2, 1), _cache=cache)) == 1
+    assert gkg.fetch_month(client, "proj", date(2024, 3, 1), _cache=cache).empty
+    assert len(reads) == 2 and len(jan) == 4                     # one read per cache, not per month

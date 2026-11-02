@@ -11,8 +11,9 @@ DOC ingestion; a URL that appears more than once keeps its earliest timestamp; c
 categories from the unchanged `data/tagging`; rows the tagger cannot attribute are dropped, as
 DOC ingestion drops them. Timestamps are GDELT's 15-minute batch time (UTC).
 
-Runs where BigQuery credentials exist (Google Colab, see research/colab/). Resumable: a month
-with a sentinel is skipped.
+Runs where BigQuery credentials exist (Google Colab, see research/colab/). The table is read once
+through tabledata.list (no query quota) and split by month. Resumable: a month with a sentinel is
+skipped.
 
   python -m research.gkg_ingest --project arbex-gdelt
   python -m research.gkg_ingest --project arbex-gdelt --daily-counts-only
@@ -83,13 +84,22 @@ def rows_to_events(frame: pd.DataFrame) -> list[RawEvent]:
     return events
 
 
-def fetch_month(client, project: str, month: date) -> pd.DataFrame:
-    from google.cloud import bigquery
+def fetch_table(client, project: str, table: str = TABLE) -> pd.DataFrame:
+    """The whole extraction table through tabledata.list: reading a table this way scans nothing,
+    so it costs no query quota (the sandbox has ~98 GB left in November 2026). ~1 GB, 3.7 M rows."""
+    rows = client.list_rows(f"{project}.{table}")
+    return rows.to_dataframe(create_bqstorage_client=False, progress_bar_type=None)
 
-    job = client.query(
-        f"SELECT ts, url, domain, title FROM `{project}.{TABLE}` WHERE month = @m",
-        job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("m", "DATE", month)]))
-    return job.result().to_dataframe(create_bqstorage_client=False)
+
+def fetch_month(client, project: str, month: date, *, _cache: dict = {}) -> pd.DataFrame:
+    """One month of the table, from a single cached full read (see `fetch_table`)."""
+    key = (id(client), project)
+    if key not in _cache:
+        frame = fetch_table(client, project)
+        frame["month"] = pd.to_datetime(frame["month"]).dt.date
+        _cache.clear()
+        _cache[key] = {m: g[["ts", "url", "domain", "title"]] for m, g in frame.groupby("month")}
+    return _cache[key].get(month, pd.DataFrame(columns=["ts", "url", "domain", "title"]))
 
 
 def ingest(client, project: str, shard_dir: Path = SHARD_DIR, wanted: Iterable[date] | None = None) -> dict:
@@ -114,10 +124,10 @@ def ingest(client, project: str, shard_dir: Path = SHARD_DIR, wanted: Iterable[d
 
 
 def fetch_daily_counts(client, project: str, out: Path = DAILY_COUNTS) -> int:
-    rows = client.query(f"SELECT day, n FROM `{project}.{COUNTS_TABLE}` ORDER BY day").result()
+    rows = client.list_rows(f"{project}.{COUNTS_TABLE}")                   # no query quota
     counts = {row["day"].isoformat(): int(row["n"]) for row in rows}
     out.write_text(json.dumps({"source": f"{project}.{COUNTS_TABLE}", "fetched_at": datetime.now(UTC).isoformat(),
-                               "counts": counts}, indent=1), encoding="utf-8")
+                               "counts": dict(sorted(counts.items()))}, indent=1), encoding="utf-8")
     return len(counts)
 
 
