@@ -4,6 +4,9 @@ Rule fixed in RESEARCH_TRACKER §2 (RQ1–RQ5, "Prospective test", 2026-11-02) b
 was joined:
   rows       every `live_predictions.jsonl` row with published_at in [--since, --until), a
              non-zero direction and a real (non-synthetic, C27) provider (V1: `direction`; release model: `release_direction`, --basis release)
+  once       each headline counts once per pair (C36): over the whole log, only its row with the
+             earliest published_at is kept, then the window and filters apply (restarts and feed
+             refills re-log the same headline)
   outcome    log return of the pair from the first Yahoo hourly bar opening at/after published_at
              to the first bar at/after published_at + horizon_minutes; rows whose exit bar does
              not exist yet are dropped
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,6 +34,24 @@ DEFAULT_SINCE = datetime(2026, 10, 25, tzinfo=UTC)
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 
 
+def headline_key(text: object) -> str:
+    """Case and punctuation folded, as window v2 (`backend/core/window_bias_v2.headline_key`)."""
+    return re.sub(r"[^a-z0-9]+", " ", str(text).casefold()).strip() if isinstance(text, str) else ""
+
+
+def first_receipt(frame: pd.DataFrame) -> pd.DataFrame:
+    """C36: one row per headline x pair, the earliest by published_at (ties: file order).
+    A row without a headline is keyed by its event_id, or kept on its own."""
+    heads = frame.get("headline", pd.Series(index=frame.index, dtype=object)).map(headline_key)
+    events = frame.get("event_id", pd.Series(index=frame.index, dtype=object))
+    keys = [h or (f"event:{e}" if isinstance(e, str) and e else f"row:{i}")
+            for i, h, e in zip(frame.index, heads, events)]
+    ordered = frame.assign(_key=keys, _order=range(len(frame))).sort_values(
+        ["published_at", "_order"], kind="stable", na_position="last")
+    kept = ordered.drop_duplicates(["_key", "pair"], keep="first").sort_values("_order")
+    return kept.drop(columns=["_key", "_order"])
+
+
 def load_rows(path: Path, *, since: datetime, until: datetime, basis: str) -> pd.DataFrame:
     rows = []
     with path.open(encoding="utf-8") as handle:
@@ -41,9 +63,12 @@ def load_rows(path: Path, *, since: datetime, until: datetime, basis: str) -> pd
             rows.append(row)
     frame = pd.DataFrame(rows)
     frame["published_at"] = pd.to_datetime(frame["published_at"], utc=True, errors="coerce", format="ISO8601")
-    frame = frame[(frame["published_at"] >= since) & (frame["published_at"] < until) & frame["pair"].isin(TICKERS)]
     # C27: synthetic demo headlines are not articles (92% of rows before the 2026-11-02 fix).
     frame = frame[frame.get("provider", pd.Series(index=frame.index, dtype=object)).astype(str).str.lower() != "synthetic"]
+    real = len(frame)
+    frame = first_receipt(frame)                    # C36, before the window: a re-logged copy never enters
+    duplicates = real - len(frame)
+    frame = frame[(frame["published_at"] >= since) & (frame["published_at"] < until) & frame["pair"].isin(TICKERS)]
     if basis == "release":
         frame = frame[frame.get("basis", pd.Series(index=frame.index, dtype=object)) == "release"]
         frame = frame.assign(signal=pd.to_numeric(frame["release_direction"], errors="coerce"),
@@ -52,7 +77,9 @@ def load_rows(path: Path, *, since: datetime, until: datetime, basis: str) -> pd
         frame = frame.assign(signal=pd.to_numeric(frame["direction"], errors="coerce"),
                              prob=pd.to_numeric(frame["confidence"], errors="coerce"))
     frame = frame.assign(horizon=pd.to_numeric(frame["horizon_minutes"], errors="coerce"))
-    return frame[(frame["signal"].fillna(0) != 0) & frame["horizon"].notna()].reset_index(drop=True)
+    frame = frame[(frame["signal"].fillna(0) != 0) & frame["horizon"].notna()].reset_index(drop=True)
+    frame.attrs["repeat_rows_dropped"] = duplicates          # whole log, all pairs and bases
+    return frame
 
 
 def hourly_bars(pair: str, start: datetime, end: datetime) -> pd.Series:
@@ -108,7 +135,8 @@ def main() -> int:
     result = {
         "rule": "RESEARCH_TRACKER §2 RQ1–RQ5 prospective test (2026-11-02)", "basis": args.basis,
         "since": args.since.isoformat(), "until": args.until.isoformat(), "computed_at": datetime.now(UTC).isoformat(),
-        "rows_logged": int(len(frame)), "rows_scored": int(len(scored)), "date_clusters": int(len(set(dates))),
+        "rows_logged": int(len(frame)), "repeat_rows_dropped": int(frame.attrs.get("repeat_rows_dropped", 0)),
+        "rows_scored": int(len(scored)), "date_clusters": int(len(set(dates))),
         "events": int(scored["event_id"].nunique()) if "event_id" in scored else None,
         "accuracy": float(hit.mean()) if len(hit) else None,
         "accuracy_ci95": metrics.cluster_bootstrap_ci(dates, lambda i: float(hit[i].mean())),

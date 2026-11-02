@@ -58,6 +58,21 @@ def test_prospective_scoring_excludes_synthetic_rows_and_reads_release_basis(tmp
     assert list(rel["event_id"]) == ["e2"] and rel["prob"].iloc[0] == pytest.approx(0.7)
 
 
+def test_prospective_scoring_counts_each_headline_once_per_pair(tmp_path):
+    at = lambda minutes: (T0 + timedelta(minutes=minutes)).isoformat()
+    rows = [_row(event_id="e1", headline="Fed holds rates", published_at=at(40)),        # re-logged after a restart
+            _row(event_id="e2", headline="FED holds rates!", published_at=at(2)),         # first receipt: kept
+            _row(event_id="e3", headline="Fed holds rates", pair="USD/JPY", published_at=at(5)),
+            _row(event_id="e4", headline="ECB cuts", published_at=at(-60 * 30)),          # first seen before --since
+            _row(event_id="e5", headline="ECB cuts", published_at=at(10)),
+            _row(event_id="e6", headline="ECB cuts", provider="synthetic", published_at=at(-60 * 40))]
+    path = _jsonl(tmp_path, rows)
+    v1 = live.load_rows(path, since=T0 - timedelta(hours=1), until=T0 + timedelta(days=1), basis="v1")
+    assert sorted(v1["event_id"]) == ["e2", "e3"]            # e5 is a copy of e4, which is outside the window
+    assert v1.attrs["repeat_rows_dropped"] == 2              # e1, e5; the synthetic e6 never counts
+    assert live.headline_key("  FED holds -- rates! ") == "fed holds rates" and live.headline_key(None) == ""
+
+
 def test_hourly_outcome_uses_bars_opening_at_or_after():
     idx = pd.date_range("2026-11-03 12:00", periods=6, freq="h", tz="UTC")
     bars = pd.Series([1.0, 1.0, 1.001, 1.002, 1.003, 1.004], index=idx)
