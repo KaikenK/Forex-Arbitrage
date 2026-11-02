@@ -127,9 +127,13 @@ class FinBertSentiment:
 
     def _ensure_pipeline(self):
         if self._pipeline is None:
+            import torch
             from transformers import pipeline
+            # Same model and settings on either device; the GPU (Colab, DEVIATION 4) only makes the
+            # millions of GKG headlines tractable. Outputs differ only by float rounding.
             self._pipeline = pipeline(
-                "sentiment-analysis", model=self.model_name, truncation=True, max_length=128
+                "sentiment-analysis", model=self.model_name, truncation=True, max_length=128,
+                device=0 if torch.cuda.is_available() else -1,
             )
         return self._pipeline
 

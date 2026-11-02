@@ -1,28 +1,27 @@
 """Freeze the H1/H5/H6 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
-PROTOCOL 2026-10-25; cutoff moved by DEVIATION 1 and 2; sample re-collected by DEVIATION 3,
-2026-11-02, before any H1/H5/H6 result existed).
+PROTOCOL 2026-10-25; cutoff moved by DEVIATIONS 1-3; sample re-collected by DEVIATION 3 and again
+by DEVIATION 4, 2026-11-02, before any H1/H5/H6 result existed).
 
-Locked rule, as amended by DEVIATION 3: H1/H5/H6 use only the scheduled time-stratified slices —
-1 h windows ending 07, 09, 11, 13, 14, 15, 17, 20 UTC on weekdays, 2023-07-01..2025-04-30
-(`gdelt_backfill.scheduled_window`, shard dir `artifacts/gdelt_slices_main`) — whose shard
-completed before the cutoff, 2026-11-10 23:59 IST (18:29 UTC). The shard list is frozen at the
-cutoff with a content hash. Coverage (slices done / scheduled, events) is reported as is: the
-cutoff is not moved and gaps are not selectively filled. A day with any scheduled slice missing
-is listed in `missing_windows` (the unit C17 drops). Data downloaded after the cutoff is not used.
+Locked rule, as amended by DEVIATION 4: H1/H5/H6 use the GDELT GKG extraction on BigQuery
+(`arbex-gdelt.gdelt_fx.fx_headlines`), turned into one shard per month 2018-01..2025-04 by
+`gkg_ingest.py` (shard dir `artifacts/gdelt_gkg_shards`), counting only shards completed before the
+cutoff, 2026-11-10 23:59 IST (18:29 UTC). The shard list is frozen at the cutoff with a content
+hash. Coverage (months done / 88, events) is reported as is. `missing_windows` lists the UTC days
+that are data gaps (the unit C17/C31 drop): days of a missing month, and days whose unfiltered
+GKG count is zero or below 10% of the trailing 28-day median (`gkg_ingest.gap_days`, counts in
+`artifacts/gdelt_gkg_daily_counts.json`). Data written after the cutoff is not used.
 
 Run at or after the cutoff (it refuses earlier, and refuses to overwrite an existing freeze):
   python -m research.freeze_gdelt_sample
   python -m research.freeze_gdelt_sample --preview      # print what would qualify now, write nothing
 
-Completion time of a window = `completed_at` in its `.done` sentinel. Sentinels written before
-that field existed (backfill runs up to 2026-10-25) fall back to the sentinel file's mtime;
-the freeze records how many windows used each source, and how far mtime and the older
-`fetched_at` field disagree, so the fallback is auditable.
+Completion time of a window = `completed_at` in its `.done` sentinel (mtime as a fallback for
+sentinels without it; the freeze records which was used).
 
 The hash is SHA-256 over, for each qualifying window in sorted order, its name followed by the
 bytes of its shard parquet (empty for a confirmed-empty window). `verify_freeze` recomputes it;
-`run_h1`, `run_h5` and `score_archive` read events only through `load_frozen_events`, which
-verifies first.
+`run_h1`, `run_h5`, `run_h6` and `score_archive` read events only through `load_frozen_events`,
+which verifies first.
 """
 from __future__ import annotations
 
@@ -35,31 +34,22 @@ from pathlib import Path
 
 import pandas as pd
 
-from research.gdelt_backfill import _window_name, scheduled_window
+from research import gkg_ingest
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
-SHARD_DIR = ARTIFACTS / "gdelt_slices_main"
+SHARD_DIR = gkg_ingest.SHARD_DIR
+DAILY_COUNTS = gkg_ingest.DAILY_COUNTS
 FREEZE_PATH = ARTIFACTS / "gdelt_sample_freeze.json"
 
-CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)      # = 2026-11-10 23:59 IST (DEVIATION 3)
-SAMPLE_START = date(2023, 7, 1)
+CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)      # = 2026-11-10 23:59 IST (DEVIATIONS 3-4)
+SAMPLE_START = gkg_ingest.FIRST_MONTH
 SAMPLE_END = date(2025, 4, 30)                                 # inclusive
-SLICE_HOURS = (7, 9, 11, 13, 14, 15, 17, 20)                   # UTC window-end hours, 1 h windows
-WEEKDAYS_ONLY = True
+SOURCE = "bigquery_gkg"
 
 
-def expected_windows(start: date = SAMPLE_START, end: date = SAMPLE_END) -> list[str]:
-    """Names of every scheduled slice in [start, end], exactly as the backfill names them."""
-    names = []
-    hours = set(SLICE_HOURS)
-    cursor = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
-    stop = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
-    while cursor < stop:
-        window_end = cursor + timedelta(hours=1)
-        if scheduled_window(cursor, window_end, hours, WEEKDAYS_ONLY):
-            names.append(_window_name(cursor))
-        cursor = window_end
-    return names
+def expected_windows(first: date = gkg_ingest.FIRST_MONTH, last: date = gkg_ingest.LAST_MONTH) -> list[str]:
+    """One shard per month, named as `gkg_ingest` names them."""
+    return [gkg_ingest.shard_name(m) for m in gkg_ingest.months(first, last)]
 
 
 EXPECTED = frozenset(expected_windows())
@@ -131,7 +121,7 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
     return {
         "cutoff_utc": cutoff.isoformat(),
         "sample": [SAMPLE_START.isoformat(), SAMPLE_END.isoformat()],
-        "schedule": {"slice_end_hours_utc": list(SLICE_HOURS), "window_hours": 1, "weekdays_only": WEEKDAYS_ONLY},
+        "source": SOURCE, "window": "one shard per calendar month",
         "expected_windows": EXPECTED_WINDOWS,
         "windows_done": len(names),
         "coverage": round(len(names) / EXPECTED_WINDOWS, 4),
@@ -144,16 +134,28 @@ def build_freeze(shard_dir: Path = SHARD_DIR, cutoff: datetime = CUTOFF_UTC) -> 
             if mtime_vs_fetched else None),
         "excluded_completed_after_cutoff": excluded_after_cutoff,
         "missing_windows": _missing_days(names),
-        "missing_slices": sorted(EXPECTED - set(names)),
+        "missing_shards": sorted(EXPECTED - set(names)),
         "sha256": content_hash(Path(shard_dir), names),
         "shards": qualifying,
     }
 
 
-def _missing_days(names: list[str]) -> list[str]:
-    """ISO dates with at least one scheduled slice missing (C17: such a day is dropped)."""
-    missing = EXPECTED - set(names)
-    return sorted({f"{n[:4]}-{n[4:6]}-{n[6:8]}" for n in missing})
+def _missing_days(names: list[str], counts_path: Path | None = None) -> list[str]:
+    """ISO UTC dates that are data gaps (C17/C31): every day of a month without a frozen shard,
+    plus the GKG gap days by the DEVIATION 4 rule when the daily counts are available."""
+    days: set[str] = set()
+    for name in sorted(EXPECTED - set(names)):
+        month = datetime.strptime(name[:8], "%Y%m%d").date()
+        nxt = date(month.year + (month.month == 12), month.month % 12 + 1, 1)
+        day = month
+        while day < nxt and day <= SAMPLE_END:
+            days.add(day.isoformat())
+            day += timedelta(days=1)
+    path = DAILY_COUNTS if counts_path is None else counts_path
+    if Path(path).exists():
+        counts = json.loads(Path(path).read_text(encoding="utf-8"))["counts"]
+        days.update(gkg_ingest.gap_days(counts, SAMPLE_START, SAMPLE_END))
+    return sorted(days)
 
 
 def write_freeze(
@@ -220,11 +222,11 @@ def main() -> None:
         summary = build_freeze(args.shard_dir)
         summary.pop("shards")
         summary["missing_windows"] = len(summary["missing_windows"])
-        summary["missing_slices"] = len(summary["missing_slices"])
+        summary["missing_shards"] = len(summary["missing_shards"])
         print(json.dumps(summary, indent=2))
         return
     freeze = write_freeze(args.shard_dir, args.out)
-    print(f"Frozen {freeze['windows_done']}/{EXPECTED_WINDOWS} slices ({freeze['coverage']:.1%}), "
+    print(f"Frozen {freeze['windows_done']}/{EXPECTED_WINDOWS} months ({freeze['coverage']:.1%}), "
           f"{freeze['events']} events, sha256 {freeze['sha256']} -> {args.out}")
     print(f"Excluded (completed after cutoff): {len(freeze['excluded_completed_after_cutoff'])}; "
           f"completion source: {freeze['completion_time_source_counts']}")

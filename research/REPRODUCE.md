@@ -19,7 +19,7 @@ time and never while the live semantic service or backend is running.
 |---|---|---|
 | ForexFactory calendar dump | `research/artifacts/forex_factory_calendar.csv` | acquired static file (see §6, 2026-08) |
 | HistData M1, 4 majors, 2018–2025 | `%LOCALAPPDATA%\arbex\histdata` | `python -m research.fetch_histdata` |
-| GDELT headlines 2018–2021 | `research/artifacts/gdelt_shards/` | `python -m research.gdelt_backfill --start 2018-01-01 --end 2022-01-01` (resumable) |
+| GDELT GKG headlines 2018-01..2025-04 (DEVIATION 4) | BigQuery `arbex-gdelt.gdelt_fx.fx_headlines` -> `research/artifacts/gdelt_gkg_shards/` | extraction SQL in RESEARCH_TRACKER §6; `python -m research.gkg_ingest --project arbex-gdelt` (Colab notebook `research/colab/arbex_gkg_pipeline.ipynb`) |
 | Live recordings (H6b) | `%LOCALAPPDATA%\arbex\recordings` | backend in live mode (`RUN_STEPS.md`, "Live semantic stack") |
 
 ## Paper item → step → artifact
