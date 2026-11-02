@@ -27,6 +27,7 @@ $cutoff = Get-Date '2026-11-10 23:59'
 while ((Get-Date) -lt $cutoff) {
     python -m research.gdelt_backfill --start 2023-07-01 --end 2025-05-01 --window-hours 1 `
         --slice-hours 7,9,11,13,14,15,17,20 --weekdays-only --query-name $query `
+        --min-interval 20 `
         --shard-dir research/artifacts/gdelt_slices_main --max-windows 60 --max-attempts 12 `
         --no-consolidate --log research/artifacts/gdelt_slices_runs.jsonl
     Start-Sleep 5
