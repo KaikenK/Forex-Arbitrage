@@ -21,7 +21,8 @@ C34 (§6, 2026-11-03, before any outcome was examined): the 30-minute window bia
 its own arm, as `semantic_engine` applies it (score + window `confidence_adjustment`, clamped),
 alone and with both channels. No decision weight; the locked arms are unchanged. The RQ5
 extension (`--rq5-extension`) runs the same arms on the recordings after the H6b window, to
-2026-11-18 00:00 IST, and refuses to run before then.
+2026-11-18 00:00 IST, and refuses to run before then. C35: where the shadow window v2 was
+recorded, two more arms (`window_v2_scores`).
 
   python -m research.run_h6b --recordings %LOCALAPPDATA%\\arbex\\recordings
   python -m research.run_h6b --rq5-extension
@@ -176,8 +177,27 @@ def window_scores(rows: Sequence[dict]) -> dict[str, np.ndarray]:
     window = np.array([r["window_adjustment"] for r in rows], dtype=float)
     risk = np.array([r["risk_penalty"] for r in rows], dtype=float)
     direction = np.array([r["direction_penalty"] for r in rows], dtype=float)
-    return {"plus_window": np.clip(detector + window, 0.0, 1.0),
-            "plus_window_risk_direction": np.clip(detector + window - risk - direction, 0.0, 1.0)}
+    out = {"plus_window": np.clip(detector + window, 0.0, 1.0),
+           "plus_window_risk_direction": np.clip(detector + window - risk - direction, 0.0, 1.0)}
+    if any(r["has_v2"] for r in rows):
+        out.update(window_v2_scores(rows))
+    return out
+
+
+V2_DIRECTIONAL_CAP = 0.08                   # the live window's penalty cap
+
+
+def window_v2_scores(rows: Sequence[dict]) -> dict[str, np.ndarray]:
+    """C35 arms (RQ5): window v2 through the live penalty formula, and a directional use of it:
+    penalty min(0.08, 0.08 |v2 score|) only when the v2 bias opposes the residual exposure."""
+    detector = np.array([r["confidence_score"] for r in rows], dtype=float)
+    adjustment = np.array([r["window_v2_adjustment"] for r in rows], dtype=float)
+    score = np.array([r["window_v2_score"] for r in rows], dtype=float)
+    residual = np.array([r["residual"] for r in rows], dtype=float)
+    opposed = score * residual < 0
+    directional = np.where(opposed, np.minimum(V2_DIRECTIONAL_CAP, V2_DIRECTIONAL_CAP * np.abs(score)), 0.0)
+    return {"plus_window_v2": np.clip(detector + adjustment, 0.0, 1.0),
+            "plus_window_v2_directional": np.clip(detector - directional, 0.0, 1.0)}
 
 
 def day_bootstrap(rows: Sequence[dict], scores: Mapping[str, np.ndarray], *,
@@ -231,10 +251,14 @@ def evaluation_rows(opportunities: Sequence[dict], quotes, *, one_sided: str,
             continue
         day = datetime.fromtimestamp(int(opp["timestamp_ms"]) / 1000, tz=UTC).date().isoformat()
         window = snapshot.get("window_bias") or {}       # absent: the engine applies no adjustment
+        v2 = snapshot.get("window_bias_v2") or {}        # C35 shadow window; absent before deployment
         rows.append({"day": day, "confidence_score": float(opp["confidence_score"]),
                      "risk_penalty": float(risk), "direction_penalty": float(direction),
                      "window_adjustment": float(window.get("confidence_adjustment") or 0.0),
-                     "window_items": int(window.get("item_count") or 0), **outcome})
+                     "window_items": int(window.get("item_count") or 0),
+                     "has_v2": bool(v2), "window_v2_adjustment": float(v2.get("confidence_adjustment") or 0.0),
+                     "window_v2_score": float(v2.get("semantic_score") or 0.0),
+                     "residual": int(v2.get("residual_exposure") or 0), **outcome})
     return rows, dict(skipped)
 
 
@@ -244,7 +268,8 @@ def evaluate_section(rows: Sequence[dict], skipped: Mapping[str, int], start: da
                      "window_end_utc": end.isoformat(),
                      "rows": len(rows), "days": len({r["day"] for r in rows}), "skipped": dict(skipped),
                      "window_bias_coverage": {"rows_with_items": sum(r["window_items"] > 0 for r in rows),
-                                              "rows_adjusted": sum(r["window_adjustment"] != 0 for r in rows)}}
+                                              "rows_adjusted": sum(r["window_adjustment"] != 0 for r in rows),
+                                              "rows_with_v2": sum(r["has_v2"] for r in rows)}}
     if rows:
         locked = model_scores(rows, str(H6B_UNRESOLVED["model_nesting"]))
         section["ranking"] = day_bootstrap(rows, {**locked, **window_scores(rows)})

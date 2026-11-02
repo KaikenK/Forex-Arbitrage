@@ -347,7 +347,8 @@ def test_h6b_window_bias_arm_and_rq5_extension(monkeypatch):
     assert scores["plus_window"] == pytest.approx([0.45, 0.5])
     assert scores["plus_window_risk_direction"] == pytest.approx([0.42, 0.47])
     section = h.evaluate_section(rows, {}, None, h.WINDOW_END_UTC)
-    assert section["window_bias_coverage"] == {"rows_with_items": 1, "rows_adjusted": 1}
+    assert section["window_bias_coverage"] == {"rows_with_items": 1, "rows_adjusted": 1, "rows_with_v2": 0}
+    assert "plus_window_v2" not in section["ranking"]["auc"]                 # no v2 recorded: no v2 arms
     assert section["ranking"]["locked_arms"] == ["detector", "plus_risk", "plus_risk_direction"]
     assert {"plus_window", "plus_window_risk_direction"} <= set(section["ranking"]["auc"])
     ext, skipped = h.evaluation_rows(opps, quotes, one_sided="drop", window_start=h.WINDOW_END_UTC,
@@ -356,6 +357,32 @@ def test_h6b_window_bias_arm_and_rq5_extension(monkeypatch):
     monkeypatch.setattr("sys.argv", ["run_h6b", "--recordings", ".", "--rq5-extension"])
     with pytest.raises(SystemExit, match="RQ5 extension window is still open"):
         h.main()
+
+
+def test_rq5_window_v2_arms():
+    """C35: window v2 through the live penalty formula, and its directional use against the residual."""
+    from research import run_h6b as h
+
+    quotes = {("kraken", "KRAKEN", "EURUSD"): ([0, 10**13], [{"bid": 1.1, "ask": 1.1001}] * 2),
+              ("truefx", "TRUEFX", "EURUSD"): ([0, 10**13], [{"bid": 1.1003, "ask": 1.1004}] * 2)}
+    start = int(h.WINDOW_END_UTC.timestamp() * 1000)
+
+    def opp(ts, v2):
+        snap = {"risk_channel": {"penalty": 0.0}, "direction_channel": {"penalty": 0.0},
+                "window_bias": {"confidence_adjustment": -0.01, "item_count": 2}, "window_bias_v2": v2}
+        return {"timestamp_ms": ts, "buy_source": "spot_kraken_eurusd", "sell_source": "spot_truefx_eurusd",
+                "confidence_score": 0.5, "semantic_snapshot": snap}
+
+    opps = [opp(start + 1000, {"confidence_adjustment": -0.04, "semantic_score": -0.5, "residual_exposure": 1}),
+            opp(start + 2000, {"confidence_adjustment": -0.02, "semantic_score": 0.25, "residual_exposure": 1}),
+            opp(start + 3000, None)]
+    rows, _ = h.evaluation_rows(opps, quotes, one_sided="drop", window_start=h.WINDOW_END_UTC,
+                                window_end=h.RQ5_END_UTC)
+    scores = h.window_scores(rows)
+    assert scores["plus_window_v2"] == pytest.approx([0.46, 0.48, 0.5])
+    # bias against the long residual -> 0.08 * 0.5; aligned or absent -> no penalty
+    assert scores["plus_window_v2_directional"] == pytest.approx([0.46, 0.5, 0.5])
+    assert h.evaluate_section(rows, {}, h.WINDOW_END_UTC, h.RQ5_END_UTC)["window_bias_coverage"]["rows_with_v2"] == 2
 
 
 # ---------------------------------------------------------------- one implementation

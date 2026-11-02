@@ -136,9 +136,9 @@ for stage in ("score_dedup", "score_lexicon", "score_finbert", "score_embed"):
     !python -m research.reproduce --run {stage} 2>&1 | tee -a {DRIVE_ROOT}/logs/scoring.log
 """),
     code("""
-# 11. Pre-registered tests (H1 decides on the sentence-transformer; H5, H6; RQ2-E2E)
+# 11. Pre-registered tests (H1 decides on the sentence-transformer; H5, H6; 30-min window; RQ2-E2E)
 for step in ("h1_primary", "h1_tfidf", "h1_hashing", "h1_decide", "h5_lexicon", "h5_finbert", "h5_decide",
-             "h6", "rq2_e2e"):
+             "h6", "window30", "rq2_e2e"):
     !python -m research.reproduce --run {step} 2>&1 | tee -a {DRIVE_ROOT}/logs/tests.log
 """),
     code("""
