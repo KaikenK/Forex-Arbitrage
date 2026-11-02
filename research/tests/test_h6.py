@@ -325,6 +325,39 @@ def test_h6b_bootstrap_is_deterministic_and_nested():
     assert a == b and a["n_days"] == 6
 
 
+def test_h6b_window_bias_arm_and_rq5_extension(monkeypatch):
+    """C34: the 30-minute window bias is its own arm, applied as semantic_engine applies it."""
+    from research import run_h6b as h
+
+    quotes = {("kraken", "KRAKEN", "EURUSD"): ([0, 10**13], [{"bid": 1.1, "ask": 1.1001}] * 2),
+              ("truefx", "TRUEFX", "EURUSD"): ([0, 10**13], [{"bid": 1.1003, "ask": 1.1004}] * 2)}
+    channels = {"risk_channel": {"penalty": 0.02}, "direction_channel": {"penalty": 0.01}}
+    end = int(h.WINDOW_END_UTC.timestamp() * 1000)
+
+    def opp(ts, window):
+        return {"timestamp_ms": ts, "buy_source": "spot_kraken_eurusd", "sell_source": "spot_truefx_eurusd",
+                "confidence_score": 0.5, "semantic_snapshot": {**channels, "window_bias": window}}
+
+    opps = [opp(end - 2000, {"confidence_adjustment": -0.05, "item_count": 3}),
+            opp(end - 1000, None),                                   # no window value: no adjustment
+            opp(end + 1000, {"confidence_adjustment": -0.01, "item_count": 1})]
+    rows, _ = h.evaluation_rows(opps, quotes, one_sided="drop")
+    assert [r["window_adjustment"] for r in rows] == [-0.05, 0.0]
+    scores = h.window_scores(rows)
+    assert scores["plus_window"] == pytest.approx([0.45, 0.5])
+    assert scores["plus_window_risk_direction"] == pytest.approx([0.42, 0.47])
+    section = h.evaluate_section(rows, {}, None, h.WINDOW_END_UTC)
+    assert section["window_bias_coverage"] == {"rows_with_items": 1, "rows_adjusted": 1}
+    assert section["ranking"]["locked_arms"] == ["detector", "plus_risk", "plus_risk_direction"]
+    assert {"plus_window", "plus_window_risk_direction"} <= set(section["ranking"]["auc"])
+    ext, skipped = h.evaluation_rows(opps, quotes, one_sided="drop", window_start=h.WINDOW_END_UTC,
+                                     window_end=h.RQ5_END_UTC)
+    assert len(ext) == 1 and skipped == {"before_window_start": 2}
+    monkeypatch.setattr("sys.argv", ["run_h6b", "--recordings", ".", "--rq5-extension"])
+    with pytest.raises(SystemExit, match="RQ5 extension window is still open"):
+        h.main()
+
+
 # ---------------------------------------------------------------- one implementation
 
 def _service_core() -> Path | None:
