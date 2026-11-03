@@ -7,6 +7,8 @@ was joined:
   once       each headline counts once per pair (C36): over the whole log, only its row with the
              earliest published_at is kept, then the window and filters apply (restarts and feed
              refills re-log the same headline)
+  secondary  the same metrics on rows whose publisher_time is known and at most 24 h before
+             receipt (C37; restarts re-read feed backlogs that are days or weeks old)
   outcome    log return of the pair from the first Yahoo hourly bar opening at/after published_at
              to the first bar at/after published_at + horizon_minutes; rows whose exit bar does
              not exist yet are dropped
@@ -31,6 +33,7 @@ from research.reaction import metrics
 
 TICKERS = {"EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "JPY=X", "USD/CHF": "CHF=X", "USD/INR": "INR=X"}
 DEFAULT_SINCE = datetime(2026, 10, 25, tzinfo=UTC)
+FRESH_HOURS = 24                                    # C37 secondary result: item age at receipt
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 
 
@@ -105,6 +108,36 @@ def outcome(bars: pd.Series, start: pd.Timestamp, horizon_min: float) -> float:
     return float(np.log(bars.iloc[j] / bars.iloc[i]) * 1e4)
 
 
+def is_fresh(frame: pd.DataFrame, hours: float = FRESH_HOURS) -> pd.Series:
+    """C37: publisher time known and at most `hours` before receipt (a publisher clock ahead counts)."""
+    publisher = pd.to_datetime(frame.get("publisher_time", pd.Series(index=frame.index, dtype=object)),
+                               utc=True, errors="coerce", format="ISO8601")
+    return publisher.notna() & (frame["published_at"] - publisher <= pd.Timedelta(hours=hours))
+
+
+def summarize(scored: pd.DataFrame) -> dict:
+    """Sign accuracy, IC and reliability of scored rows (signal, outcome_bps, prob, published_at)."""
+    if scored.empty:
+        return {"rows_scored": 0, "date_clusters": 0, "accuracy": None, "accuracy_ci95": None,
+                "p_vs_coin": None, "ic_spearman": None}
+    sign = scored["signal"].to_numpy(dtype=float)
+    real = scored["outcome_bps"].to_numpy()
+    dates = scored["published_at"].dt.strftime("%Y-%m-%d").to_numpy()
+    hit = (np.sign(sign) == np.sign(real)).astype(float)
+    test = metrics.clustered_mean_diff(hit - 0.5, dates)
+    return {
+        "rows_scored": int(len(scored)), "date_clusters": int(len(set(dates))),
+        "events": int(scored["event_id"].nunique()) if "event_id" in scored else None,
+        "accuracy": float(hit.mean()),
+        "accuracy_ci95": metrics.cluster_bootstrap_ci(dates, lambda i: float(hit[i].mean())),
+        "p_vs_coin": None if test is None else test["p"],
+        "ic_spearman": metrics.spearman(pd.to_numeric(scored["market_score"], errors="coerce").to_numpy(dtype=float), real),
+        "by_pair": {p: float(hit[(scored["pair"] == p).to_numpy()].mean()) for p in sorted(scored["pair"].unique())},
+        "reliability": metrics.reliability(scored["prob"].to_numpy(dtype=float), hit),
+        "ece": metrics.ece(scored["prob"].to_numpy(dtype=float), hit),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--predictions", type=Path, default=None, help="default: the backend's prediction log")
@@ -127,24 +160,14 @@ def main() -> int:
             returns[k] = outcome(bars, frame.at[k, "published_at"], frame.at[k, "horizon"])
     frame["outcome_bps"] = returns
     scored = frame[np.isfinite(frame["outcome_bps"]) & (frame["outcome_bps"] != 0)].reset_index(drop=True)
-    sign = scored["signal"].to_numpy(dtype=float)
-    real = scored["outcome_bps"].to_numpy()
-    dates = scored["published_at"].dt.strftime("%Y-%m-%d").to_numpy()
-    hit = (np.sign(sign) == np.sign(real)).astype(float)
-    test = metrics.clustered_mean_diff(hit - 0.5, dates)
     result = {
         "rule": "RESEARCH_TRACKER §2 RQ1–RQ5 prospective test (2026-11-02)", "basis": args.basis,
         "since": args.since.isoformat(), "until": args.until.isoformat(), "computed_at": datetime.now(UTC).isoformat(),
         "rows_logged": int(len(frame)), "repeat_rows_dropped": int(frame.attrs.get("repeat_rows_dropped", 0)),
-        "rows_scored": int(len(scored)), "date_clusters": int(len(set(dates))),
-        "events": int(scored["event_id"].nunique()) if "event_id" in scored else None,
-        "accuracy": float(hit.mean()) if len(hit) else None,
-        "accuracy_ci95": metrics.cluster_bootstrap_ci(dates, lambda i: float(hit[i].mean())),
-        "p_vs_coin": None if test is None else test["p"],
-        "ic_spearman": metrics.spearman(pd.to_numeric(scored["market_score"], errors="coerce").to_numpy(dtype=float), real),
-        "by_pair": {p: float(hit[(scored["pair"] == p).to_numpy()].mean()) for p in sorted(scored["pair"].unique())},
-        "reliability": metrics.reliability(scored["prob"].to_numpy(dtype=float), hit),
-        "ece": metrics.ece(scored["prob"].to_numpy(dtype=float), hit),
+        **summarize(scored),
+        # C37 secondary, no decision weight: headlines at most 24 h old at receipt by publisher time.
+        "secondary_fresh_24h": {"rows_logged": int(is_fresh(frame).sum()),
+                                **summarize(scored[is_fresh(scored)].reset_index(drop=True))},
     }
     out = args.out or ARTIFACTS / f"live_predictions_score_{args.basis}.json"
     out.write_text(json.dumps(result, indent=2, default=float), encoding="utf-8")

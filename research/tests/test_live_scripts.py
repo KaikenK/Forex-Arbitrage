@@ -73,6 +73,21 @@ def test_prospective_scoring_counts_each_headline_once_per_pair(tmp_path):
     assert live.headline_key("  FED holds -- rates! ") == "fed holds rates" and live.headline_key(None) == ""
 
 
+def test_secondary_result_keeps_items_at_most_a_day_old_by_publisher_time(tmp_path):
+    at = lambda minutes: (T0 + timedelta(minutes=minutes)).isoformat()
+    rows = [_row(event_id="fresh", headline="a", publisher_time=at(-60)),
+            _row(event_id="stale", headline="b", publisher_time=at(-60 * 30)),            # backlog re-read
+            _row(event_id="ahead", headline="c", publisher_time=at(4)),                   # publisher clock ahead
+            _row(event_id="unknown", headline="d", publisher_time=None)]
+    frame = live.load_rows(_jsonl(tmp_path, rows), since=T0 - timedelta(hours=1), until=T0 + timedelta(hours=1),
+                           basis="v1")
+    assert sorted(frame.loc[live.is_fresh(frame), "event_id"]) == ["ahead", "fresh"]
+    scored = frame.assign(outcome_bps=[2.0, -1.0, -3.0, 4.0])                            # signal -1 on every row
+    summary = live.summarize(scored)
+    assert summary["rows_scored"] == 4 and summary["accuracy"] == pytest.approx(0.5)
+    assert live.summarize(scored.iloc[0:0])["rows_scored"] == 0
+
+
 def test_hourly_outcome_uses_bars_opening_at_or_after():
     idx = pd.date_range("2026-11-03 12:00", periods=6, freq="h", tz="UTC")
     bars = pd.Series([1.0, 1.0, 1.001, 1.002, 1.003, 1.004], index=idx)
