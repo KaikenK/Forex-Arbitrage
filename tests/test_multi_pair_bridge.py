@@ -189,3 +189,33 @@ def test_persisted_synthetic_records_are_skipped_on_load(tmp_path):
              "feed": {"provenance": "synthetic", "provider": "synthetic"}}]
     path.write_text("\n".join(_json.dumps(r) for r in rows), encoding="utf-8")
     assert [r["event_id"] for r in bridge._load_runtime_records(path, limit=80)] == ["real"]
+
+
+def test_a_resent_headline_is_not_analysed_again(tmp_path, monkeypatch):
+    """A reconnect resends the backlog under new event ids (2026-11-03): one analysis per pair."""
+    bridge = _bridge(tmp_path)
+    bridge._handle_feed_event({**_macro_event(), "pair": "EUR/USD"})
+    bridge._handle_feed_event({**_macro_event(), "pair": "EUR/USD", "event_id": "evt-2",
+                               "headline": "US PAYROLLS beat expectations!"})
+    assert bridge._analysis_queue.qsize() == 1
+    bridge._analysis_queue.get_nowait()
+    bridge._handle_feed_event({**_macro_event(), "event_id": "evt-3"})          # macro: the other pairs only
+    job = bridge._analysis_queue.get_nowait()
+    assert [pair for pair, _ in job] == [p for p in sb.STUDY_PAIRS if p != "EUR/USD"]
+    assert bridge._analysis_queue.empty()
+
+
+def test_headlines_already_in_the_prediction_log_are_not_analysed_after_a_restart(tmp_path):
+    import json as _json
+
+    bridge = _bridge(tmp_path)
+    log = bridge._prediction_log_path()
+    log.parent.mkdir(parents=True)
+    rows = [{"pair": "EUR/USD", "headline": "US payrolls beat expectations", "provider": "rss"},
+            {"pair": "GBP/USD", "headline": "US payrolls beat expectations", "provider": "synthetic"}]
+    log.write_text("\n".join(_json.dumps(r) for r in rows) + "\nnot json\n", encoding="utf-8")
+    bridge._seed_analysed_keys()
+    bridge._handle_feed_event({**_macro_event(), "pair": "EUR/USD"})
+    assert bridge._analysis_queue.empty()
+    bridge._handle_feed_event({**_macro_event(), "pair": "GBP/USD"})       # only a synthetic row had it
+    assert bridge._analysis_queue.qsize() == 1

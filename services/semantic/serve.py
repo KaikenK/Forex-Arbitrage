@@ -124,8 +124,22 @@ async def _send_bytes(send, status: int, content_type: str, body: bytes, extra_h
     await send({"type": "http.response.body", "body": body})
 
 
-async def _handle_sse(send):
-    """Stream SSE events for live news feed, also recording into live sentiment."""
+async def _watch_disconnect(receive, disconnected: asyncio.Event) -> None:
+    while True:
+        message = await receive()
+        if message.get("type") == "http.disconnect":
+            disconnected.set()
+            return
+
+
+async def _handle_sse(send, receive=None):
+    """Stream SSE events for live news feed, also recording into live sentiment.
+
+    uvicorn drops sends after the client has gone without raising, so the stream must
+    watch `receive` for http.disconnect and close its generator itself. Before this, each
+    reconnect left the old generator and its 90 s upstream poller running for the life
+    of the process (2026-11-03: 18 pollers after 18 reconnects).
+    """
     await send({
         "type": "http.response.start",
         "status": 200,
@@ -136,8 +150,13 @@ async def _handle_sse(send):
             [b"access-control-allow-origin", b"*"],
         ],
     })
+    disconnected = asyncio.Event()
+    watcher = asyncio.create_task(_watch_disconnect(receive, disconnected)) if receive else None
+    stream = generate_feed_events()
     try:
-        async for chunk in generate_feed_events():
+        async for chunk in stream:
+            if disconnected.is_set():
+                break
             await send({"type": "http.response.body", "body": chunk.encode(), "more_body": True})
             # Feed each SSE item into the live sentiment aggregator
             if _live_aggregator is not None:
@@ -179,6 +198,9 @@ async def _handle_sse(send):
     except (asyncio.CancelledError, ConnectionError):
         pass
     finally:
+        if watcher is not None:
+            watcher.cancel()
+        await stream.aclose()                       # runs the generator's finally: stops its poller
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
@@ -234,7 +256,7 @@ def build_full_app(api_app):
 
         # SSE feed
         if path == "/feed" and method == "GET":
-            await _handle_sse(send)
+            await _handle_sse(send, receive)
             return
 
         # API routes

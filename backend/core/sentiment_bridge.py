@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -130,6 +131,10 @@ class SentimentBridge:
         self._feed_items: dict[str, list[dict[str, Any]]] = {}
         self._analysis_history: dict[str, list[dict[str, Any]]] = {}
         self._analysis_by_event_id: dict[str, dict[str, Any]] = {}
+        # (pair, headline key) of every headline already analysed. A feed reconnect or a
+        # service restart resends the whole upstream backlog under new event ids; each
+        # copy used to be analysed and logged again and counted as fresh by the window.
+        self._analysed_keys: set[tuple[str, str]] = set()
         self._runtime_cache_loaded: set[str] = set()
         self._ingest_thread: threading.Thread | None = None
         self._ingest_stop = threading.Event()
@@ -1050,6 +1055,7 @@ class SentimentBridge:
         return parsed
 
     def _run_live_ingest_loop(self) -> None:
+        self._seed_analysed_keys()
         while not self._ingest_stop.is_set():
             try:
                 self._stream_feed_once()
@@ -1086,6 +1092,11 @@ class SentimentBridge:
         if str(event.get("provenance", "")).strip().lower() == "synthetic":
             return
         tracked_pairs = self._tracked_pairs_for_feed_event(event)
+        key = _headline_key(event.get("headline"))
+        if key:
+            with self._state_lock:
+                tracked_pairs = [pair for pair in tracked_pairs if (pair, key) not in self._analysed_keys]
+                self._analysed_keys.update((pair, key) for pair in tracked_pairs)
         normalized_by_pair: list[tuple[str, dict[str, Any]]] = []
         for tracked_pair in tracked_pairs:
             normalized_event = self._normalize_feed_event(tracked_pair, event)
@@ -1329,6 +1340,26 @@ class SentimentBridge:
             return [normalized_pair]
         return []
 
+    def _seed_analysed_keys(self) -> None:
+        """Every real headline x pair already in the prediction log counts as analysed."""
+        keys: set[tuple[str, str]] = set()
+        try:
+            with self._prediction_log_path().open(encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(row, dict) or _is_synthetic_record(row):
+                        continue
+                    key = _headline_key(row.get("headline"))
+                    if key and row.get("pair"):
+                        keys.add((normalize_pair(str(row["pair"])), key))
+        except OSError:
+            return
+        with self._state_lock:
+            self._analysed_keys |= keys
+
     def _prediction_log_path(self) -> Path:
         """Append-only log of every live per-pair prediction, for prospective evaluation."""
         return self._runtime_history_root / "predictions" / "live_predictions.jsonl"
@@ -1509,6 +1540,11 @@ def _pair_signal_label(market_score: float) -> str:
     if normalized < -MARKET_DIRECTION_THRESHOLD:
         return "SELL"
     return "HOLD"
+
+
+def _headline_key(text: object) -> str:
+    """Case and punctuation folded, as `window_bias_v2.headline_key` and the C36 scoring rule."""
+    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip() if isinstance(text, str) else ""
 
 
 def _is_synthetic_record(record: dict[str, Any]) -> bool:
