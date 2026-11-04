@@ -415,6 +415,38 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   to its default (off) and live per-headline sentiment, and therefore the 30-minute window bias,
   comes from the keyword scorer. No decision to run without FinBERT is logged; the model is cached
   locally. Unchanged for now: switching it on changes the window-bias inputs inside the H6b window.
+  **Wi-Fi outage and phone hotspot, 2026-11-04 (counts and per-venue quality only; no outcomes read):** recorder
+  gaps over 15 s inside the window on 4 Nov (IST): 12:00:01–15:50:00 (3.83 h; only isolated quotes at 12:40:33,
+  13:21:06 and 13:21:51), 16:21:06–17:00:29 (39 min), 17:49:36–17:50:40, 18:33:35–18:34:36, and twelve gaps of
+  15–42 s between 18:54 and 19:13 (hotspot reconnects in the Windows WLAN log at 18:54:25, 19:01:06 and
+  19:09:22). Total 16,620 s (4.6 h) lost for H6b and the prospective log. Cause: the laptop lost its home Wi-Fi
+  about 12:00 IST; recording resumed 15:50:00 on an iPhone hotspot whose carrier resets TLS connections to api.kraken.com (WinError 10054; DNS resolves normally). Kraken quotes: none 13:21:51–15:54:26,
+  then about 2,500–3,100 an hour from 17:00 against about 10,600 an hour earlier in the day; TrueFX normal (about
+  9,100–10,000 an hour). Fewer Kraken polls mean fewer crossed books detected and a longer wait for the next poll
+  of a Kraken leg, so these hours are not like earlier days; reported as is, not corrected. Cloudflare WARP was
+  available but not switched on. Restart 15:52:14 IST (10:22 UTC) by Claude on the pinned 5bc18e6 runtime files
+  (gap 37 s); from then the services ran inside the Claude desktop app's job, and the owner chose to keep them
+  there. The Wi-Fi return at 15:50 and that restart resent the feed backlog: C39 resend period 10:20–10:24 UTC
+  (875 repeated rows), the 17th period in the C39 section.
+  **Runtime code pinned for the end of the H6b window:** from about 2026-11-04 06:40 UTC until the C38 deploy,
+  the 21 runtime files of C38 (list in `C:\Users\xyreo\arbex\run\h6b_pinned_paths.txt`) were restored in the
+  worktree to 5bc18e6 while HEAD carried C38, so every restart inside the H6b window ran the code the window
+  started with. Never committed.
+  **C38 deployed 2026-11-05 00:07:56 IST (2026-11-04 18:37:56 UTC), by Claude, at the time the owner chose:**
+  runtime files restored to HEAD 46da9fa (`git diff --quiet HEAD` on the 21 paths exit 0; four files still
+  showed as modified through CRLF stat data only, blob hashes equal to HEAD, index refreshed, `git status`
+  clean); `finbert.on` written; both services restarted with `services.ps1 restart`. Recorder gap
+  00:07:59–00:09:24 IST (84.6 s; longer than the 25–37 s of earlier restarts because the backend waits for the
+  semantic service, which now warms FinBERT up first). Checks: banner `FinBERT: ON` and `FinBERT warm-up: 64.3 s`;
+  ports 9000 and 8000 listening; one `/v1/feed` connection; `/v1/metrics` returns `timings_ms` (first 8
+  analyses: total p50 90 ms, sentiment p50 73 ms, reaction 18 ms, evidence 1.6 ms, tracker 0.2 ms, history
+  append 0.02 ms; event-loop lag max 16.6 ms); the 43 prediction-log rows in the first 7 min carry FinBERT
+  sentiment (all non-zero and continuous, against 16 distinct keyword-scorer values, 90 of 200 zero, before)
+  and none repeats an earlier headline × pair; the first opportunity after the deploy (18:43:58 UTC, 4.6 min
+  after the backend came up, in a quiet hour; 13 s and 118 s after the two earlier restarts on 4 Nov) carries
+  `window_bias_v2` with `evidence_weight` and `release_age_minutes`. Kraken still degraded on the hotspot. The
+  services run inside the Claude desktop app's job (owner's choice; the laptop stays on). V2.1 rows for the
+  prospective test and the RQ5 extension sample start here. Counts and fields only; no outcomes read.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
