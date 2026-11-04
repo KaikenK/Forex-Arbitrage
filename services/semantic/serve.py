@@ -219,10 +219,13 @@ def _serve_static(path: str):
 
 
 async def _handle_lifespan(scope, receive, send):
-    """ASGI lifespan handler: start/stop background poller."""
+    """ASGI lifespan handler: start/stop background poller and the event-loop lag probe."""
+    from market.timings import watch_event_loop
+    loop_probe = None
     while True:
         message = await receive()
         if message["type"] == "lifespan.startup":
+            loop_probe = asyncio.create_task(watch_event_loop())         # /metrics event_loop_lag
             if _warm_up_finbert:
                 # Load the model before serving: a first /analyze that waited for the ~6 s load
                 # timed out at the backend (1.2 s) and the headline was lost.
@@ -233,6 +236,8 @@ async def _handle_lifespan(scope, receive, send):
                 await _background_poller.start()
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
+            if loop_probe is not None:
+                loop_probe.cancel()
             if _background_poller is not None:
                 await _background_poller.stop()
             await send({"type": "lifespan.shutdown.complete"})

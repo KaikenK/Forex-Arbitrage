@@ -30,3 +30,15 @@ def test_appends_are_written_by_the_background_thread_and_visible_to_load(tmp_pa
         store.append(article_analysis_from_payload(_payload(i)))
     assert [a.event_id for a in store.load(5)][:3] == ["e19", "e18", "e17"]     # load() flushes first
     assert len((tmp_path / "sub" / "history.jsonl").read_text(encoding="utf-8").splitlines()) == 20
+
+
+def test_stage_timings_are_summarised():
+    from market import timings
+
+    for ms in (1.0, 2.0, 3.0, 100.0):
+        timings.record("unit_test_stage", ms)
+    with timings.timed("unit_test_block"):
+        pass
+    summary = timings.summary()
+    assert summary["unit_test_stage"]["count"] == 4 and summary["unit_test_stage"]["max"] == 100.0
+    assert summary["unit_test_stage"]["p50"] == 3.0 and "unit_test_block" in summary

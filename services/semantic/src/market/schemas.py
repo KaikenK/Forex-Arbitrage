@@ -69,3 +69,4 @@ class ServiceMetrics:
     average_confidence: float
     history_size: int
     last_analysis_at: datetime | None
+    timings_ms: dict[str, dict[str, float]] = field(default_factory=dict)   # per stage, last 500 (C38)

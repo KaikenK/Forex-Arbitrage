@@ -16,6 +16,7 @@ from retrieval.models import RetrievedEvidence
 from .interfaces import EventReactionScorer
 from .interfaces import EventSentimentScorer
 from .interfaces import MarketReactionAnalyzer
+from .timings import timed
 from .models import ArticleAnalysis
 from .models import KeyDriver
 from .models import MarketReactionSignal
@@ -159,7 +160,8 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
         prepared_event = replace(context.event, symbols=resolved_symbols)
         prepared_context = AnalysisContext(article=context.article, event=prepared_event)
 
-        sentiment = await self._sentiment_scorer.score(prepared_context)
+        with timed("sentiment"):
+            sentiment = await self._sentiment_scorer.score(prepared_context)
         scored_event = replace(
             prepared_event,
             raw_sentiment=_clamp(sentiment.score),
@@ -167,8 +169,10 @@ class UnifiedArticleAnalyzer(MarketReactionAnalyzer):
         )
         scored_context = AnalysisContext(article=context.article, event=scored_event)
 
-        signals = await self._reaction_scorer.score(scored_context)
-        evidence = await self._evidence_retriever.retrieve(scored_context, signals)
+        with timed("reaction"):
+            signals = await self._reaction_scorer.score(scored_context)
+        with timed("evidence"):
+            evidence = await self._evidence_retriever.retrieve(scored_context, signals)
 
         affected_symbols = _ordered_unique([signal.symbol for signal in signals] + resolved_symbols)
         # Article-level fields describe the primary pair (the first symbol). With one

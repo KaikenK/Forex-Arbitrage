@@ -18,6 +18,8 @@ from .interfaces import MarketAnalysisService
 from .history_store import JsonlAnalysisHistoryStore
 from .interfaces import MarketReactionAnalyzer
 from .models import ArticleAnalysis
+from .timings import summary as timing_summary
+from .timings import timed
 from .schemas import AnalysisContext
 from .schemas import ArticleInput
 from .schemas import ServiceHealth
@@ -64,19 +66,22 @@ class UnifiedArticleAnalysisService(MarketAnalysisService):
         async with self._lock:
             self._analysis_requests += 1
 
-        analysis = await self._analyzer.analyze(context)
+        with timed("analyze_total"):
+            analysis = await self._analyzer.analyze(context)
 
         async with self._lock:
             self._history.insert(0, analysis)
             del self._history[self._max_history :]
             if self._history_store is not None:
-                self._history_store.append(analysis)
+                with timed("history_append"):
+                    self._history_store.append(analysis)
             self._analyses_completed += 1
             self._confidence_total += analysis.confidence
             self._last_analysis_at = analysis.produced_at
         if self._analysis_observer is not None:
             try:
-                self._analysis_observer(article, analysis)
+                with timed("tracker_observe"):
+                    self._analysis_observer(article, analysis)
             except Exception:
                 self.logger.warning("analysis_observer_failed", exc_info=True)
         return analysis
@@ -116,6 +121,7 @@ class UnifiedArticleAnalysisService(MarketAnalysisService):
                 average_confidence=average_confidence,
                 history_size=len(self._history),
                 last_analysis_at=self._last_analysis_at,
+                timings_ms=timing_summary(),
             )
 
     def _build_context(self, article: ArticleInput) -> AnalysisContext:
