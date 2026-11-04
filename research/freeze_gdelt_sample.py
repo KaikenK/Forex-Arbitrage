@@ -1,13 +1,13 @@
 """Freeze the H1/H5/H6 GDELT sample at the pre-registered cutoff (RESEARCH_TRACKER §6, LOCKED
-PROTOCOL 2026-10-25; cutoff moved by DEVIATIONS 1-3; sample re-collected by DEVIATION 3 and again
-by DEVIATION 4, 2026-11-02; period and gap rule amended by DEVIATION 5, 2026-11-02; all before any
-H1/H5/H6 result existed).
+PROTOCOL 2026-10-25; cutoff moved by DEVIATIONS 1-3 and 6; sample re-collected by DEVIATION 3 and
+again by DEVIATION 4, 2026-11-02; period and gap rule amended by DEVIATION 5, 2026-11-02; all before
+any H1/H5/H6 result existed).
 
 Locked rule, as amended by DEVIATIONS 4-5: H1/H5/H6 use the GDELT GKG extraction on BigQuery
 (`arbex-gdelt.gdelt_fx.fx_headlines`), turned into one shard per month by `gkg_ingest.py` (shard dir
 `artifacts/gdelt_gkg_shards`). The extraction covers 2018-01..2025-04, but GKG page titles start in
 September 2019, so the sample is 2019-10..2025-04 (67 months; earlier shards are ignored). Only
-shards completed before the cutoff, 2026-11-10 23:59 IST (18:29 UTC), count. The shard list is
+shards completed before the cutoff, 2026-11-05 05:30 IST (00:00 UTC; DEVIATION 6), count. The shard list is
 frozen at the cutoff with a content hash. Coverage (months done / 67, events) is reported as is.
 `missing_windows` lists the UTC days that are data gaps (the unit C17/C31 drop): days of a missing
 month; days whose unfiltered GKG count is zero or below 10% of the trailing 28-day median
@@ -46,7 +46,7 @@ SHARD_DIR = gkg_ingest.SHARD_DIR
 DAILY_COUNTS = gkg_ingest.DAILY_COUNTS
 FREEZE_PATH = ARTIFACTS / "gdelt_sample_freeze.json"
 
-CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)      # = 2026-11-10 23:59 IST (DEVIATIONS 3-4)
+CUTOFF_UTC = datetime(2026, 11, 5, 0, 0, tzinfo=UTC)         # = 2026-11-05 05:30 IST (DEVIATION 6)
 SAMPLE_START = date(2019, 10, 1)                               # DEVIATION 5: first full month with titles
 SAMPLE_END = date(2025, 4, 30)                                 # inclusive
 SOURCE = "bigquery_gkg"

@@ -36,7 +36,7 @@ notebook follows: `research/RESEARCH_TRACKER.md` §6 (DEVIATION 4 and later entr
 2. Upload `arbex_colab_inputs.zip` (made on the laptop by `research/colab/make_inputs.py`) to
    Google Drive at `MyDrive/arbex/`.
 3. Run the cells in order. Cells marked **after the cutoff** refuse to run before
-   2026-11-10 23:59 IST.
+   2026-11-05 05:30 IST (DEVIATION 6).
 
 Nothing here costs money: the BigQuery project is a sandbox with no billing account.
 """),
@@ -122,7 +122,7 @@ One shard per month, 2018-01..2025-04, written to Drive. Resumable: finished mon
 !python -m research.freeze_gdelt_sample --preview
 """),
     md("""
-## After the cutoff (2026-11-10 23:59 IST)
+## After the cutoff (2026-11-05 05:30 IST, DEVIATION 6)
 
 The freeze refuses to run earlier. Scoring and the tests read only the frozen sample.
 """),

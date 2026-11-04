@@ -26,7 +26,7 @@ from pathlib import Path
 RESEARCH = Path(__file__).resolve().parent
 ARTIFACTS = RESEARCH / "artifacts"
 H6B_WINDOW_END_UTC = datetime(2026, 11, 4, 18, 30, tzinfo=UTC)
-GDELT_CUTOFF_UTC = datetime(2026, 11, 10, 18, 29, tzinfo=UTC)   # 2026-11-10 23:59 IST (DEVIATION 3)
+GDELT_CUTOFF_UTC = datetime(2026, 11, 5, 0, 0, tzinfo=UTC)      # 2026-11-05 05:30 IST (DEVIATION 6)
 LATENCY_SAMPLE_END_UTC = datetime(2026, 11, 13, 18, 29, tzinfo=UTC)   # arrival-latency study (§6)
 LIVE_SCORING_FROM_UTC = datetime(2026, 11, 17, 18, 30, tzinfo=UTC)    # 2026-11-18 00:00 IST
 V1_DEPLOYMENT_END = "2026-11-01T21:09:00+00:00"                        # release model deployed (§8)
