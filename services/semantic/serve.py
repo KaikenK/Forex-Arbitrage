@@ -100,6 +100,7 @@ MIME_OVERRIDES = {".js": "application/javascript", ".mjs": "application/javascri
 _live_aggregator: LiveSentimentAggregator | None = None
 _background_poller: BackgroundNewsPoller | None = None
 _sse_scorer: KeywordSentimentScorer | None = None
+_warm_up_finbert = False
 
 
 async def _read_body(receive):
@@ -222,6 +223,12 @@ async def _handle_lifespan(scope, receive, send):
     while True:
         message = await receive()
         if message["type"] == "lifespan.startup":
+            if _warm_up_finbert:
+                # Load the model before serving: a first /analyze that waited for the ~6 s load
+                # timed out at the backend (1.2 s) and the headline was lost.
+                from news.enricher.finbert_enricher import shared_enricher
+                seconds = await shared_enricher().warm_up()
+                print(f"  FinBERT warm-up: {'failed, keyword fallback' if seconds is None else f'{seconds:.1f} s'}")
             if _background_poller is not None:
                 await _background_poller.start()
             await send({"type": "lifespan.startup.complete"})
@@ -544,9 +551,10 @@ def main():
     evaluation_payload = _load_evaluation_from_artifact(args.reaction_artifact.resolve())
 
     # Live sentiment (optional background poller)
-    global _live_aggregator, _background_poller, _sse_scorer
+    global _live_aggregator, _background_poller, _sse_scorer, _warm_up_finbert
+    _warm_up_finbert = bool(args.use_finbert)
     _live_aggregator = LiveSentimentAggregator()
-    poller_scorer = _build_live_sentiment_scorer(args.use_finbert)
+    poller_scorer = _build_live_sentiment_scorer(args.use_finbert)        # shares the analyzer's model
     _sse_scorer = poller_scorer
     _background_poller = BackgroundNewsPoller(
         aggregator=_live_aggregator,

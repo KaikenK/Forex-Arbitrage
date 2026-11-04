@@ -4,7 +4,7 @@ import sys
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, PropertyMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,6 +14,7 @@ if str(PROJECT_SRC) not in sys.path:
 
 from market.finbert_sentiment_scorer import FinBERTSentimentScorer
 from market.schemas import AnalysisContext, ArticleInput
+from news.enricher.finbert_enricher import FinBERTEnricher, label_probabilities
 from news.models import SentimentSource, SourceType, UnifiedNewsEvent
 
 
@@ -36,125 +37,105 @@ def _make_context(headline: str, body: str | None = None) -> AnalysisContext:
     )
 
 
+def _scorer(probabilities) -> FinBERTSentimentScorer:
+    enricher = AsyncMock()
+    enricher.probabilities = AsyncMock(return_value=probabilities)
+    return FinBERTSentimentScorer(enricher=enricher)
+
+
 @pytest.mark.asyncio
-async def test_finbert_positive_score() -> None:
-    """FinBERT returns a positive score and FINBERT source."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=0.75)
-    scorer._enricher._load_failed = False
-
-    context = _make_context("RBI holds rates steady, rupee strengthens")
-    result = await scorer.score(context)
-
-    assert result.score == pytest.approx(0.75)
-    assert result.confidence >= 0.3
-    assert result.confidence <= 0.95
+async def test_score_is_expected_polarity_and_confidence_is_one_minus_neutral() -> None:
+    result = await _scorer((0.70, 0.10, 0.20)).score(_make_context("RBI holds rates steady"))
+    assert result.score == pytest.approx(0.60)
+    assert result.confidence == pytest.approx(0.80)
     assert result.source == SentimentSource.FINBERT
-    assert any("FinBERT" in d.label for d in result.key_drivers)
+    assert result.key_drivers[0].label == "FinBERT: POSITIVE"
 
 
 @pytest.mark.asyncio
-async def test_finbert_negative_score() -> None:
-    """FinBERT returns a negative score correctly clamped."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=-0.6)
-    scorer._enricher._load_failed = False
-
-    context = _make_context("Fed raises rates aggressively, dollar surges")
-    result = await scorer.score(context)
-
-    assert result.score == pytest.approx(-0.6)
-    assert result.source == SentimentSource.FINBERT
-    assert any("NEGATIVE" in d.label for d in result.key_drivers)
+async def test_a_neutral_call_keeps_its_lean_and_has_low_confidence() -> None:
+    """Top label NEUTRAL used to give exactly 0; the polar probabilities still carry a lean."""
+    result = await _scorer((0.05, 0.25, 0.70)).score(_make_context("Markets await the Fed decision"))
+    assert result.score == pytest.approx(-0.20)
+    assert result.confidence == pytest.approx(0.30)
+    assert result.key_drivers[0].label == "FinBERT: NEGATIVE"
 
 
 @pytest.mark.asyncio
-async def test_finbert_neutral_score() -> None:
-    """Near-zero scores produce NEUTRAL label with low confidence."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=0.02)
-    scorer._enricher._load_failed = False
-
-    context = _make_context("Market opens flat today")
-    result = await scorer.score(context)
-
-    assert result.score == pytest.approx(0.02)
-    assert result.confidence == 0.3
-    assert any("NEUTRAL" in d.label for d in result.key_drivers)
+async def test_confidence_has_a_floor() -> None:
+    result = await _scorer((0.01, 0.01, 0.98)).score(_make_context("Market opens flat today"))
+    assert result.confidence == pytest.approx(0.05)
 
 
 @pytest.mark.asyncio
-async def test_finbert_fallback_on_load_failure() -> None:
-    """When FinBERT model fails to load, falls back to keyword scorer."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=0.0)
-    scorer._enricher._load_failed = True
+async def test_domain_override_flips_the_expected_polarity() -> None:
+    """'rupee weakens' forces bearish: the polarity keeps its size and takes the override's sign."""
+    result = await _scorer((0.60, 0.20, 0.20)).score(_make_context("Rupee weakens past 88 as oil climbs"))
+    assert result.score == pytest.approx(-0.40)
 
-    context = _make_context("Fed raises interest rates sharply", "Dollar strengthens on rate hike.")
-    result = await scorer.score(context)
 
-    # Keyword fallback should still produce a result
+@pytest.mark.asyncio
+async def test_unavailable_model_falls_back_to_keywords() -> None:
+    result = await _scorer(None).score(_make_context("Fed raises interest rates sharply", "Dollar strengthens."))
+    assert result.source != SentimentSource.FINBERT
     assert -1.0 <= result.score <= 1.0
-    assert result.confidence >= 0.0
 
 
 @pytest.mark.asyncio
-async def test_finbert_empty_text_uses_fallback() -> None:
-    """Empty article text triggers keyword fallback."""
-    scorer = FinBERTSentimentScorer()
+async def test_empty_text_uses_fallback() -> None:
     event = UnifiedNewsEvent(
-        event_id="test-empty",
-        schema_version=1,
-        source=SourceType.RSS,
-        headline="",
-        body=None,
-        published_at=datetime(2026, 1, 1, tzinfo=UTC),
-        symbols=[],
-        raw_sentiment=0.0,
-        sentiment_source=SentimentSource.NONE,
-        ingested_at=datetime(2026, 1, 1, tzinfo=UTC),
+        event_id="test-empty", schema_version=1, source=SourceType.RSS, headline="", body=None,
+        published_at=datetime(2026, 1, 1, tzinfo=UTC), symbols=[], raw_sentiment=0.0,
+        sentiment_source=SentimentSource.NONE, ingested_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    context = AnalysisContext(
-        article=ArticleInput(article_text=""),
-        event=event,
-    )
-
-    result = await scorer.score(context)
+    scorer = _scorer((1.0, 0.0, 0.0))
+    result = await scorer.score(AnalysisContext(article=ArticleInput(article_text=""), event=event))
     assert -1.0 <= result.score <= 1.0
+    scorer._enricher.probabilities.assert_not_awaited()
+
+
+def test_label_probabilities_reads_flat_and_nested_results() -> None:
+    flat = [{"label": "positive", "score": 0.7}, {"label": "negative", "score": 0.1},
+            {"label": "neutral", "score": 0.2}]
+    assert label_probabilities(flat) == (0.7, 0.1, 0.2)
+    assert label_probabilities([flat]) == (0.7, 0.1, 0.2)
+    assert label_probabilities([{"label": "positive", "score": 0.9}]) is None       # top label only
+    assert label_probabilities("bad") is None
+
+
+class _FakePipeline:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def __call__(self, text, **kwargs):
+        self.calls.append((text, kwargs))
+        return [{"label": "positive", "score": 0.5}, {"label": "negative", "score": 0.3},
+                {"label": "neutral", "score": 0.2}]
 
 
 @pytest.mark.asyncio
-async def test_finbert_score_clamped_to_range() -> None:
-    """Scores outside [-1, 1] are clamped."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=1.5)
-    scorer._enricher._load_failed = False
-
-    context = _make_context("Extreme bullish event")
-    result = await scorer.score(context)
-
-    assert result.score == pytest.approx(1.0)
+async def test_enricher_truncates_caches_and_scores_expected_polarity() -> None:
+    enricher = FinBERTEnricher(cache_size=2)
+    pipeline = _FakePipeline()
+    enricher._pipeline = pipeline
+    assert await enricher.score(" Dollar steady ") == pytest.approx(0.2)
+    assert await enricher.probabilities("Dollar steady") == (0.5, 0.3, 0.2)      # cache hit, same text
+    assert len(pipeline.calls) == 1
+    assert pipeline.calls[0][1] == {"top_k": None, "truncation": True, "max_length": 128}
+    await enricher.probabilities("a")
+    await enricher.probabilities("b")                                             # evicts "Dollar steady"
+    await enricher.probabilities("Dollar steady")
+    assert len(pipeline.calls) == 4
 
 
 @pytest.mark.asyncio
-async def test_finbert_blends_keyword_drivers() -> None:
-    """FinBERT result includes blended keyword drivers when available."""
-    scorer = FinBERTSentimentScorer()
-    scorer._enricher = AsyncMock()
-    scorer._enricher.score = AsyncMock(return_value=0.5)
-    scorer._enricher._load_failed = False
+async def test_enricher_returns_none_when_inference_fails() -> None:
+    enricher = FinBERTEnricher()
 
-    context = _make_context(
-        "RBI rate decision boosts rupee",
-        "The central bank held rates steady amid inflation concerns.",
-    )
-    result = await scorer.score(context)
+    def broken(text, **kwargs):
+        raise RuntimeError("sequence too long")
 
-    # Should have FinBERT driver plus up to 2 keyword drivers
-    assert len(result.key_drivers) >= 1
-    assert result.key_drivers[0].label.startswith("FinBERT:")
+    enricher._pipeline = broken
+    assert await enricher.probabilities("x") is None
+    assert await enricher.score("x") == 0.0
+

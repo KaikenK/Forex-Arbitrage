@@ -4,6 +4,7 @@ from __future__ import annotations
 import structlog
 
 from news.enricher.finbert_enricher import FinBERTEnricher
+from news.enricher.finbert_enricher import shared_enricher
 from news.models import SentimentSource
 
 from .interfaces import EventSentimentScorer
@@ -75,14 +76,23 @@ CONTEXTUAL_OVERRIDES: tuple[tuple[str, int], ...] = (
 )
 
 
+MIN_CONFIDENCE = 0.05
+
+
 class FinBERTSentimentScorer(EventSentimentScorer):
-    """Scores sentiment using ProsusAI/FinBERT with keyword fallback."""
+    """Scores sentiment using ProsusAI/FinBERT with keyword fallback.
+
+    score      = P(positive) - P(negative), the expected polarity over all three labels (the
+                 top label alone threw away the rest and made every NEUTRAL call exactly 0);
+    confidence = 1 - P(neutral), how polar the text is. It is no longer |score| itself, which
+                 counted the same number twice wherever score and confidence are combined.
+    """
 
     logger = structlog.get_logger().bind(component="FinBERTSentimentScorer")
 
-    def __init__(self) -> None:
-        """Initializes the FinBERT scorer with a lazy-loaded enricher."""
-        self._enricher = FinBERTEnricher()
+    def __init__(self, enricher: FinBERTEnricher | None = None) -> None:
+        """Initializes the scorer on the process-wide enricher (one model per process)."""
+        self._enricher = enricher or shared_enricher()
         self._fallback = KeywordSentimentScorer()
 
     async def score(self, context: AnalysisContext) -> SentimentInference:
@@ -91,17 +101,13 @@ class FinBERTSentimentScorer(EventSentimentScorer):
         if not text.strip():
             return await self._fallback.score(context)
 
-        raw_finbert_score = await self._enricher.score(text)
-        finbert_score = _forex_domain_correction(text, raw_finbert_score)
-
-        # FinBERTEnricher returns 0.0 on failure; distinguish real neutral from failure
-        # by also checking if model loaded successfully
-        if self._enricher._load_failed:
+        probabilities = await self._enricher.probabilities(text)
+        if probabilities is None:
             self.logger.info("finbert_unavailable_using_keyword_fallback")
             return await self._fallback.score(context)
-
-        abs_score = abs(finbert_score)
-        confidence = max(0.3, min(0.95, abs_score)) if abs_score > 0.05 else 0.3
+        p_positive, p_negative, p_neutral = probabilities
+        finbert_score = _forex_domain_correction(text, p_positive - p_negative)
+        confidence = max(MIN_CONFIDENCE, min(1.0, 1.0 - p_neutral))
 
         if finbert_score > 0.05:
             sentiment_label = "POSITIVE"
@@ -113,8 +119,8 @@ class FinBERTSentimentScorer(EventSentimentScorer):
         key_drivers = [
             KeyDriver(
                 label=f"FinBERT: {sentiment_label}",
-                rationale=f"ProsusAI/FinBERT classified this text as {sentiment_label} "
-                f"with raw score {finbert_score:+.3f}.",
+                rationale=f"ProsusAI/FinBERT: P(positive) {p_positive:.2f}, P(negative) {p_negative:.2f}, "
+                f"P(neutral) {p_neutral:.2f}; expected polarity {finbert_score:+.3f}.",
                 evidence_ids=[],
             ),
         ]
@@ -133,7 +139,7 @@ class FinBERTSentimentScorer(EventSentimentScorer):
 
 
 def _forex_domain_correction(text: str, finbert_score: float) -> float:
-    """Flips FinBERT score when forex-specific phrases contradict model output."""
+    """Flips the sign of the expected polarity when forex-specific phrases contradict it."""
     lowered = text.casefold()
 
     # Phase 1: Contextual overrides take absolute priority.
