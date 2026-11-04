@@ -186,3 +186,25 @@ def test_release_channel_is_shadow_only_and_records_exposure_alignment():
     assert snap["release_channel"]["penalty"] == 0.0
     assert ch.channel_snapshot("EUR/USD", "cross_source", window_bias=None, client=None,
                                applied=False)["release_channel"] is None
+
+
+def test_a_failed_fetch_backs_off_for_one_ttl():
+    """A failing service is not retried (and waited on) for every opportunity (C38)."""
+    import asyncio
+
+    class Failing:
+        calls = 0
+
+        def fetch_currency_index(self):
+            Failing.calls += 1
+            raise TimeoutError("timed out")
+
+    now = [1000.0]
+    client = ch.CurrencyBiasClient(Failing(), ttl_seconds=30.0, clock=lambda: now[0])
+    for _ in range(5):
+        asyncio.run(client.pair("EUR/USD"))
+    assert Failing.calls == 1 and client.status == "unavailable" and not client.due()
+    now[0] += 31.0
+    assert client.due()
+    asyncio.run(client.pair("EUR/USD"))
+    assert Failing.calls == 2

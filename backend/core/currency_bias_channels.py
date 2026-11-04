@@ -159,6 +159,7 @@ class CurrencyBiasClient:
         self._clock = clock or time.time
         self._payload: Optional[Dict[str, Any]] = None
         self._fetched_at: Optional[float] = None
+        self._failed_at: Optional[float] = None
         self.status = "never_fetched"
 
     def refresh(self) -> Optional[Dict[str, Any]]:
@@ -167,16 +168,29 @@ class CurrencyBiasClient:
         except Exception as exc:                     # service down: keep the last value
             logger.warning("currency index fetch failed: %s", exc)
             self.status = "unavailable"
+            self._failed_at = self._clock()
             return self._payload
         self._payload = payload
         self._fetched_at = self._clock()
+        self._failed_at = None
         self.status = "live" if payload is not None else "disabled_on_service"
         return payload
 
+    def due(self) -> bool:
+        """A refresh is due once the TTL has passed, but not within a TTL of a failure: a failing
+        service used to be retried (and waited on, up to the timeout) for every opportunity."""
+        now = self._clock()
+        if self._failed_at is not None and now - self._failed_at <= self._ttl:
+            return False
+        return self._fetched_at is None or now - self._fetched_at > self._ttl
+
     async def pair(self, pair: str) -> Optional[Dict[str, Any]]:
-        if self._fetched_at is None or self._clock() - self._fetched_at > self._ttl:
+        if self.due():
             await asyncio.to_thread(self.refresh)
         return self.cached(pair)
+
+    def latest(self) -> Optional[Dict[str, Any]]:
+        return self._payload
 
     def cached(self, pair: str) -> Optional[Dict[str, Any]]:
         if not self._payload:
