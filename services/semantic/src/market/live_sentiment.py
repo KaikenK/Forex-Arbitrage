@@ -7,9 +7,15 @@ refreshed on demand.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+
+
+def _headline_key(text: str) -> str:
+    """Case and punctuation folded, as the backend's window v2 and prospective scoring."""
+    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
 
 
 @dataclass(frozen=True)
@@ -57,7 +63,11 @@ class LiveSentimentAggregator:
         source: str = "unknown",
         timestamp: datetime | None = None,
     ) -> None:
-        """Record a new sentiment item into the window."""
+        """Record a new sentiment item into the window, once per headline and pair.
+
+        The SSE path and the background poller both record what they see, and every feed
+        reconnect resends the backlog, so the same headline used to be counted several times.
+        """
         item = SentimentItem(
             headline=headline,
             sentiment_score=max(-1.0, min(1.0, sentiment_score)),
@@ -67,7 +77,10 @@ class LiveSentimentAggregator:
             source=source,
             timestamp=timestamp or datetime.now(UTC),
         )
+        key = _headline_key(headline)
         async with self._lock:
+            if key and any(i.pair == item.pair and _headline_key(i.headline) == key for i in self._items):
+                return
             self._items.append(item)
 
     async def aggregate(

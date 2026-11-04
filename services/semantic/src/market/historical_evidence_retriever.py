@@ -183,10 +183,14 @@ def _metadata_filter_tiers(
     if pair is not None and event_family_key is not None:
         tiers.append(({"pair": pair, event_family_key: event_family_value}, "pair+event_family"))
     if pair is not None:
+        # No tier without the pair: the table's rows are USD/INR, and an EUR/USD signal judged
+        # against USD/INR rows reads the same dollar move with the opposite sign, so every
+        # majors analysis came out "contradictory" and was forced to HOLD.
         tiers.append(({"pair": pair}, "pair"))
-    if horizon_minutes is not None:
-        tiers.append(({"horizon_minutes": str(horizon_minutes)}, "horizon"))
-    tiers.append((None, "semantic-similarity-only"))
+    else:
+        if horizon_minutes is not None:
+            tiers.append(({"horizon_minutes": str(horizon_minutes)}, "horizon"))
+        tiers.append((None, "semantic-similarity-only"))
 
     unique_tiers: list[tuple[dict[str, str] | None, str]] = []
     seen_keys: set[tuple[tuple[str, str], ...] | None] = set()

@@ -19,6 +19,8 @@ from .schemas import AnalysisContext
 
 DEFAULT_FALLBACK_HORIZON = 60
 CALIBRATION_EPSILON = 1e-9
+NO_INFORMATION = [0.0, 1.0, 0.0]     # [down, neutral, up] placeholder when the model has no output
+CHANCE_CONFIDENCE = 1.0 / 3.0
 
 
 class ArtifactReactionScorer(EventReactionScorer):
@@ -87,19 +89,27 @@ class ArtifactReactionScorer(EventReactionScorer):
         for pair in pairs:
             horizon_minutes = self._resolve_horizon(context, pair)
             query_row = self._query_row(context, pair, horizon_minutes)
+            raw_probabilities = self._uncalibrated_direction_probabilities(query_row)
+            # No model output (empty logits or neighbours), or a pair the "usd" model says
+            # nothing about: direction 0 at chance confidence. max() of the [0, 1, 0] placeholder
+            # used to report 1.0, the most confident call the service could make.
+            no_information = raw_probabilities == NO_INFORMATION or (
+                self._artifact.direction_orientation == "usd" and _usd_side(pair) == 0)
             probabilities = _orient_to_pair(
-                self._direction_probabilities(query_row),
+                _apply_direction_calibration(raw_probabilities, self._artifact.direction_calibration_temperature),
                 pair=pair,
                 orientation=self._artifact.direction_orientation,
             )
-            predicted_direction = self._probability_to_direction(probabilities)
+            predicted_direction = 0 if no_information else self._probability_to_direction(probabilities)
             predicted_signals.append(
                 MarketReactionSignal(
                     event_id=context.event.event_id,
                     symbol=pair,
                     direction=float(predicted_direction),
-                    magnitude=self._predicted_magnitude(query_row),
-                    confidence=max(probabilities),
+                    # An absolute-move regression can go below zero; a negative size would flip
+                    # the sign of market_score = direction x magnitude.
+                    magnitude=max(0.0, self._predicted_magnitude(query_row)),
+                    confidence=CHANCE_CONFIDENCE if no_information else max(probabilities),
                     horizon_minutes=horizon_minutes,
                     key_drivers=self._key_drivers(query_row),
                     produced_at=self._clock(),
@@ -372,7 +382,7 @@ class ArtifactReactionScorer(EventReactionScorer):
 
         neighbors = self._nearest_neighbors(row)
         if not neighbors:
-            return [0.0, 1.0, 0.0]
+            return list(NO_INFORMATION)
 
         weights = [0.0, 0.0, 0.0]
         for neighbor, similarity in neighbors:
@@ -381,7 +391,7 @@ class ArtifactReactionScorer(EventReactionScorer):
 
         total_weight = sum(weights)
         if total_weight == 0:
-            return [0.0, 1.0, 0.0]
+            return list(NO_INFORMATION)
         return [weight / total_weight for weight in weights]
 
     def _predicted_magnitude(self, row: RuntimeReactionRow) -> float:
@@ -458,7 +468,7 @@ class ArtifactReactionScorer(EventReactionScorer):
         ):
             logits.append(float(intercept + sum(weight * value for weight, value in zip(weights, row.feature_vector))))
         if not logits:
-            return [0.0, 1.0, 0.0]
+            return list(NO_INFORMATION)
 
         probabilities = _softmax(logits)
         probabilities = [0.0, 0.0, 0.0]
@@ -516,7 +526,7 @@ def _orient_to_pair(probabilities: list[float], *, pair: str, orientation: str) 
         return probabilities
     if side == -1:
         return [probabilities[2], probabilities[1], probabilities[0]]
-    return [0.0, 1.0, 0.0]
+    return list(NO_INFORMATION)
 
 
 def _neighbor_tiers(row: RuntimeReactionRow) -> list[Callable[[RuntimeReactionRow], bool]]:

@@ -138,6 +138,14 @@ _RATE_RANGE = re.compile(r"\d+(?:\.\d+)?\s*%?\s*(?:[-–]|to)\s*(\d+(?:\.\d+)?)\
 _REFERENCE = re.compile(r"(?<![a-z])(vs\.?|versus|expected|exp\.?|forecast|consensus|estimates?|est\.?|"
                         r"prior|previous|prev\.?|revised|after|from|last)(?![a-z])[^0-9]{0,18}$", re.IGNORECASE)
 
+# A falling verb directly before an unsigned number makes it a negative change: "retail sales
+# fall 0.3%" is -0.3, which used to be read as +0.3 and flipped the surprise. Only directly before
+# (optionally "by"): "falls to 4.1%" reports a level and keeps its sign.
+_FALLING = re.compile(r"(?<![a-z])(falls?|fell|falling|declines?|declined|declining|drops?|dropped|dropping|"
+                      r"slips?|slipped|slides?|slid|dips?|dipped|contracts?|contracted|contracting|"
+                      r"shrinks?|shrank|shrunk|decreases?|decreased|plunges?|plunged|tumbles?|tumbled)"
+                      r"(?:\s+by)?\s+$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class FoundNumber:
@@ -158,6 +166,8 @@ def find_numbers(text: str) -> list[FoundNumber]:
     for m in _NUMBER.finditer(text):
         raw, unit = m.group(1), m.group(2) or ""
         number = float(raw.replace(",", "").replace("−", "-"))
+        if raw[0] not in "-+−" and _FALLING.search(text[max(0, m.start() - 24):m.start()]):
+            number = -number
         unit_l = unit.casefold()
         if unit_l in {"%", "percent", "per cent"}:
             value, kind = number, "%"

@@ -71,7 +71,7 @@ class RagReactionScorer(EventReactionScorer):
             if getattr(doc, "metadata", {}).get("pair") == signal.symbol
         ]
         if not pair_evidence:
-            pair_evidence = evidence_results
+            return signal               # another pair's evidence reads the same move with the other sign
 
         avg_relevance = sum(sim for _, sim in pair_evidence) / len(pair_evidence)
         supportive_scores = [sim for doc, sim in pair_evidence if _document_stance(doc, signal.direction) == "supportive"]

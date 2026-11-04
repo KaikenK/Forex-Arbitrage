@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,13 @@ def _keyed(entries: list[dict]) -> dict[tuple, Any]:
 def pair_side(pair: str, currency: str) -> int | None:
     base, _, quote = pair.partition("/")
     return 1 if currency == base else -1 if currency == quote else None
+
+
+# A higher print is bad news for the currency for every unemployment-type release, in every
+# country (the economic prior of Andersen, Bollerslev, Diebold & Vega 2003). The exported table lists
+# only the US and UK cases the research sample needed, so e.g. a UK or euro-area "Unemployment Rate"
+# above forecast was read as good news for the currency.
+BAD_WHEN_HIGHER = re.compile(r"unemployment|jobless|claimant count", re.IGNORECASE)
 
 
 @dataclass
@@ -89,13 +97,19 @@ class ReleaseReactionModel:
     def news_sign(self, currency: str, event: str) -> int | None:
         if (currency, event) in self.ambiguous:
             return None
-        return -1 if (currency, event) in self.negative else 1
+        if (currency, event) in self.negative or BAD_WHEN_HIGHER.search(event):
+            return -1
+        return 1
 
     def p_direction(self, z: float) -> float | None:
+        """Fitted on |z| and log(1+|z|), the logistic peaks at |z|* = -w2/w1 - 1 (about 2.3) and
+        then falls. It is read at min(|z|, |z|*), so a larger surprise is never less certain."""
         if self.conf_weights is None:
             return None
         a = abs(z)
         w = self.conf_weights
+        if w[1] < 0 < w[2]:
+            a = min(a, max(0.0, -w[2] / w[1] - 1.0))
         x = w[0] + w[1] * a + w[2] * math.log1p(a)
         return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, x))))
 
