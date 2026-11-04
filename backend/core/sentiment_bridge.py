@@ -1147,12 +1147,17 @@ class SentimentBridge:
             return
         primary_pair, primary_event = job[0]
         pairs = [pair for pair, _ in job]
-        analysis = (
-            self._analyze_feed_event(primary_event, currency_pairs=pairs)
-            if len(pairs) > 1
-            else self._analyze_feed_event(primary_event)
-        )
+        try:
+            analysis = (
+                self._analyze_feed_event(primary_event, currency_pairs=pairs)
+                if len(pairs) > 1
+                else self._analyze_feed_event(primary_event)
+            )
+        except Exception:
+            self._release_analysed_keys(job)
+            raise
         if analysis is None:
+            self._release_analysed_keys(job)
             return
         for pair, normalized_event in job:
             record = _pair_analysis_view(analysis, pair, primary_pair)
@@ -1339,6 +1344,13 @@ class SentimentBridge:
         if normalized_pair in self._pair_allowlist:
             return [normalized_pair]
         return []
+
+    def _release_analysed_keys(self, job: tuple[tuple[str, dict[str, Any]], ...]) -> None:
+        """A failed analysis (e.g. a service timeout) leaves its headline unanalysed, so a later
+        resend of it is analysed instead of being skipped as a repeat."""
+        with self._state_lock:
+            for pair, event in job:
+                self._analysed_keys.discard((pair, _headline_key(event.get("headline"))))
 
     def _seed_analysed_keys(self) -> None:
         """Every real headline x pair already in the prediction log counts as analysed."""

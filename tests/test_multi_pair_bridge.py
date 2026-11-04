@@ -205,6 +205,15 @@ def test_a_resent_headline_is_not_analysed_again(tmp_path, monkeypatch):
     assert bridge._analysis_queue.empty()
 
 
+def test_a_failed_analysis_is_retried_when_the_headline_is_resent(tmp_path, monkeypatch):
+    bridge = _bridge(tmp_path)
+    monkeypatch.setattr(bridge, "_analyze_feed_event", lambda *a, **k: None)        # service timed out
+    bridge._handle_feed_event({**_macro_event(), "pair": "EUR/USD"})
+    bridge._process_analysis_job(bridge._analysis_queue.get_nowait())
+    bridge._handle_feed_event({**_macro_event(), "pair": "EUR/USD", "event_id": "evt-2"})
+    assert bridge._analysis_queue.qsize() == 1
+
+
 def test_headlines_already_in_the_prediction_log_are_not_analysed_after_a_restart(tmp_path):
     import json as _json
 
