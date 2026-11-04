@@ -22,7 +22,9 @@ its own arm, as `semantic_engine` applies it (score + window `confidence_adjustm
 alone and with both channels. No decision weight; the locked arms are unchanged. The RQ5
 extension (`--rq5-extension`) runs the same arms on the recordings after the H6b window, to
 2026-11-18 00:00 IST, and refuses to run before then. C35: where the shadow window v2 was
-recorded, two more arms (`window_v2_scores`).
+recorded, two more arms (`window_v2_scores`). C39 (§6, 2026-11-04, before the window closed):
+a sensitivity section, the clean window minus feed-resend periods found in the prediction log
+(`resend_periods`), every arm on the same rows, no decision weight.
 
   python -m research.run_h6b --recordings %LOCALAPPDATA%\\arbex\\recordings
   python -m research.run_h6b --rq5-extension
@@ -34,8 +36,8 @@ import bisect
 import json
 import os
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +60,16 @@ WINDOW_END_UTC = datetime(2026, 11, 4, 18, 30, tzinfo=UTC)
 # clean sub-window from here to WINDOW_END_UTC, neither weighted more after results.
 CLEAN_WINDOW_START_UTC = datetime(2026, 11, 1, 21, 53, tzinfo=UTC)    # 2026-11-02 03:23 IST
 RQ5_END_UTC = datetime(2026, 11, 17, 18, 30, tzinfo=UTC)               # 2026-11-18 00:00 IST (C34)
+# C39 (§6, 2026-11-04, before the H6b window closed and before any outcome was examined): a third
+# section, the clean window minus feed-resend periods. A resend period is a run of UTC minutes in
+# each of which at least RESEND_MIN_REPEATS prediction-log rows repeat an earlier headline x pair,
+# runs less than RESEND_MERGE_MINUTES apart merged; opportunities from a period's first minute to
+# RESEND_TAIL_MINUTES after its last are dropped. No section is weighted more after results.
+DEFAULT_PREDICTIONS = (Path(__file__).resolve().parents[1] / "sentiment_assets" / "runtime" / "predictions"
+                       / "live_predictions.jsonl")
+RESEND_MIN_REPEATS = 20
+RESEND_MERGE_MINUTES = 5
+RESEND_TAIL_MINUTES = 30
 
 
 def default_recordings() -> Path:
@@ -223,18 +235,74 @@ def day_bootstrap(rows: Sequence[dict], scores: Mapping[str, np.ndarray], *,
     return {"auc": point, "ci95": ci, "n": len(rows), "n_days": len(unique), "positives": int(labels.sum())}
 
 
+def _parse_utc(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
+
+
+def resend_periods(prediction_rows: Iterable[Mapping], *, min_repeats: int = RESEND_MIN_REPEATS,
+                   merge_minutes: int = RESEND_MERGE_MINUTES) -> list[dict]:
+    """C39: feed-resend periods in the prediction log, as [start, end) UTC minute ranges.
+
+    A row repeats when its headline (lower-cased, whitespace collapsed) x pair was logged earlier;
+    a minute is a resend minute when it holds at least `min_repeats` repeats (by `logged_at`)."""
+    seen: set[tuple[str, str]] = set()
+    repeats: dict[datetime, int] = defaultdict(int)
+    for row in prediction_rows:
+        key = (" ".join(str(row.get("headline") or "").lower().split()), str(row.get("pair") or ""))
+        logged = _parse_utc(row.get("logged_at"))
+        if key in seen and logged is not None:
+            repeats[logged.astimezone(UTC).replace(second=0, microsecond=0)] += 1
+        seen.add(key)
+    periods: list[list] = []
+    for minute in sorted(m for m, n in repeats.items() if n >= min_repeats):
+        if periods and minute - periods[-1][1] <= timedelta(minutes=merge_minutes):
+            periods[-1][1] = minute
+        else:
+            periods.append([minute, minute])
+    return [{"start": a, "end": b + timedelta(minutes=1),
+             "repeat_rows": sum(n for m, n in repeats.items() if a <= m <= b)} for a, b in periods]
+
+
+def load_resend_periods(path: Path) -> list[dict]:
+    def rows():
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+    return resend_periods(rows())
+
+
+def resend_exclusions(periods: Sequence[Mapping], *, tail_minutes: int = RESEND_TAIL_MINUTES
+                      ) -> list[tuple[datetime, datetime]]:
+    return [(p["start"], p["end"] + timedelta(minutes=tail_minutes)) for p in periods]
+
+
 def evaluation_rows(opportunities: Sequence[dict], quotes, *, one_sided: str,
                     window_end: datetime = WINDOW_END_UTC,
-                    window_start: datetime | None = None) -> tuple[list[dict], dict]:
+                    window_start: datetime | None = None,
+                    exclude: Sequence[tuple[datetime, datetime]] = ()) -> tuple[list[dict], dict]:
     rows, skipped = [], defaultdict(int)
     end_ms = int(window_end.timestamp() * 1000)
     start_ms = None if window_start is None else int(window_start.timestamp() * 1000)
+    excluded_ms = [(int(a.timestamp() * 1000), int(b.timestamp() * 1000)) for a, b in exclude]
     for opp in opportunities:
-        if int(opp.get("timestamp_ms") or 0) >= end_ms:
+        ts = int(opp.get("timestamp_ms") or 0)
+        if ts >= end_ms:
             skipped["after_window_end"] += 1
             continue
-        if start_ms is not None and int(opp.get("timestamp_ms") or 0) < start_ms:
+        if start_ms is not None and ts < start_ms:
             skipped["before_window_start"] += 1
+            continue
+        if any(a <= ts < b for a, b in excluded_ms):
+            skipped["resend_period"] += 1
             continue
         snapshot = opp.get("semantic_snapshot")
         if not isinstance(snapshot, dict):
@@ -280,10 +348,28 @@ def evaluate_section(rows: Sequence[dict], skipped: Mapping[str, int], start: da
     return section
 
 
+def resend_section(opportunities: Sequence[dict], quotes, predictions: Path | None) -> dict:
+    """C39: the clean window minus feed-resend periods (+ RESEND_TAIL_MINUTES), every arm on the same rows."""
+    rule = {"min_repeats_per_minute": RESEND_MIN_REPEATS, "merge_minutes": RESEND_MERGE_MINUTES,
+            "tail_minutes": RESEND_TAIL_MINUTES, "framing": "sensitivity, no decision weight (C39)"}
+    if predictions is None or not predictions.exists():
+        return {"rule": rule, "unavailable": f"prediction log not found: {predictions}"}
+    periods = [p for p in load_resend_periods(predictions) if p["start"] < WINDOW_END_UTC]
+    rows, skipped = evaluation_rows(opportunities, quotes, window_start=CLEAN_WINDOW_START_UTC,
+                                    window_end=WINDOW_END_UTC, exclude=resend_exclusions(periods),
+                                    one_sided=str(H6B_UNRESOLVED["one_sided_next_quote"]))
+    section = evaluate_section(rows, skipped, CLEAN_WINDOW_START_UTC, WINDOW_END_UTC)
+    section["rule"] = rule
+    section["resend_periods"] = [{"start_utc": p["start"].isoformat(), "end_utc": p["end"].isoformat(),
+                                  "repeat_rows": p["repeat_rows"]} for p in periods]
+    return section
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="H6b: prospective ranking evaluation (exploratory).")
     parser.add_argument("--recordings", type=Path, default=default_recordings())
-    parser.add_argument("--predictions", type=Path, default=None)
+    parser.add_argument("--predictions", type=Path, default=DEFAULT_PREDICTIONS,
+                        help="live_predictions.jsonl (resend periods for the C39 section)")
     parser.add_argument("--rq5-extension", action="store_true",
                         help="RQ5: same arms on the recordings after the H6b window (C34)")
     args = parser.parse_args()
@@ -312,6 +398,8 @@ def main() -> None:
         rows, skipped = evaluation_rows(opportunities, quotes, window_start=start, window_end=end,
                                         one_sided=str(H6B_UNRESOLVED["one_sided_next_quote"]))
         report[label] = evaluate_section(rows, skipped, start, end)
+    if not args.rq5_extension:
+        report["clean_window_minus_resends"] = resend_section(opportunities, quotes, args.predictions)
     if args.predictions and args.predictions.exists():
         with args.predictions.open(encoding="utf-8") as handle:
             report["prediction_log_rows"] = sum(1 for _ in handle)

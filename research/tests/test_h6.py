@@ -312,6 +312,55 @@ def test_h6b_clean_window_drops_earlier_opportunities():
     assert h.CLEAN_WINDOW_START_UTC < h.WINDOW_END_UTC
 
 
+def test_h6b_resend_periods_and_exclusion():
+    """C39: resend minutes (>= 20 repeats of an earlier headline x pair), merged within 5 min,
+    excluded from the period start to 30 min after its end."""
+    from datetime import timedelta
+
+    from research import run_h6b as h
+
+    base = datetime(2026, 11, 3, 5, 25, 10, tzinfo=UTC)
+    first = [{"headline": f"Story {i}", "pair": "EURUSD", "logged_at": (base - timedelta(hours=1)).isoformat()}
+             for i in range(25)]
+    burst = [{"headline": f"  story {i} ", "pair": "EURUSD", "logged_at": base.isoformat()} for i in range(25)]
+    later = [{"headline": f"Story {i}", "pair": "EURUSD", "logged_at": (base + timedelta(minutes=4)).isoformat()}
+             for i in range(25)]
+    small = [{"headline": f"Story {i}", "pair": "EURUSD", "logged_at": (base + timedelta(hours=2)).isoformat()}
+             for i in range(19)]                                         # below the threshold
+    other_pair = [{"headline": f"Story {i}", "pair": "GBPUSD", "logged_at": base.isoformat()} for i in range(25)]
+    periods = h.resend_periods(first + burst + later + small + other_pair)
+    assert len(periods) == 1
+    assert periods[0]["start"] == datetime(2026, 11, 3, 5, 25, tzinfo=UTC)
+    assert periods[0]["end"] == datetime(2026, 11, 3, 5, 30, tzinfo=UTC)
+    assert periods[0]["repeat_rows"] == 50
+    (lo, hi), = h.resend_exclusions(periods)
+    assert hi == datetime(2026, 11, 3, 6, 0, tzinfo=UTC)
+
+    quotes = {("kraken", "KRAKEN", "EURUSD"): ([0, 10**13], [{"bid": 1.1, "ask": 1.1001}] * 2),
+              ("truefx", "TRUEFX", "EURUSD"): ([0, 10**13], [{"bid": 1.1003, "ask": 1.1004}] * 2)}
+    snap = {"risk_channel": {"penalty": 0.0}, "direction_channel": {"penalty": 0.0}}
+
+    def opp(stamp):
+        return {"timestamp_ms": int(stamp.timestamp() * 1000), "buy_source": "spot_kraken_eurusd",
+                "sell_source": "spot_truefx_eurusd", "confidence_score": 0.5, "semantic_snapshot": snap}
+
+    opps = [opp(lo - timedelta(seconds=1)), opp(lo), opp(hi - timedelta(seconds=1)), opp(hi)]
+    rows, skipped = h.evaluation_rows(opps, quotes, one_sided="drop", exclude=[(lo, hi)])
+    assert len(rows) == 2 and skipped == {"resend_period": 2}
+
+
+def test_h6b_resend_section_reports_missing_prediction_log(tmp_path):
+    from research import run_h6b as h
+
+    section = h.resend_section([], {}, tmp_path / "absent.jsonl")
+    assert "unavailable" in section and section["rule"]["tail_minutes"] == 30
+    log = tmp_path / "live_predictions.jsonl"
+    log.write_text("", encoding="utf-8")
+    section = h.resend_section([], {}, log)
+    assert section["rows"] == 0 and section["resend_periods"] == []
+    assert section["window_start_utc"] == h.CLEAN_WINDOW_START_UTC.isoformat()
+
+
 def test_h6b_bootstrap_is_deterministic_and_nested():
     from research import run_h6b as h
 
