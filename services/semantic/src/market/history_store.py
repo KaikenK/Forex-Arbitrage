@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 from dataclasses import asdict
 from dataclasses import is_dataclass
 from datetime import UTC
@@ -7,7 +8,11 @@ from datetime import datetime
 from enum import Enum
 import json
 from pathlib import Path
+import queue
+import threading
 from typing import Any
+
+import structlog
 
 from retrieval.models import EvidenceType
 from retrieval.models import RetrievedEvidence
@@ -18,20 +23,38 @@ from .models import RiskFlag
 from .models import TradingSignal
 
 
+TAIL_BLOCK_BYTES = 1 << 20
+_logger = structlog.get_logger().bind(component="JsonlAnalysisHistoryStore")
+
+
 class JsonlAnalysisHistoryStore:
+    """Append-only JSONL history of analyses.
+
+    Writes go through one background thread that keeps the file open, so an analysis no longer
+    opens, appends to and closes a large file inside OneDrive on the event loop. `load(max_items)`
+    parses only the file's tail: the service keeps 500 analyses, and parsing all ~17,000 lines
+    (148 MB) took about 5.6 s at every start.
+    """
+
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._queue: queue.Queue[ArticleAnalysis | None] = queue.Queue()
+        self._writer: threading.Thread | None = None
+        self._writer_lock = threading.Lock()
 
     @property
     def path(self) -> Path:
         return self._path
 
-    def load(self) -> list[ArticleAnalysis]:
+    def load(self, max_items: int | None = None) -> list[ArticleAnalysis]:
+        self.flush()
         if not self._path.exists():
             return []
 
+        # Twice the lines kept: room for excluded and unparseable records.
+        lines = self._tail_lines(2 * max_items) if max_items else self._path.read_text(encoding="utf-8").splitlines()
         analyses: list[ArticleAnalysis] = []
-        for raw_line in self._path.read_text(encoding="utf-8").splitlines():
+        for raw_line in lines:
             line = raw_line.strip()
             if not line:
                 continue
@@ -49,11 +72,51 @@ class JsonlAnalysisHistoryStore:
         analyses.sort(key=lambda item: item.produced_at, reverse=True)
         return analyses
 
+    def _tail_lines(self, count: int) -> list[str]:
+        """The last `count` lines, read backwards in blocks without reading the whole file."""
+        with self._path.open("rb") as handle:
+            handle.seek(0, 2)
+            position = handle.tell()
+            data = b""
+            while position > 0 and data.count(b"\n") <= count:
+                step = min(TAIL_BLOCK_BYTES, position)
+                position -= step
+                handle.seek(position)
+                data = handle.read(step) + data
+        lines = data.decode("utf-8", errors="replace").splitlines()
+        if position > 0:
+            lines = lines[1:]                                   # the first line is cut by the block edge
+        return lines[-count:]
+
     def append(self, analysis: ArticleAnalysis) -> None:
+        """Queues the analysis for the writer thread (serialisation happens there too)."""
+        with self._writer_lock:
+            if self._writer is None or not self._writer.is_alive():
+                self._writer = threading.Thread(target=self._write_loop, name="history-writer", daemon=True)
+                self._writer.start()
+                atexit.register(self.flush)
+        self._queue.put(analysis)
+
+    def flush(self) -> None:
+        """Blocks until every queued analysis is on disk."""
+        if self._writer is not None and self._writer.is_alive():
+            self._queue.join()
+
+    def _write_loop(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(_json_compatible(asdict(analysis)), ensure_ascii=True))
-            handle.write("\n")
+            while True:
+                analysis = self._queue.get()
+                try:
+                    if analysis is None:
+                        return
+                    handle.write(json.dumps(_json_compatible(asdict(analysis)), ensure_ascii=True))
+                    handle.write("\n")
+                    handle.flush()
+                except (OSError, TypeError, ValueError):
+                    _logger.warning("analysis_history_write_failed", exc_info=True)
+                finally:
+                    self._queue.task_done()
 
 
 def article_analysis_from_payload(payload: dict[str, Any]) -> ArticleAnalysis:

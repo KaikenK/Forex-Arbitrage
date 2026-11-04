@@ -34,12 +34,15 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import threading
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+
+import numpy as np
 
 from . import currency_bias_core as core
 
@@ -95,14 +98,21 @@ def _normalize(vector: list[float]) -> list[float]:
     return [v / norm for v in vector] if norm > 0 else list(vector)
 
 
-def rolling_novelty(prior: list[list[float]], vector: list[float], *,
-                    top_k: int = NOVELTY_TOP_K, min_context: int = NOVELTY_MIN_CONTEXT) -> float | None:
-    """1 - mean similarity to the top_k closest strictly-prior stories (semantic/novelty.py)."""
+def rolling_novelty(prior, vector, *, top_k: int = NOVELTY_TOP_K,
+                    min_context: int = NOVELTY_MIN_CONTEXT) -> float | None:
+    """1 - mean similarity to the top_k closest strictly-prior stories (semantic/novelty.py).
+
+    One matrix-vector product and a partial sort: the pure-Python dot products grew to ~34 ms per
+    analysis with a week of stories."""
     if len(prior) < min_context:
         return None
-    sims = sorted((sum(a * b for a, b in zip(p, vector)) for p in prior), reverse=True)
-    top = sims[: min(top_k, len(sims))]
-    return 1.0 - sum(top) / len(top)
+    sims = np.asarray(prior, dtype=float) @ np.asarray(vector, dtype=float)
+    k = min(top_k, sims.size)
+    return float(1.0 - np.partition(sims, sims.size - k)[sims.size - k:].mean())
+
+
+def headline_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
 
 
 class CurrencyBiasTracker:
@@ -126,6 +136,7 @@ class CurrencyBiasTracker:
         self._currencies = {c: _CurrencyState() for c in core.CURRENCIES}
         self._pair_risk: dict[str, deque] = {p: deque() for p in LIVE_PAIRS}
         self._pair_baseline: dict[str, deque] = {p: deque() for p in LIVE_PAIRS}
+        self._seen: dict[str, float] = {}       # headline key -> time first observed
 
     # ------------------------------------------------------------ ingest
     def observe(self, *, headline: str, published_at: datetime | None, polarity: float, confidence: float,
@@ -135,8 +146,19 @@ class CurrencyBiasTracker:
         stamp = stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
         t = stamp.timestamp()
         text = str(headline or "")
+        key = headline_key(text)
+        with self._lock:
+            # A headline seen within the novelty lookback is not a new story: a resent backlog
+            # used to add every copy as news (with near-zero novelty) and as event-risk input.
+            if key and t - self._seen.get(key, -math.inf) <= NOVELTY_LOOKBACK_HOURS * 3600:
+                return
+            if key:
+                self._seen[key] = t
+                if len(self._seen) > 20_000:
+                    cutoff = t - NOVELTY_LOOKBACK_HOURS * 3600
+                    self._seen = {k: v for k, v in self._seen.items() if v >= cutoff}
         codes = [c for c in core.tag_currencies(text) if c in self._currencies]
-        vector = _normalize(list(self._embed(text))) if codes and text else None
+        vector = np.asarray(_normalize(list(self._embed(text)))) if codes and text else None
         with self._lock:
             for code in codes:
                 state = self._currencies[code]

@@ -172,3 +172,27 @@ async def test_route_serves_the_tracker_when_wired() -> None:
                                      "GET", "/v1/currency-index")
     assert status == 200 and payload["enabled"] is True
     assert set(payload["pairs"]) == {"EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "USD/INR"}
+
+
+def test_a_repeated_headline_is_not_a_new_story() -> None:
+    """C38: a resent backlog used to add every copy as news and as event-risk input."""
+    clock = [NOW]
+    tracker = CurrencyBiasTracker(LocalHashingEmbedder(dimensions=64).embed, clock=lambda: clock[0])
+    for headline in ("Dollar rallies as Fed signals hikes", "DOLLAR rallies as Fed signals hikes!"):
+        tracker.observe(headline=headline, published_at=NOW, polarity=0.8, confidence=0.7,
+                        pair_scores={"EUR/USD": {"magnitude": 0.001, "confidence": 0.6}})
+    state = tracker._currencies["USD"]
+    assert len(state.times) == 1 and len(tracker._pair_baseline["EUR/USD"]) == 1
+
+
+def test_vectorised_novelty_equals_the_pure_python_definition() -> None:
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    prior = rng.normal(size=(40, 32))
+    prior /= np.linalg.norm(prior, axis=1, keepdims=True)
+    vector = prior[0] * 0.5 + rng.normal(size=32) * 0.5
+    vector /= np.linalg.norm(vector)
+    sims = sorted((sum(a * b for a, b in zip(p, vector)) for p in prior), reverse=True)[:5]
+    assert rolling_novelty(list(prior), vector) == pytest.approx(1 - sum(sims) / 5, abs=1e-12)
+    assert rolling_novelty(list(prior[:2]), vector) is None

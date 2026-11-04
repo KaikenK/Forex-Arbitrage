@@ -370,13 +370,32 @@ def _rss_to_event(entry: dict[str, Any]) -> dict[str, Any]:
 
 # ---------- real fetchers ----------
 
+RSS_CONCURRENCY = 6          # feeds fetched at once (one at a time, a refill could take minutes)
+PARSE_CONCURRENCY = 2        # feedparser holds the GIL; more parallel parses only starve the event loop
+
+
+def _build_ssl_context():
+    """One verified TLS context for every fetch, built at import. httpx otherwise loads the certifi
+    bundle for each new client, about 0.33 s with the event loop blocked, twice per refill."""
+    try:
+        import ssl
+
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except (ImportError, OSError, ssl.SSLError):
+        return None
+
+
+_SSL_CONTEXT = _build_ssl_context()
+
+
 async def _fetch_finnhub(api_key: str) -> list[dict[str, Any]]:
     """Fetch recent forex + general news from Finnhub API."""
     if not api_key:
         return []
     import httpx
     articles: list[dict[str, Any]] = []
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, verify=_SSL_CONTEXT or True) as client:
         for category in FINNHUB_NEWS_CATEGORIES:
             try:
                 resp = await client.get(
@@ -403,22 +422,30 @@ async def _fetch_rss(urls: tuple[str, ...] | list[str]) -> list[dict[str, Any]]:
 
     # Fetch with httpx (certifi CA bundle): with this machine's system store, feedparser's own
     # urllib fetch fails TLS verification for the ECB, SNB and Eurostat feeds and returned nothing.
-    entries: list[dict[str, Any]] = []
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True,
-                                 headers={"User-Agent": "Mozilla/5.0 (arbex-semantic)"}) as client:
-        for url in urls:
-            try:
+    fetch_slots = asyncio.Semaphore(RSS_CONCURRENCY)
+    parse_slots = asyncio.Semaphore(PARSE_CONCURRENCY)
+
+    async def one_feed(client: Any, url: str) -> list[dict[str, Any]]:
+        try:
+            async with fetch_slots:
                 response = await client.get(url)
                 response.raise_for_status()
+            async with parse_slots:
                 feed = await asyncio.to_thread(feedparser.parse, response.content)
-            except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
-                _logger.warning("rss_fetch_failed", url=url, error=str(exc))
-                continue
-            for entry in list(getattr(feed, "entries", []))[:10]:
-                item = dict(entry) if not isinstance(entry, dict) else entry
-                item["_feed_url"] = url
-                entries.append(item)
-    return entries
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
+            _logger.warning("rss_fetch_failed", url=url, error=str(exc))
+            return []
+        items = []
+        for entry in list(getattr(feed, "entries", []))[:10]:
+            item = dict(entry) if not isinstance(entry, dict) else entry
+            item["_feed_url"] = url
+            items.append(item)
+        return items
+
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=_SSL_CONTEXT or True,
+                                 headers={"User-Agent": "Mozilla/5.0 (arbex-semantic)"}) as client:
+        per_feed = await asyncio.gather(*(one_feed(client, url) for url in urls))
+    return [item for items in per_feed for item in items]          # feed order kept
 
 
 # ---------- SSE generator ----------

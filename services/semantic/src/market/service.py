@@ -152,7 +152,7 @@ class UnifiedArticleAnalysisService(MarketAnalysisService):
         if history_store is None:
             return []
         try:
-            history = history_store.load()
+            history = history_store.load(self._max_history)
         except OSError:
             self.logger.warning("analysis_history_store_load_failed", path=str(history_store.path), exc_info=True)
             return []

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer
-
 from .text_embedder import TextEmbedder
 
 
 class SentenceTransformerEmbedder(TextEmbedder):
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         """Initializes a sentence-transformer backed embedder."""
+        from sentence_transformers import SentenceTransformer   # heavy: only when actually used
+
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
         self._dimensions = self._model.get_sentence_embedding_dimension()
