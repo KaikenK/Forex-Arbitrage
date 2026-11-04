@@ -276,7 +276,8 @@ _window_bias_v2_cache: Dict[str, Dict[str, Any]] = {}
 _release_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
 WINDOW_V2_EXTRAS = ("source", "release_items", "news_items", "unoriented_items", "duplicates_dropped",
-                    "late_dropped", "expected_move_bps")
+                    "late_dropped", "expected_move_bps", "release_age_minutes", "evidence_weight",
+                    "market_bias")
 
 
 def _window_bias_v2(client, pair: str) -> Dict[str, Any]:
@@ -1177,7 +1178,10 @@ async def get_sentiment_currency_bias():
     `enabled` is false when the service runs without SEMANTIC_CURRENCY_BIAS, so the
     dashboard hides the panel. `applied_to_ranking` reports ARBEX_CURRENCY_BIAS.
     """
-    payload = await asyncio.to_thread(currency_bias_client.refresh)
+    # Within the TTL (or a TTL after a failure) the dashboard gets the cached index instead of a
+    # service call per poll.
+    payload = (await asyncio.to_thread(currency_bias_client.refresh) if currency_bias_client.due()
+               else currency_bias_client.latest())
     if not payload:
         return {"enabled": False, "status": currency_bias_client.status,
                 "applied_to_ranking": currency_bias_enabled()}

@@ -1,4 +1,5 @@
-"""Window bias v2 (C35, shadow): dedup, publisher time, release items, pair orientation."""
+"""Window bias v2 (C35, shadow; maths revised in C38): dedup, publisher time, release items, pair
+orientation, expected direction, evidence shrinkage."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -6,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from backend.core.currency_bias_channels import channel_snapshot
-from backend.core.window_bias_v2 import orientation, window_bias_v2
+from backend.core.window_bias_v2 import KAPPA, orientation, window_bias_v2
 
 NOW = datetime(2026, 11, 5, 14, 0, tzinfo=UTC)
 
@@ -34,7 +35,9 @@ def test_news_items_are_oriented_and_deduplicated():
     assert eur["item_count"] == 2 and eur["duplicates_dropped"] == 1 and eur["unoriented_items"] == 1
     assert eur["market_bias"] == pytest.approx(0.6)               # dollar weaker -> EUR/USD up
     assert window_bias_v2(history, "USD/JPY", NOW)["market_bias"] == pytest.approx(-0.6)
-    assert eur["activity_factor"] == pytest.approx(2 / 5) and eur["semantic_score"] == pytest.approx(0.24)
+    r = 1 - 12 / 30                                               # published 12 min ago
+    assert eur["activity_factor"] == pytest.approx(2 / 5)          # reported; no longer in the score
+    assert eur["semantic_score"] == pytest.approx(r * 0.6 / (r + KAPPA), abs=1e-4)
 
 
 def test_publisher_time_keeps_late_arrivals_out_and_distrusts_future_clocks():
@@ -57,9 +60,11 @@ def test_release_item_carries_calibrated_direction_and_expected_move():
                        confidence=0.5)]
     out = window_bias_v2(history, "EUR/USD", NOW)
     r_release, r_news = 0.1, 1 - 1 / 30                            # 29 min old: the 0.1 recency floor
-    w_release, w_news = r_release * 0.67, r_news * 0.5
-    assert out["release_items"] == 1 and out["news_items"] == 1 and out["expected_move_bps"] == pytest.approx(9.3)
-    assert out["market_bias"] == pytest.approx((w_release * -1 + w_news * 0.4) / (w_release + w_news), abs=1e-4)
+    d_release = -1 * (2 * 0.67 - 1)                                # expected direction, not a full -1 vote
+    assert out["release_items"] == 1 and out["news_items"] == 1
+    assert out["expected_move_bps"] is None                        # 29 min after the release: no longer carried
+    assert out["market_bias"] == pytest.approx((r_release * d_release + r_news * 0.4) / (r_release + r_news), abs=1e-4)
+    assert out["confidence"] == pytest.approx((r_release * 0.67 + r_news * 0.5) / (r_release + r_news), abs=1e-4)
     empty = window_bias_v2([], "EUR/USD", NOW)
     assert empty["item_count"] == 0 and empty["market_bias"] == 0.0 and empty["expected_move_bps"] is None
 
@@ -72,8 +77,36 @@ def test_v2_goes_through_the_live_penalty_formula_and_into_the_snapshot():
     payload = window_bias_v2(history, "EUR/USD", NOW)
     client = LiveNewsBiasClient(bridge=None, enabled=True, clock=lambda: NOW.timestamp())
     bias = client._to_bias(pair="EUR/USD", payload=payload, freshness_seconds=0.0).to_dict()
-    assert bias["semantic_score"] == pytest.approx(0.9) and bias["confidence_adjustment"] == pytest.approx(-0.072)
+    weight = sum(1 - i / 30 for i in range(1, 7))
+    expected = 0.9 * weight / (weight + KAPPA)
+    assert bias["semantic_score"] == pytest.approx(expected, abs=1e-4)
+    assert bias["confidence_adjustment"] == pytest.approx(-0.08 * expected, abs=1e-4)
     snap = channel_snapshot("EUR/USD", "cross_source", window_bias={"semantic_score": 0.0}, client=None,
                             applied=False, window_bias_v2=bias)
     assert snap["window_bias_v2"]["residual_exposure"] == 1 and snap["window_bias"] == {"semantic_score": 0.0}
     assert channel_snapshot("EUR/USD", "cross_source", window_bias=None, client=None, applied=False)["window_bias_v2"] is None
+
+
+def test_a_coin_flip_release_adds_nothing_and_a_fresh_one_carries_its_move():
+    coin = {"basis": "release", "release_direction": 1, "p_direction": 0.5, "expected_move_bps": 4.0,
+            "release_utc": (NOW - timedelta(minutes=3)).isoformat()}
+    out = window_bias_v2([_record("US CPI 0.3% as expected", produced_min=-2, published_min=-3, score=coin)],
+                         "EUR/USD", NOW)
+    assert out["release_items"] == 1 and out["semantic_score"] == 0.0 and out["market_bias"] == 0.0
+    assert out["expected_move_bps"] == pytest.approx(4.0) and out["release_age_minutes"] == pytest.approx(3.0)
+
+
+def test_one_fresh_item_gives_half_its_direction():
+    out = window_bias_v2([_record("Euro rises as ECB signals hike", produced_min=0, published_min=0,
+                                  sentiment=0.8)], "EUR/USD", NOW)
+    assert out["semantic_score"] == pytest.approx(0.8 / (1 + KAPPA)) and out["evidence_weight"] == pytest.approx(1.0)
+
+
+def test_mixed_timestamp_formats_keep_the_first_analysis():
+    first = _record("Dollar slides as Fed signals cuts", produced_min=-10, sentiment=-0.6)
+    first["produced_at"] = (NOW - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+    again = _record("Dollar slides as Fed signals cuts", produced_min=-2, sentiment=0.9)
+    undated = {**_record("Euro rises as ECB signals hike", produced_min=0, sentiment=0.4), "produced_at": None}
+    out = window_bias_v2([again, undated, first], "EUR/USD", NOW)
+    assert out["duplicates_dropped"] == 1 and out["item_count"] == 1
+    assert out["market_bias"] == pytest.approx(0.6)                 # the 10-min-old analysis, not the copy
