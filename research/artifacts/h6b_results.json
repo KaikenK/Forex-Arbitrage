@@ -1,0 +1,388 @@
+{
+  "settings": {
+    "model_nesting": "cumulative",
+    "one_sided_next_quote": "drop"
+  },
+  "window_end_utc": "2026-11-04T18:30:00+00:00",
+  "opportunities": 36702,
+  "framing": "exploratory, descriptive; not a decision test",
+  "window_arms": "C34: plus_window, plus_window_risk_direction (no decision weight)",
+  "venue_caveat": "TrueFX is an indicative feed: crosses are price discrepancies, not executable arbitrage",
+  "generated_at": "2026-11-04T18:41:06.477854+00:00",
+  "locked_window": {
+    "window_start_utc": null,
+    "window_end_utc": "2026-11-04T18:30:00+00:00",
+    "rows": 36668,
+    "days": 6,
+    "skipped": {
+      "channels_unavailable": 20,
+      "after_window_end": 14
+    },
+    "window_bias_coverage": {
+      "rows_with_items": 32893,
+      "rows_adjusted": 24904,
+      "rows_with_v2": 6436
+    },
+    "ranking": {
+      "auc": {
+        "detector": 0.9184364594219087,
+        "plus_risk": 0.9076744960594306,
+        "plus_risk_direction": 0.9064978291410907,
+        "plus_window": 0.9201621564217979,
+        "plus_window_risk_direction": 0.904966849682574,
+        "plus_window_v2": 0.9182207142206958,
+        "plus_window_v2_directional": 0.9184106687854269
+      },
+      "ci95": {
+        "detector": [
+          0.8630441381400829,
+          0.9717600695044304
+        ],
+        "plus_risk": [
+          0.8507895758726324,
+          0.9677129815355465
+        ],
+        "plus_risk_minus_detector": [
+          -0.01556473473602682,
+          -0.0033207932748130498
+        ],
+        "plus_risk_direction": [
+          0.8506784466917358,
+          0.9675072463768116
+        ],
+        "plus_risk_direction_minus_detector": [
+          -0.01692692248977696,
+          -0.0035574701783920304
+        ],
+        "plus_window": [
+          0.8666637139231702,
+          0.9707309214041399
+        ],
+        "plus_window_minus_detector": [
+          -0.0018506934152506815,
+          0.003648948101693139
+        ],
+        "plus_window_risk_direction": [
+          0.8487442236611672,
+          0.9657969404105354
+        ],
+        "plus_window_risk_direction_minus_detector": [
+          -0.019368777160564843,
+          -0.004864282973959799
+        ],
+        "plus_window_v2": [
+          0.8630332911517306,
+          0.9708670226339992
+        ],
+        "plus_window_v2_minus_detector": [
+          -0.001453151465739641,
+          0.0
+        ],
+        "plus_window_v2_directional": [
+          0.8630419902091562,
+          0.9717157177924538
+        ],
+        "plus_window_v2_directional_minus_detector": [
+          -0.00019733455007719947,
+          0.0
+        ]
+      },
+      "n": 36668,
+      "n_days": 6,
+      "positives": 35878,
+      "locked_arms": [
+        "detector",
+        "plus_risk",
+        "plus_risk_direction"
+      ]
+    },
+    "realised_edge_pips": {
+      "mean": 2.400856332497319,
+      "median": 1.8999999999991246,
+      "n": 36668
+    }
+  },
+  "clean_window": {
+    "window_start_utc": "2026-11-01T21:53:00+00:00",
+    "window_end_utc": "2026-11-04T18:30:00+00:00",
+    "rows": 29456,
+    "days": 4,
+    "skipped": {
+      "before_window_start": 7212,
+      "channels_unavailable": 20,
+      "after_window_end": 14
+    },
+    "window_bias_coverage": {
+      "rows_with_items": 28760,
+      "rows_adjusted": 21995,
+      "rows_with_v2": 6436
+    },
+    "ranking": {
+      "auc": {
+        "detector": 0.9481560951299034,
+        "plus_risk": 0.9423665339593893,
+        "plus_risk_direction": 0.9410066816479726,
+        "plus_window": 0.9490413541205751,
+        "plus_window_risk_direction": 0.939219668157486,
+        "plus_window_v2": 0.9479825297452399,
+        "plus_window_v2_directional": 0.9481396298323156
+      },
+      "ci95": {
+        "detector": [
+          0.9253123640559097,
+          0.9719622585876456
+        ],
+        "plus_risk": [
+          0.9163364289181846,
+          0.9666813312231365
+        ],
+        "plus_risk_minus_detector": [
+          -0.011289989680082546,
+          -0.0013362146994930768
+        ],
+        "plus_risk_direction": [
+          0.9140007439491088,
+          0.9665472418920932
+        ],
+        "plus_risk_direction_minus_detector": [
+          -0.012280701754386003,
+          -0.0014561459087617523
+        ],
+        "plus_window": [
+          0.9268882752359516,
+          0.9686753101185853
+        ],
+        "plus_window_minus_detector": [
+          -0.0044434615951644,
+          0.0015759111800419667
+        ],
+        "plus_window_risk_direction": [
+          0.9115356244444024,
+          0.9657347483707458
+        ],
+        "plus_window_risk_direction_minus_detector": [
+          -0.017865251363703427,
+          -0.001908716509775532
+        ],
+        "plus_window_v2": [
+          0.9253123640559097,
+          0.9695680377414123
+        ],
+        "plus_window_v2_minus_detector": [
+          -0.002394220846233308,
+          0.0
+        ],
+        "plus_window_v2_directional": [
+          0.9253123640559097,
+          0.9717145805690698
+        ],
+        "plus_window_v2_directional_minus_detector": [
+          -0.0002476780185758365,
+          0.0
+        ]
+      },
+      "n": 29456,
+      "n_days": 4,
+      "positives": 28883,
+      "locked_arms": [
+        "detector",
+        "plus_risk",
+        "plus_risk_direction"
+      ]
+    },
+    "realised_edge_pips": {
+      "mean": 2.335663362303416,
+      "median": 1.80000000000069,
+      "n": 29456
+    }
+  },
+  "clean_window_minus_resends": {
+    "window_start_utc": "2026-11-01T21:53:00+00:00",
+    "window_end_utc": "2026-11-04T18:30:00+00:00",
+    "rows": 25987,
+    "days": 4,
+    "skipped": {
+      "before_window_start": 7212,
+      "resend_period": 3483,
+      "channels_unavailable": 6,
+      "after_window_end": 14
+    },
+    "window_bias_coverage": {
+      "rows_with_items": 25291,
+      "rows_adjusted": 18634,
+      "rows_with_v2": 5833
+    },
+    "ranking": {
+      "auc": {
+        "detector": 0.9478077208946541,
+        "plus_risk": 0.944319314857389,
+        "plus_risk_direction": 0.9437379211346233,
+        "plus_window": 0.9483906878415644,
+        "plus_window_risk_direction": 0.9426935188059719,
+        "plus_window_v2": 0.9476155690456612,
+        "plus_window_v2_directional": 0.9478076334933128
+      },
+      "ci95": {
+        "detector": [
+          0.9292414673951607,
+          0.9698881524440762
+        ],
+        "plus_risk": [
+          0.9236274273279879,
+          0.9650829129442918
+        ],
+        "plus_risk_minus_detector": [
+          -0.012038111019055497,
+          -0.002345738056561353
+        ],
+        "plus_risk_direction": [
+          0.9226591925069183,
+          0.9649606598896955
+        ],
+        "plus_risk_direction_minus_detector": [
+          -0.013413421706710893,
+          -0.002580838709496547
+        ],
+        "plus_window": [
+          0.9302409233898625,
+          0.9697458289795099
+        ],
+        "plus_window_minus_detector": [
+          -0.006147473073736531,
+          0.0011061334652988641
+        ],
+        "plus_window_risk_direction": [
+          0.9214556635682017,
+          0.9630748008646721
+        ],
+        "plus_window_risk_direction_minus_detector": [
+          -0.019250207125103613,
+          -0.0030813055314901083
+        ],
+        "plus_window_v2": [
+          0.9292414673951607,
+          0.9695589894055041
+        ],
+        "plus_window_v2_minus_detector": [
+          -0.002593206296603201,
+          0.0
+        ],
+        "plus_window_v2_directional": [
+          0.9292414673951607,
+          0.9698881524440762
+        ],
+        "plus_window_v2_directional_minus_detector": [
+          -1.9100574932817693e-07,
+          0.0
+        ]
+      },
+      "n": 25987,
+      "n_days": 4,
+      "positives": 25539,
+      "locked_arms": [
+        "detector",
+        "plus_risk",
+        "plus_risk_direction"
+      ]
+    },
+    "realised_edge_pips": {
+      "mean": 2.284149767191607,
+      "median": 1.80000000000069,
+      "n": 25987
+    },
+    "rule": {
+      "min_repeats_per_minute": 20,
+      "merge_minutes": 5,
+      "tail_minutes": 30,
+      "framing": "sensitivity, no decision weight (C39)"
+    },
+    "resend_periods": [
+      {
+        "start_utc": "2026-10-25T12:51:00+00:00",
+        "end_utc": "2026-10-25T12:52:00+00:00",
+        "repeat_rows": 24
+      },
+      {
+        "start_utc": "2026-10-25T16:32:00+00:00",
+        "end_utc": "2026-10-25T16:33:00+00:00",
+        "repeat_rows": 22
+      },
+      {
+        "start_utc": "2026-10-25T16:45:00+00:00",
+        "end_utc": "2026-10-25T16:46:00+00:00",
+        "repeat_rows": 26
+      },
+      {
+        "start_utc": "2026-10-25T16:52:00+00:00",
+        "end_utc": "2026-10-25T16:53:00+00:00",
+        "repeat_rows": 26
+      },
+      {
+        "start_utc": "2026-10-28T17:51:00+00:00",
+        "end_utc": "2026-10-28T17:52:00+00:00",
+        "repeat_rows": 26
+      },
+      {
+        "start_utc": "2026-10-31T10:02:00+00:00",
+        "end_utc": "2026-10-31T10:04:00+00:00",
+        "repeat_rows": 57
+      },
+      {
+        "start_utc": "2026-11-01T21:10:00+00:00",
+        "end_utc": "2026-11-01T21:11:00+00:00",
+        "repeat_rows": 28
+      },
+      {
+        "start_utc": "2026-11-01T21:52:00+00:00",
+        "end_utc": "2026-11-01T21:54:00+00:00",
+        "repeat_rows": 299
+      },
+      {
+        "start_utc": "2026-11-01T22:39:00+00:00",
+        "end_utc": "2026-11-01T22:42:00+00:00",
+        "repeat_rows": 578
+      },
+      {
+        "start_utc": "2026-11-02T13:42:00+00:00",
+        "end_utc": "2026-11-02T13:43:00+00:00",
+        "repeat_rows": 379
+      },
+      {
+        "start_utc": "2026-11-02T17:36:00+00:00",
+        "end_utc": "2026-11-02T17:38:00+00:00",
+        "repeat_rows": 946
+      },
+      {
+        "start_utc": "2026-11-03T05:25:00+00:00",
+        "end_utc": "2026-11-03T05:27:00+00:00",
+        "repeat_rows": 552
+      },
+      {
+        "start_utc": "2026-11-03T06:07:00+00:00",
+        "end_utc": "2026-11-03T06:08:00+00:00",
+        "repeat_rows": 588
+      },
+      {
+        "start_utc": "2026-11-03T06:15:00+00:00",
+        "end_utc": "2026-11-03T06:16:00+00:00",
+        "repeat_rows": 22
+      },
+      {
+        "start_utc": "2026-11-03T06:37:00+00:00",
+        "end_utc": "2026-11-03T07:09:00+00:00",
+        "repeat_rows": 7783
+      },
+      {
+        "start_utc": "2026-11-04T01:37:00+00:00",
+        "end_utc": "2026-11-04T01:43:00+00:00",
+        "repeat_rows": 967
+      },
+      {
+        "start_utc": "2026-11-04T10:20:00+00:00",
+        "end_utc": "2026-11-04T10:24:00+00:00",
+        "repeat_rows": 875
+      }
+    ]
+  },
+  "prediction_log_rows": 30542
+}
