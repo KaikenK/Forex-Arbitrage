@@ -451,6 +451,12 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   prospective test and the RQ5 extension sample start here. Counts and fields only; no outcomes read.
   **H6b run 2026-11-04 18:40 UTC** (§6 "H6b RUN"): `artifacts/h6b_results.json`, all three sections
   (locked, clean C28, clean minus resends C39) produced; reported descriptively.
+  **Hotspot outage, 2026-11-05 (after the H6b window; prospective and RQ5-extension data; counts only):** the
+  laptop lost the iPhone hotspot at 01:47:04 IST and rejoined at 04:44:15 (Windows WLAN log). Recorder silent
+  01:46:54–04:44:18 IST (10,644 s). Both services stayed up and the backend's feed connection held; no restart.
+  No prediction-log row after the reconnect repeats an earlier headline × pair (the C38 backend dedup works on a
+  reconnect). Kraken on the hotspot: 0–12 quotes a minute around 00:40 IST, 16–52 at 01:43–01:46, 28–48 after
+  the reconnect (normal about 177); TrueFX normal. WARP off.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
