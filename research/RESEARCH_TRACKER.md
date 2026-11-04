@@ -399,6 +399,14 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   12:36:33; back 12:37:49 (banner `FinBERT: OFF`, unchanged). Backend untouched; it reconnected
   at 12:38 and has held one connection since. Recorder: largest quote gap 07:00–07:15 UTC 1.7 s.
   See the feed reconnect storm FINDING (§6). Counts only; no outcomes read.
+  **App-restart outage, 2026-11-03/04:** the Claude desktop app restarted about 02:20 IST and
+  closed the terminal tabs that hosted both services (no sleep or reboot in the Windows event
+  log). Recorder silent from 2026-11-03 20:50:20 UTC to 2026-11-04 01:36:57 UTC (4.78 h lost for
+  H6b and the prospective log). Restarted on the code that ran before (5bc18e6 runtime files,
+  same flags; the storm fix stays undeployed until 5 Nov). The services now run detached from
+  the app (launchers `C:\Users\xyreo\arbex\run`, logs `..\logs`); moving them out of the app
+  cost a second gap of 24.8 s (01:42:05–01:42:29 UTC). The 4 Nov `spot.jsonl` parses line by
+  line (2,952 lines at check, none broken). Counts only; no outcomes read.
   **FinBERT off in the live service (found 2026-11-03):** the service banner reads "FinBERT: OFF".
   The gitignored `services/semantic/config.toml` holds only `[finnhub]`; the `[runtime]` section
   of `config.toml.example` (`use_finbert = true`) was never carried over, so `serve.py` falls back
