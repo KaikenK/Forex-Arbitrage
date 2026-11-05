@@ -288,11 +288,19 @@ def zscore_expanding(raw: pd.Series, *, min_history: int, no_data_value: str) ->
     return _finish(z, raw, no_data_value)
 
 
+_ZSCORE_STD_TOL = 1e-9
+
+
 def zscore_from_mask(raw: pd.Series, train_mask: np.ndarray, *, no_data_value: str) -> pd.Series:
     x = _prepare(raw, no_data_value)
     train = x[np.asarray(train_mask, dtype=bool)].dropna()
     std = float(train.std(ddof=1)) if len(train) > 1 else float("nan")
-    z = (x - float(train.mean())) / std if std and std > 0 else x * np.nan
+    mean = float(train.mean()) if len(train) else float("nan")
+    # A stream that is constant in the training months up to float rounding has std ~1e-17, not 0;
+    # dividing by it turns ordinary test-month values into ~1e16 z-scores (H6 intraday, 2026-11-05).
+    # Treat it like std == 0: no usable scale, so no z-score.
+    degenerate = not (std > _ZSCORE_STD_TOL * max(1.0, abs(mean)))
+    z = x * np.nan if degenerate else (x - mean) / std
     return _finish(z, raw, no_data_value)
 
 
