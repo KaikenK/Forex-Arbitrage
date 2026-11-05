@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Arbex Terminal",
-  description: "High-Frequency Arbitrage Platform",
+  description: "Live FX cross-venue arbitrage with news as a risk channel",
 };
 
 export default function RootLayout({
@@ -25,10 +25,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${jetbrainsMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+      <body className="flex min-h-full flex-col bg-canvas text-ink" suppressHydrationWarning>
         {children}
       </body>
     </html>
