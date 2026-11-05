@@ -57,6 +57,32 @@ export interface NewsBias {
   reason: string;
 }
 
+/** One semantic channel as the backend scores it (backend/core/currency_bias_channels.py). */
+export interface ChannelResult {
+  name: string;
+  penalty: number;
+  reason: string;
+  inputs: Record<string, unknown>;
+}
+
+export interface SemanticChannels {
+  risk?: ChannelResult;
+  direction?: ChannelResult;
+  release?: ChannelResult;
+}
+
+/** C43 shadow: what the Phase 2 switches would record for this cross (display only until 18 Nov). */
+export interface ShadowBlock {
+  confidence_score?: number | null;          // the detector's own score
+  adjusted_confidence_score?: number | null; // detector - risk penalty - stale-quote caution
+  risk_penalty?: number;
+  stale_caution?: number;
+  older_leg_age_ms?: number | null;
+  window_direction_v1?: string | null;
+  window_direction_currency_index?: string | null;
+  window_filtered?: { item_count?: number; activity_factor?: number; fx_filter_dropped?: number } | null;
+}
+
 export interface RankedOpportunity {
   opportunity: ArbitrageOpportunity;
   composite_score: number;
@@ -68,6 +94,8 @@ export interface RankedOpportunity {
   execution_verdict: 'viable' | 'risky' | 'unknown';
   execution_reasons: string[];
   news_bias?: NewsBias;
+  semantic_channels?: SemanticChannels;
+  shadow?: ShadowBlock;
   first_seen_ms: number;
   last_seen_ms: number;
   duration_ms: number;
@@ -146,6 +174,8 @@ interface ArbexState {
 
   // Currency pair shown in the price, depth and venue panels
   selectedSymbol: string;
+  // Cross shown in the Desk's "Why this cross" panel (null: the top-ranked one)
+  selectedOpportunityId: string | null;
   
   // Actions
   setConnectionStatus: (status: boolean) => void;
@@ -156,6 +186,7 @@ interface ArbexState {
   setFeedStatus: (status: FeedStatus) => void;
   resetMarketData: () => void;
   setSelectedSymbol: (symbol: string) => void;
+  setSelectedOpportunity: (id: string | null) => void;
 }
 
 export const SYMBOL_KEY = 'arbex-selected-symbol';
@@ -186,6 +217,7 @@ export const useArbexStore = create<ArbexState>()(
     feedEpoch: 0,
     // restored from localStorage after mount (PairPicker), so server and client render alike
     selectedSymbol: 'USDINR',
+    selectedOpportunityId: null,
     
     // Writers
     setConnectionStatus: (status) => set({ isConnected: status }),
@@ -236,6 +268,7 @@ export const useArbexStore = create<ArbexState>()(
       try { window.localStorage.setItem(SYMBOL_KEY, symbol); } catch {}
       set({ selectedSymbol: symbol });
     },
+    setSelectedOpportunity: (id) => set({ selectedOpportunityId: id }),
 
     resetMarketData: () => set((state) => ({ ...emptyMarket, feedEpoch: state.feedEpoch + 1 })),
   }))

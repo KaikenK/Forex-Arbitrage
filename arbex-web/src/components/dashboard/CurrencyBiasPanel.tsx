@@ -34,9 +34,9 @@ type CurrencyBiasResponse = {
 };
 
 function tone(label: string): string {
-  if (label === 'bullish') return 'text-emerald-400';
-  if (label === 'bearish') return 'text-red-400';
-  return 'text-slate-400';
+  if (label === 'bullish') return 'text-up';
+  if (label === 'bearish') return 'text-down';
+  return 'text-ink-2';
 }
 
 function fmt(value: number | null | undefined, digits = 2): string {
@@ -77,10 +77,10 @@ export function CurrencyBiasPanel() {
   const pairs = data.pairs;
 
   return (
-    <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
+    <div className="rounded border border-line bg-inset p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="uppercase tracking-widest text-slate-500">Currency Market Bias</span>
-        <span className="text-slate-500">
+        <span className="uppercase tracking-widest text-ink-3">Currency Market Bias</span>
+        <span className="text-ink-3">
           horizon {data.horizon?.label ?? 'none established'} · {data.applied_to_ranking ? 'weighting ranking' : 'shadow only'}
         </span>
       </div>
@@ -88,26 +88,26 @@ export function CurrencyBiasPanel() {
         {CURRENCIES.filter((code) => currencies[code]).map((code) => {
           const row = currencies[code];
           return (
-            <div key={code} className="rounded border border-[#1e2235] bg-[#0f1219] p-2" title={row.top_headlines.join('\n')}>
-              <div className="text-slate-500">{code}</div>
+            <div key={code} className="rounded border border-line bg-inset p-2" title={row.top_headlines.join('\n')}>
+              <div className="text-ink-3">{code}</div>
               <div className={`mt-1 text-[12px] ${tone(row.label)}`}>{row.label}</div>
-              <div className="text-slate-500">z {fmt(row.bias)} · conf {row.confidence.toFixed(2)}</div>
-              <div className="text-slate-600">{row.headline_count} items · {row.status}</div>
+              <div className="text-ink-3">z {fmt(row.bias)} · conf {row.confidence.toFixed(2)}</div>
+              <div className="text-ink-3">{row.headline_count} items · {row.status}</div>
             </div>
           );
         })}
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
         {Object.entries(pairs).map(([pair, row]) => (
-          <div key={pair} className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
-            <div className="text-slate-500">{pair}</div>
+          <div key={pair} className="rounded border border-line bg-inset p-2">
+            <div className="text-ink-3">{pair}</div>
             <div className={`mt-1 text-[12px] ${tone(row.label)}`}>{row.label} {fmt(row.relative_bias)}</div>
-            <div className="text-slate-500">conf {row.confidence.toFixed(2)} · risk {row.event_risk.expected_move_bps.toFixed(1)}bp</div>
+            <div className="text-ink-3">conf {row.confidence.toFixed(2)} · risk {row.event_risk.expected_move_bps.toFixed(1)}bp</div>
           </div>
         ))}
       </div>
       {data.live_input_gaps?.length ? (
-        <div className="mt-2 text-slate-600">Live gaps: {data.live_input_gaps.join('; ')}</div>
+        <div className="mt-2 text-ink-3">Live gaps: {data.live_input_gaps.join('; ')}</div>
       ) : null}
     </div>
   );

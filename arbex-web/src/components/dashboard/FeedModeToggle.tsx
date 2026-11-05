@@ -19,7 +19,7 @@ export function FeedModeToggle() {
   const chosenSession = session || feedStatus?.replay_session || sessions[0] || '';
 
   if (!feedStatus) {
-    return <span className="text-[10px] font-mono text-slate-500">FEED: …</span>;
+    return <span className="text-[10px] font-mono text-ink-3">FEED: …</span>;
   }
   if (!feedStatus.available.switchable) {
     return (
@@ -34,7 +34,7 @@ export function FeedModeToggle() {
 
   return (
     <div className="flex items-center gap-2">
-      <div role="radiogroup" aria-label="Data feed" className="flex rounded border border-[#2a2f45] overflow-hidden">
+      <div role="radiogroup" aria-label="Data feed" className="flex rounded border border-line-strong overflow-hidden">
         {MODES.map(({ mode, label, title }) => {
           const info = feedStatus.available[mode];
           const active = current === mode;
@@ -52,7 +52,7 @@ export function FeedModeToggle() {
                 'text-[10px] px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors',
                 active
                   ? mode === 'synthetic' ? 'bg-purple-500 text-white' : mode === 'live' ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-black'
-                  : 'text-slate-400 hover:bg-[#1e2235]',
+                  : 'text-ink-2 hover:bg-line',
                 disabled && !active ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : 'cursor-pointer',
               ].join(' ')}
             >
@@ -64,7 +64,7 @@ export function FeedModeToggle() {
       {sessions.length > 0 && (
         <select
           aria-label="Recorded session to replay"
-          className="text-[10px] bg-[#1e2235] text-slate-300 rounded px-1 py-0.5 outline-none border border-[#2a2f45]"
+          className="text-[10px] bg-line text-ink rounded px-1 py-0.5 outline-none border border-line-strong"
           value={chosenSession}
           disabled={switching}
           onChange={(e) => {
@@ -75,9 +75,9 @@ export function FeedModeToggle() {
           {sessions.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       )}
-      {switching && <span className="text-[10px] font-mono text-slate-400">switching…</span>}
+      {switching && <span className="text-[10px] font-mono text-ink-2">switching…</span>}
       {problem && !switching && (
-        <span className="text-[10px] text-red-400 max-w-[320px] truncate" title={problem}>{problem}</span>
+        <span className="text-[10px] text-down max-w-[320px] truncate" title={problem}>{problem}</span>
       )}
     </div>
   );

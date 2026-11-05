@@ -5,7 +5,6 @@ import { useArbexStore } from '@/lib/store';
 import { sourceLabel, sourceSymbol } from '@/lib/sources';
 import { spreadUnit } from '@/lib/instruments';
 import { useInstrument } from '@/hooks/useInstrument';
-import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
 export function OrderbookFeed() {
@@ -39,19 +38,19 @@ export function OrderbookFeed() {
 
   if (!activeOrderbook) {
     return (
-      <Card className="bg-[#141620] border-[#1e2235] p-4 flex flex-col items-center justify-center h-[200px]">
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest">No Depth Data Available</span>
-      </Card>
+      <div className="flex h-full min-h-[8rem] items-center justify-center">
+        <span className="text-[11px] text-ink-3">No depth data for this venue</span>
+      </div>
     );
   }
 
 
   return (
-    <Card className="bg-[#141620] border-[#1e2235] p-3 flex flex-col font-mono">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-[10px] font-semibold uppercase tracking-widest text-[#505872]">Depth of Market (L2)</h3>
-        <select 
-          className="text-[9px] bg-[#1e2235] px-1.5 py-0.5 rounded text-blue-400 uppercase outline-none cursor-pointer border border-[#1e2235] hover:border-blue-500/50"
+    <div className="num flex flex-col">
+      <div className="mb-2 flex items-center justify-end">
+        <select
+          aria-label="Depth venue"
+          className="cursor-pointer rounded-term border border-line-strong bg-raised px-1.5 py-0.5 text-[10px] uppercase text-info outline-none hover:border-info/50"
           value={activeOrderbook.source}
           onChange={(e) => setSelectedSource(e.target.value)}
         >
@@ -63,7 +62,7 @@ export function OrderbookFeed() {
 
       <div className="flex flex-col gap-1 w-full text-[10px]">
         {/* Header */}
-        <div className="flex justify-between text-slate-500 uppercase tracking-widest mb-1 pb-1 border-b border-[#1e2235]">
+        <div className="flex justify-between text-ink-3 uppercase tracking-widest mb-1 pb-1 border-b border-line">
           <span>Size</span>
           <span>Price</span>
         </div>
@@ -75,19 +74,19 @@ export function OrderbookFeed() {
             return (
               <div key={`ask-${idx}`} className="flex justify-between relative py-0.5 group cursor-pointer hover:bg-white/5">
                 <div 
-                  className="absolute left-0 top-0 h-full bg-red-500/10 z-0 transition-all duration-100" 
+                  className="absolute left-0 top-0 h-full bg-down/10 z-0 transition-all duration-100" 
                   style={{ width: `${widthPct}%` }}
                 />
-                <span className="text-slate-400 z-10 pl-1">{ask.volume.toLocaleString()}</span>
-                <span className="text-red-400 z-10 pr-1">{ask.price.toFixed(d)}</span>
+                <span className="text-ink-2 z-10 pl-1">{ask.volume.toLocaleString()}</span>
+                <span className="text-down z-10 pr-1">{ask.price.toFixed(d)}</span>
               </div>
             );
           })}
         </div>
 
         {/* Spread / Mid Indicator */}
-        <div className="flex justify-center items-center py-1 bg-black/20 border-y border-[#1e2235]/50 mb-2">
-          <span className="text-slate-500 text-[9px] tracking-widest">
+        <div className="flex justify-center items-center py-1 bg-black/20 border-y border-line/50 mb-2">
+          <span className="text-ink-3 text-[9px] tracking-widest">
              {activeOrderbook.asks.length && activeOrderbook.bids.length
                ? `SPREAD: ${((activeOrderbook.asks[0].price - activeOrderbook.bids[0].price) / pip_size).toFixed(2)} ${spreadUnit(symbol)}`
                : !activeOrderbook.asks.length && !activeOrderbook.bids.length
@@ -103,16 +102,16 @@ export function OrderbookFeed() {
             return (
               <div key={`bid-${idx}`} className="flex justify-between relative py-0.5 group cursor-pointer hover:bg-white/5">
                 <div 
-                  className="absolute left-0 top-0 h-full bg-emerald-500/10 z-0 transition-all duration-100" 
+                  className="absolute left-0 top-0 h-full bg-up/10 z-0 transition-all duration-100" 
                   style={{ width: `${widthPct}%` }}
                 />
-                <span className="text-slate-400 z-10 pl-1">{bid.volume.toLocaleString()}</span>
-                <span className="text-emerald-400 z-10 pr-1">{bid.price.toFixed(d)}</span>
+                <span className="text-ink-2 z-10 pl-1">{bid.volume.toLocaleString()}</span>
+                <span className="text-up z-10 pr-1">{bid.price.toFixed(d)}</span>
               </div>
             );
           })}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
