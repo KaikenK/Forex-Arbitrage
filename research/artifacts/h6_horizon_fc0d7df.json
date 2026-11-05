@@ -1,0 +1,11 @@
+{
+  "horizon_minutes": null,
+  "label": "none established",
+  "q_values": {
+    "1440": 0.11956244885005034,
+    "60": 0.05385946547720083,
+    "240": 0.05385946547720083
+  },
+  "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+  "generated_at": "2026-11-05T07:34:48.000060+00:00"
+}

@@ -1,0 +1,174 @@
+{
+  "lexicon": {
+    "backend": "lexicon",
+    "headlines": 955570,
+    "days": 1457,
+    "days_dropped_missing_slices": 0,
+    "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+    "framing": "same-day: explains moves over the 24 h ending 21:00 UTC; not a forecast",
+    "primary": {
+      "a_passed": true,
+      "b_passed": false,
+      "verdict": "partial",
+      "a": {
+        "n_test": 3640,
+        "oos_r2_tagged": -0.0005661492265827128,
+        "oos_r2_implied": 0.0072747998034714545,
+        "spearman_tagged": -0.04453012895991135,
+        "spearman_implied": 0.12305703394711928,
+        "loss_diff_p": 0.0034452093385087487,
+        "implied_beta": 47.67244360959875,
+        "implied_p": 4.354605828249763e-11,
+        "n_dates": 1455
+      },
+      "b": {
+        "vix_change": {
+          "beta": -0.12073338355099753,
+          "se": 0.08132228949419272,
+          "p": 0.1378862029164035,
+          "n": 1293,
+          "passes": false
+        },
+        "ret_USD/JPY": {
+          "beta": -0.34537529890608987,
+          "se": 1.3885635089606896,
+          "p": 0.8036074512370268,
+          "n": 1395,
+          "passes": false
+        },
+        "ret_USD/CHF": {
+          "beta": -3.353585384078655,
+          "se": 1.0594837882744434,
+          "p": 0.0015827372194768012,
+          "n": 1395,
+          "passes": false
+        }
+      }
+    },
+    "robustness_no_pandemic_releases": {
+      "a_passed": true,
+      "b_passed": false,
+      "verdict": "partial",
+      "a": {
+        "n_test": 3640,
+        "oos_r2_tagged": -0.0004511422161765921,
+        "oos_r2_implied": 0.007450338585021643,
+        "spearman_tagged": -0.04348687563244529,
+        "spearman_implied": 0.12335485942556006,
+        "loss_diff_p": 0.003028252035218065,
+        "implied_beta": 47.417898200956074,
+        "implied_p": 5.271661007444052e-11,
+        "n_dates": 1455
+      },
+      "b": {
+        "vix_change": {
+          "beta": -0.11370936732674308,
+          "se": 0.08158126809271138,
+          "p": 0.16361252118067857,
+          "n": 1293,
+          "passes": false
+        },
+        "ret_USD/JPY": {
+          "beta": -0.2435752098701771,
+          "se": 1.3668245249397566,
+          "p": 0.8585877349608251,
+          "n": 1395,
+          "passes": false
+        },
+        "ret_USD/CHF": {
+          "beta": -3.1126926049910537,
+          "se": 1.053088717884665,
+          "p": 0.003171266820795098,
+          "n": 1395,
+          "passes": false
+        }
+      }
+    }
+  },
+  "finbert": {
+    "backend": "finbert",
+    "headlines": 955570,
+    "days": 1457,
+    "days_dropped_missing_slices": 0,
+    "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+    "framing": "same-day: explains moves over the 24 h ending 21:00 UTC; not a forecast",
+    "primary": {
+      "a_passed": false,
+      "b_passed": false,
+      "verdict": "neither",
+      "a": {
+        "n_test": 3640,
+        "oos_r2_tagged": 0.001486250648048415,
+        "oos_r2_implied": 0.00031682813264610754,
+        "spearman_tagged": 0.02911830585761448,
+        "spearman_implied": 0.028094617004785962,
+        "loss_diff_p": 0.5254741825455351,
+        "implied_beta": 9.706585940660997,
+        "implied_p": 0.013172203798423439,
+        "n_dates": 1455
+      },
+      "b": {
+        "vix_change": {
+          "beta": -0.1318443206201403,
+          "se": 0.05904975835671834,
+          "p": 0.025735116483006713,
+          "n": 1293,
+          "passes": true
+        },
+        "ret_USD/JPY": {
+          "beta": -1.8132937510900717,
+          "se": 1.5012777008250904,
+          "p": 0.22731612252491817,
+          "n": 1395,
+          "passes": false
+        },
+        "ret_USD/CHF": {
+          "beta": -4.665213440838667,
+          "se": 1.100793604323732,
+          "p": 2.402898078961255e-05,
+          "n": 1395,
+          "passes": false
+        }
+      }
+    },
+    "robustness_no_pandemic_releases": {
+      "a_passed": false,
+      "b_passed": false,
+      "verdict": "neither",
+      "a": {
+        "n_test": 3640,
+        "oos_r2_tagged": 0.0016316105518251467,
+        "oos_r2_implied": 0.00038816746030900795,
+        "spearman_tagged": 0.027864107283130254,
+        "spearman_implied": 0.027354096308949017,
+        "loss_diff_p": 0.5030738040011269,
+        "implied_beta": 9.782844359490884,
+        "implied_p": 0.012244052685102298,
+        "n_dates": 1455
+      },
+      "b": {
+        "vix_change": {
+          "beta": -0.12880252318766355,
+          "se": 0.05959840247526829,
+          "p": 0.030865138237655486,
+          "n": 1293,
+          "passes": true
+        },
+        "ret_USD/JPY": {
+          "beta": -1.750421227406051,
+          "se": 1.4988586154732482,
+          "p": 0.24307257667479978,
+          "n": 1395,
+          "passes": false
+        },
+        "ret_USD/CHF": {
+          "beta": -4.543679802619161,
+          "se": 1.095314545744129,
+          "p": 3.552182239490664e-05,
+          "n": 1395,
+          "passes": false
+        }
+      }
+    }
+  }
+}

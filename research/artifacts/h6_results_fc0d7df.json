@@ -1,0 +1,290 @@
+{
+  "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+  "coverage": 1.0,
+  "settings": {
+    "event_window_hours": 24.0,
+    "no_data_value": "z_zero",
+    "novelty_missing": "drop_headline",
+    "relevance_unmatched": "indirect",
+    "zscore_scheme": "training_months",
+    "zscore_min_history": 30,
+    "baseline_usd_policy": "study_inr",
+    "intraday_entry_exit_lag_minutes": [
+      2,
+      5
+    ],
+    "usdinr_target_bar": "skip_one_bar",
+    "ic_of": "model_prediction",
+    "ic_inference": "date_clustered_rank_regression",
+    "missing_window_rule": "drop_signal_time"
+  },
+  "generated_at": "2026-11-05T07:34:48.000060+00:00",
+  "h6a_primary_daily": {
+    "n_signal_times": 1457,
+    "rows_with_target": 5006,
+    "pair_bias": {
+      "feature": "pair_bias",
+      "criterion_i": {
+        "n": 5006,
+        "n_dates": 1455,
+        "beta": 0.09519805026060132,
+        "se": 0.6947933843438798,
+        "p": 0.8910368445770699,
+        "passes": false
+      },
+      "criterion_ii": {
+        "n_test": 4077,
+        "n_months": 55,
+        "mse_baseline": 2268.388834972819,
+        "mse_full": 2270.4763378075777,
+        "passes": false,
+        "hit_rate_baseline": 0.5012285012285013,
+        "hit_rate_full": 0.49434889434889434,
+        "ic": -0.02724389236381042,
+        "ic_p": 0.11956244885005032,
+        "ic_of": "model_prediction"
+      },
+      "passes": false
+    },
+    "news_only": {
+      "feature": "news_only",
+      "criterion_i": {
+        "n": 5006,
+        "n_dates": 1455,
+        "beta": 0.22237182125164362,
+        "se": 0.756062765992497,
+        "p": 0.7687095628685358,
+        "passes": false
+      },
+      "criterion_ii": {
+        "n_test": 4079,
+        "n_months": 55,
+        "mse_baseline": 2269.1905475511826,
+        "mse_full": 2270.996804736064,
+        "passes": false,
+        "hit_rate_baseline": 0.4963163064833006,
+        "hit_rate_full": 0.49238703339882123,
+        "ic": -0.021917253305513418,
+        "ic_p": 0.2083462526325454,
+        "ic_of": "model_prediction"
+      },
+      "passes": false
+    },
+    "event_only": {
+      "feature": "event_only",
+      "criterion_i": {
+        "n": 5006,
+        "n_dates": 1455,
+        "beta": -0.4223526813722337,
+        "se": 1.6511083178893966,
+        "p": 0.7981418424754794,
+        "passes": false
+      },
+      "criterion_ii": {
+        "n_test": 4077,
+        "n_months": 55,
+        "mse_baseline": 2268.388834972819,
+        "mse_full": 2269.9079785714835,
+        "passes": false,
+        "hit_rate_baseline": 0.5012285012285013,
+        "hit_rate_full": 0.4968058968058968,
+        "ic": -0.028752871515579315,
+        "ic_p": 0.08905566560913601,
+        "ic_of": "model_prediction"
+      },
+      "passes": false
+    }
+  },
+  "verdict": "NOT SUPPORTED",
+  "reported_only": {
+    "usd_inr_alone": {
+      "feature": "pair_bias",
+      "criterion_i": {
+        "n": 1454,
+        "n_dates": 1454,
+        "beta": 0.9574031799703044,
+        "se": 0.8803869108997197,
+        "p": 0.27700507858246143,
+        "passes": false
+      },
+      "criterion_ii": {
+        "n_test": 1192,
+        "n_months": 55,
+        "mse_baseline": 792.6763834918913,
+        "mse_full": 799.0097984780209,
+        "passes": false,
+        "hit_rate_baseline": 0.5008389261744967,
+        "hit_rate_full": 0.4966442953020134,
+        "ic": -0.02880192809562325,
+        "ic_p": 0.33952606826124976,
+        "ic_of": "model_prediction"
+      },
+      "passes": false
+    },
+    "intraday_secondaries": {
+      "60": {
+        "n_signal_times": 34968,
+        "rows_with_target": 134938,
+        "pair_bias": {
+          "feature": "pair_bias",
+          "criterion_i": {
+            "n": 134938,
+            "n_dates": 1455,
+            "beta": -0.030460735797355355,
+            "se": 0.028794128493845442,
+            "p": 0.29028582268720055,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 110490,
+            "n_months": 55,
+            "mse_baseline": 123.30472851931464,
+            "mse_full": 6.215475834522068e+23,
+            "passes": false,
+            "hit_rate_baseline": 0.5030742464680323,
+            "hit_rate_full": 0.5031106819817276,
+            "ic": 0.007796300138145638,
+            "ic_p": 0.028847997414760945,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "news_only": {
+          "feature": "news_only",
+          "criterion_i": {
+            "n": 134938,
+            "n_dates": 1455,
+            "beta": -0.03949854549663559,
+            "se": 0.03045194815546007,
+            "p": 0.19481020121246287,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 110529,
+            "n_months": 55,
+            "mse_baseline": 123.35895205210095,
+            "mse_full": 123.36098946682654,
+            "passes": false,
+            "hit_rate_baseline": 0.5033053486550965,
+            "hit_rate_full": 0.5021398262643186,
+            "ic": 0.007081542023393364,
+            "ic_p": 0.04197920807689423,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "event_only": {
+          "feature": "event_only",
+          "criterion_i": {
+            "n": 134938,
+            "n_dates": 1455,
+            "beta": 0.0052151136114453565,
+            "se": 0.07901749939410475,
+            "p": 0.9473873152669547,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 110490,
+            "n_months": 55,
+            "mse_baseline": 123.30472851931464,
+            "mse_full": 2.8916818860931426e+23,
+            "passes": false,
+            "hit_rate_baseline": 0.5030742464680323,
+            "hit_rate_full": 0.5019902899356002,
+            "ic": 0.0051474328791588754,
+            "ic_p": 0.11136688156781699,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "criterion_i_q_bh": 0.29028582268720055
+      },
+      "240": {
+        "n_signal_times": 34968,
+        "rows_with_target": 131414,
+        "pair_bias": {
+          "feature": "pair_bias",
+          "criterion_i": {
+            "n": 131414,
+            "n_dates": 1455,
+            "beta": -0.16070389959631357,
+            "se": 0.10938284557027564,
+            "p": 0.14199828404995993,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 107616,
+            "n_months": 55,
+            "mse_baseline": 486.57575431945327,
+            "mse_full": 1.0583746731289457e+25,
+            "passes": false,
+            "hit_rate_baseline": 0.5047344778094652,
+            "hit_rate_full": 0.5080709798877892,
+            "ic": 0.014185980885977233,
+            "ic_p": 0.035906310318133884,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "news_only": {
+          "feature": "news_only",
+          "criterion_i": {
+            "n": 131414,
+            "n_dates": 1455,
+            "beta": -0.2005288555323871,
+            "se": 0.11624464650084171,
+            "p": 0.08472936488760684,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 107654,
+            "n_months": 55,
+            "mse_baseline": 486.9431000311596,
+            "mse_full": 486.9524107925198,
+            "passes": false,
+            "hit_rate_baseline": 0.5052824774539763,
+            "hit_rate_full": 0.5071644182753223,
+            "ic": 0.013002962536578646,
+            "ic_p": 0.05077451729172167,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "event_only": {
+          "feature": "event_only",
+          "criterion_i": {
+            "n": 131414,
+            "n_dates": 1455,
+            "beta": -0.0019533316675975254,
+            "se": 0.29394257911577504,
+            "p": 0.9946987817910582,
+            "passes": false
+          },
+          "criterion_ii": {
+            "n_test": 107616,
+            "n_months": 55,
+            "mse_baseline": 486.57575431945327,
+            "mse_full": 4.196187545404569e+24,
+            "passes": false,
+            "hit_rate_baseline": 0.5047344778094652,
+            "hit_rate_full": 0.5036720162537979,
+            "ic": 0.005852944393820803,
+            "ic_p": 0.3340308921452101,
+            "ic_of": "model_prediction"
+          },
+          "passes": false
+        },
+        "criterion_i_q_bh": 0.28399656809991985
+      }
+    },
+    "horizon_output": {
+      "horizon_minutes": null,
+      "label": "none established",
+      "q_values": {
+        "1440": 0.11956244885005034,
+        "60": 0.05385946547720083,
+        "240": 0.05385946547720083
+      }
+    }
+  }
+}

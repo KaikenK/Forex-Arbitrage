@@ -1,0 +1,251 @@
+{
+  "sentence_transformer": {
+    "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+    "settings": {
+      "market_wrap_word_boundaries": true,
+      "gdelt_usd_policy": "study",
+      "inr_arm_usd_policy": "study_inr",
+      "control_day_rule": "weekdays",
+      "control_min_valid_days": 10,
+      "walk_forward_min_train_months": 12
+    },
+    "majors": {
+      "exclusions": {
+        "rows_before": 2371426,
+        "events_before": 828151,
+        "dropped_release_window": 240510,
+        "dropped_market_wrap": 196502,
+        "dropped_both": 19015,
+        "dropped_total": 417997,
+        "rows_after": 1953429,
+        "events_after": 688871
+      },
+      "finbert_baseline": {
+        "backend": "sentence_transformer",
+        "decision_weight": true,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.9680212645806616,
+        "novelty_se": 0.27914332793706387,
+        "novelty_p": 0.0005376292485181409,
+        "oos_mse_baseline": 89.00170592548064,
+        "oos_mse_novelty": 88.98916876505558,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "lexicon_baseline_robustness": {
+        "backend": "sentence_transformer",
+        "decision_weight": true,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.9368197883835063,
+        "novelty_se": 0.27705988539328585,
+        "novelty_p": 0.0007376567204585463,
+        "oos_mse_baseline": 88.99068224885308,
+        "oos_mse_novelty": 88.97891509520683,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "rows_with_target": 1617847
+    },
+    "usd_inr_secondary": {
+      "exclusions": {
+        "rows_before": 126889,
+        "events_before": 126889,
+        "dropped_release_window": 10522,
+        "dropped_market_wrap": 16721,
+        "dropped_both": 1530,
+        "dropped_total": 25713,
+        "rows_after": 101176,
+        "events_after": 101176
+      },
+      "news_days": 1454,
+      "result": {
+        "backend": "sentence_transformer",
+        "decision_weight": true,
+        "n_rows": 1436,
+        "n_events": 1436,
+        "n_dates": 1436,
+        "novelty_beta": -10.404367897789598,
+        "novelty_se": 17.010387241437012,
+        "novelty_p": 0.5408676152181611,
+        "oos_mse_baseline": 431.5061048633422,
+        "oos_mse_novelty": 432.4307562822903,
+        "oos_test_rows": 1192,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "note": "secondary arm; kill rule counted on news-days, the R2 unit"
+    }
+  },
+  "tfidf_svd": {
+    "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+    "settings": {
+      "market_wrap_word_boundaries": true,
+      "gdelt_usd_policy": "study",
+      "inr_arm_usd_policy": "study_inr",
+      "control_day_rule": "weekdays",
+      "control_min_valid_days": 10,
+      "walk_forward_min_train_months": 12
+    },
+    "majors": {
+      "exclusions": {
+        "rows_before": 2371426,
+        "events_before": 828151,
+        "dropped_release_window": 240510,
+        "dropped_market_wrap": 196502,
+        "dropped_both": 19015,
+        "dropped_total": 417997,
+        "rows_after": 1953429,
+        "events_after": 688871
+      },
+      "finbert_baseline": {
+        "backend": "tfidf_svd",
+        "decision_weight": false,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.49493314909139413,
+        "novelty_se": 0.2833800652059615,
+        "novelty_p": 0.08089698305042954,
+        "oos_mse_baseline": 89.00170592548064,
+        "oos_mse_novelty": 89.00083975052316,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "lexicon_baseline_robustness": {
+        "backend": "tfidf_svd",
+        "decision_weight": false,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.46311884287112653,
+        "novelty_se": 0.280406642588257,
+        "novelty_p": 0.09879964280184532,
+        "oos_mse_baseline": 88.99068224885306,
+        "oos_mse_novelty": 88.99091458003741,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "rows_with_target": 1617847
+    },
+    "usd_inr_secondary": {
+      "exclusions": {
+        "rows_before": 126889,
+        "events_before": 126889,
+        "dropped_release_window": 10522,
+        "dropped_market_wrap": 16721,
+        "dropped_both": 1530,
+        "dropped_total": 25713,
+        "rows_after": 101176,
+        "events_after": 101176
+      },
+      "news_days": 1454,
+      "result": {
+        "backend": "tfidf_svd",
+        "decision_weight": false,
+        "n_rows": 1436,
+        "n_events": 1436,
+        "n_dates": 1436,
+        "novelty_beta": 3.095135630616369,
+        "novelty_se": 12.76011161656092,
+        "novelty_p": 0.8083783260757222,
+        "oos_mse_baseline": 431.5061048633422,
+        "oos_mse_novelty": 432.2109685616088,
+        "oos_test_rows": 1192,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "note": "secondary arm; kill rule counted on news-days, the R2 unit"
+    }
+  },
+  "hashing": {
+    "freeze_sha256": "d4ef3d7f7a66a13b815e8efe3cf8e708a3f08d295ce2a68031bd50d1096838dd",
+    "settings": {
+      "market_wrap_word_boundaries": true,
+      "gdelt_usd_policy": "study",
+      "inr_arm_usd_policy": "study_inr",
+      "control_day_rule": "weekdays",
+      "control_min_valid_days": 10,
+      "walk_forward_min_train_months": 12
+    },
+    "majors": {
+      "exclusions": {
+        "rows_before": 2371426,
+        "events_before": 828151,
+        "dropped_release_window": 240510,
+        "dropped_market_wrap": 196502,
+        "dropped_both": 19015,
+        "dropped_total": 417997,
+        "rows_after": 1953429,
+        "events_after": 688871
+      },
+      "finbert_baseline": {
+        "backend": "hashing",
+        "decision_weight": false,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.4306323868909657,
+        "novelty_se": 0.26039991017354025,
+        "novelty_p": 0.09836431466708515,
+        "oos_mse_baseline": 89.00170592548064,
+        "oos_mse_novelty": 89.00220485181303,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "lexicon_baseline_robustness": {
+        "backend": "hashing",
+        "decision_weight": false,
+        "n_rows": 243360,
+        "n_events": 234273,
+        "n_dates": 1717,
+        "novelty_beta": -0.40339548157286265,
+        "novelty_se": 0.26016317554524815,
+        "novelty_p": 0.12119444863948507,
+        "oos_mse_baseline": 88.99068224885306,
+        "oos_mse_novelty": 88.9917177070227,
+        "oos_test_rows": 197205,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "rows_with_target": 1617847
+    },
+    "usd_inr_secondary": {
+      "exclusions": {
+        "rows_before": 126889,
+        "events_before": 126889,
+        "dropped_release_window": 10522,
+        "dropped_market_wrap": 16721,
+        "dropped_both": 1530,
+        "dropped_total": 25713,
+        "rows_after": 101176,
+        "events_after": 101176
+      },
+      "news_days": 1454,
+      "result": {
+        "backend": "hashing",
+        "decision_weight": false,
+        "n_rows": 1436,
+        "n_events": 1436,
+        "n_dates": 1436,
+        "novelty_beta": -28.808085468336685,
+        "novelty_se": 19.835152605898358,
+        "novelty_p": 0.14661589211199189,
+        "oos_mse_baseline": 431.5061048633422,
+        "oos_mse_novelty": 431.3171591168567,
+        "oos_test_rows": 1192,
+        "oos_test_months": 55,
+        "verdict": "not_supported"
+      },
+      "note": "secondary arm; kill rule counted on news-days, the R2 unit"
+    }
+  }
+}
