@@ -481,6 +481,17 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   shape, applied=False and prediction-log keys identical to the pre-restart baseline; backend log shows the
   in-process scorer received it. The Claude app was closed ~12:20 IST; both services kept running (detached),
   recorder still writing at 13:52 IST, so no further gap.
+  **Backend-only restart 2026-11-05 19:49:52 IST (C43 shadow engine; code c1d8c6c, with C42's switches all off;
+  semantic service not restarted, up since 00:08:05):** launcher `backend.cmd` now sets `ARBEX_SEMANTIC_SHADOW=1`
+  and `ARBEX_SHADOW_DIR=%LOCALAPPDATA%\arbex\shadow`. Recorder gap 19:49:44.3–19:49:57.3 IST (12.9 s). The
+  backend log shows the shadow on and no error apart from Kraken connection resets (the hotspot, as before).
+  **Verified 20:05 IST** on the post-restart opportunities: the opportunity keys and value types, the
+  semantic-snapshot shape, `applied=False` and the prediction-log keys match the pre-restart baseline. The one
+  difference, `release_channel` null where the baseline row had one, is data, not code: 304 of 341 rows before
+  the restart today had it null. Shadow rows are written for every new opportunity (4 by 20:05), with live
+  inputs (risk channel available, inputs a few seconds old) and no shadow error. At 20:07 IST a scored cross on
+  `/ws/arbitrage` carried the display tag, the risk channel and "direction not applied". Counts and fields
+  only; no outcome read.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
