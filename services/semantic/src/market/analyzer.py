@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
+import os
 import re
 
 import structlog
@@ -13,6 +14,7 @@ from retrieval.interfaces import EvidenceRetriever
 from retrieval.models import EvidenceType
 from retrieval.models import RetrievedEvidence
 
+from .currency_bias_core import tag_currencies
 from .interfaces import EventReactionScorer
 from .interfaces import EventSentimentScorer
 from .interfaces import MarketReactionAnalyzer
@@ -54,6 +56,19 @@ MARKET_SCORE_NORMALIZER = 200.0
 # "any calendar evidence exists" was true for every single analysis and the flag
 # carried no information. Require a materially surprising release instead.
 HIGH_EVENT_RISK_SURPRISE_THRESHOLD = 0.25
+# Phase 2 (RESEARCH_TRACKER §6, default off; switched on after 2026-11-18 00:00 IST): the flag is
+# raised only for a headline tagged with a study currency, and only by evidence for a pair that
+# contains one of the headline's currencies (evidence rows carry a pair, not a currency).
+FX_RELEVANCE_FILTER_ENV = "SEMANTIC_FX_RELEVANCE_FILTER"
+
+
+def fx_relevance_filter_enabled() -> bool:
+    return (os.environ.get(FX_RELEVANCE_FILTER_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _pair_codes(pair: str | None) -> set[str]:
+    letters = re.sub(r"[^A-Za-z]", "", str(pair or "")).upper()
+    return {letters[:3], letters[3:6]} if len(letters) == 6 else set()
 
 # Relevance scores from the evidence retriever are cosine-style similarities that
 # empirically top out near 0.6 on this corpus; treat that as "a strong match"
@@ -432,7 +447,13 @@ def _is_high_event_risk(event: UnifiedNewsEvent, evidence: list[RetrievedEvidenc
     type: the retrieval corpus is entirely calendar and central-bank rows, so a
     type check is true for every analysis and the flag degenerates to a constant.
     """
-    combined_text = " ".join(filter(None, [event.headline, event.body or ""])).casefold()
+    raw_text = " ".join(filter(None, [event.headline, event.body or ""]))
+    if fx_relevance_filter_enabled():
+        tags = set(tag_currencies(raw_text))
+        if not tags:
+            return False
+        evidence = [item for item in evidence if tags & _pair_codes(item.pair)]
+    combined_text = raw_text.casefold()
     if any(keyword in combined_text for keyword in HIGH_RISK_KEYWORDS):
         return True
     return any(
