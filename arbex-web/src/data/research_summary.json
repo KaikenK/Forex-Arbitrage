@@ -1,0 +1,233 @@
+{
+  "thesis": "News tells the engine when to be careful, not which way.",
+  "generated_at": "2026-11-05T15:20:37+00:00",
+  "source_commit": "7f81a3f",
+  "results": [
+    {
+      "id": "H1",
+      "title": "Novel headlines move FX more",
+      "verdict": "NOT SUPPORTED",
+      "tone": "down",
+      "numbers": [
+        {
+          "label": "novelty β (sentence-transformer)",
+          "value": "-0.968",
+          "detail": "p 5.4e-04"
+        },
+        {
+          "label": "novelty β (TF-IDF)",
+          "value": "-0.495",
+          "detail": "p 0.081"
+        },
+        {
+          "label": "novelty β (hashing)",
+          "value": "-0.431",
+          "detail": "p 0.098"
+        },
+        {
+          "label": "out-of-sample MSE",
+          "value": "88.989",
+          "detail": "vs 89.002 without novelty"
+        }
+      ],
+      "rule": "Novelty β > 0 at p < 0.05 and lower out-of-sample error, on the majors.",
+      "note": "The strongest embedder gives the wrong sign.",
+      "source": "h1_results.json"
+    },
+    {
+      "id": "H5",
+      "title": "News carries a market-wide component",
+      "verdict": "PARTIAL",
+      "tone": "risk",
+      "numbers": [
+        {
+          "label": "lexicon (a): implied β",
+          "value": "47.7",
+          "detail": "p 4.4e-11 · passes"
+        },
+        {
+          "label": "lexicon (b)",
+          "value": "fails",
+          "detail": "risk proxies"
+        },
+        {
+          "label": "FinBERT",
+          "value": "neither",
+          "detail": "neither part passes"
+        }
+      ],
+      "rule": "(a) the implied market term predicts returns out of sample; (b) it moves with risk proxies.",
+      "note": "Partial on the lexicon backend only.",
+      "source": "h5_results.json"
+    },
+    {
+      "id": "H6",
+      "title": "Currency news bias forecasts pair returns",
+      "verdict": "NOT SUPPORTED",
+      "tone": "down",
+      "numbers": [
+        {
+          "label": "pair-bias β",
+          "value": "0.095",
+          "detail": "p 0.891"
+        },
+        {
+          "label": "out-of-sample MSE",
+          "value": "2270.5",
+          "detail": "vs 2268.4 baseline"
+        },
+        {
+          "label": "hit rate",
+          "value": "49.4%",
+          "detail": "vs 50.1% baseline"
+        }
+      ],
+      "rule": "Daily pair bias: β > 0 at p < 0.05 and lower walk-forward error than the baseline.",
+      "note": "No direction from news on held-out months; the intraday secondaries carry no decision weight.",
+      "source": "h6_results.json"
+    },
+    {
+      "id": "window30",
+      "title": "The 30-minute news window",
+      "verdict": "EXPLORATORY",
+      "tone": "info",
+      "numbers": [
+        {
+          "label": "activity → move size (60 min)",
+          "value": "0.048",
+          "detail": "q 1.5e-10"
+        },
+        {
+          "label": "activity → move size (30 min)",
+          "value": "0.043",
+          "detail": "q 6.1e-09"
+        },
+        {
+          "label": "direction (30 / 60 min)",
+          "value": "null",
+          "detail": "q 0.951 / 0.887"
+        }
+      ],
+      "rule": "Exploratory, BH-corrected: direction, activity and caution over the next 30 and 60 minutes.",
+      "note": "News activity predicts how much a pair moves, not which way: the basis for news as risk.",
+      "source": "window30_results.json"
+    },
+    {
+      "id": "RQ2-E2E",
+      "title": "Direction from real release headlines",
+      "verdict": "NOT SUPPORTED",
+      "tone": "down",
+      "numbers": [
+        {
+          "label": "structured extractor",
+          "value": "41.6%",
+          "detail": "95% CI [28.8, 54.2]"
+        },
+        {
+          "label": "FinBERT",
+          "value": "51.6%",
+          "detail": "95% CI [48.5, 54.4]"
+        },
+        {
+          "label": "V1 text model",
+          "value": "53.5%",
+          "detail": "95% CI [49.1, 57.7]"
+        }
+      ],
+      "rule": "Direction accuracy over the 60 minutes after the article, against 50%.",
+      "note": "Every method's interval includes a coin flip.",
+      "source": "rq2_e2e.json"
+    },
+    {
+      "id": "H6b",
+      "title": "Semantic channels improve live ranking",
+      "verdict": "EXPLORATORY",
+      "tone": "info",
+      "numbers": [
+        {
+          "label": "still-crossed AUC, detector",
+          "value": "0.948",
+          "detail": "29456 crosses"
+        },
+        {
+          "label": "+ risk channel",
+          "value": "0.942",
+          "detail": "difference CI [-0.011, -0.001]"
+        },
+        {
+          "label": "+ risk + direction",
+          "value": "0.941",
+          "detail": ""
+        }
+      ],
+      "rule": "Prospective, descriptive: AUC for a cross still being there at the next poll.",
+      "note": "The shipped risk channel did not rank persistence better; C40 asks a different question (worse crosses near releases).",
+      "source": "h6b_results.json"
+    },
+    {
+      "id": "M3",
+      "title": "Positive control (NFP)",
+      "verdict": "FAIL",
+      "tone": "down",
+      "numbers": [
+        {
+          "label": "pre-registered gate",
+          "value": "FAIL on (a)",
+          "detail": "runs 1-2, clock defects"
+        },
+        {
+          "label": "on corrected clocks",
+          "value": "pass",
+          "detail": "post hoc, all three criteria"
+        }
+      ],
+      "rule": "NFP surprise moves USD pairs the known way; placebo does not.",
+      "note": "Recorded as a failure under the two-attempt rule; both failures traced to timing defects.",
+      "source": "positive_control.json"
+    }
+  ],
+  "sealed": [
+    {
+      "id": "RQ5",
+      "title": "RQ5 extension: ranking value on the live recorder",
+      "opens": "2026-11-17T18:30:00Z"
+    },
+    {
+      "id": "C40",
+      "title": "C40: worse crosses near releases, stale quotes and news bursts",
+      "opens": "2026-11-17T18:30:00Z"
+    },
+    {
+      "id": "Prospective",
+      "title": "Prospective test of the deployed models (V1, V2.0, V2.1)",
+      "opens": "2026-11-17T18:30:00Z"
+    },
+    {
+      "id": "C43",
+      "title": "C43: shadow-adjusted vs detector confidence",
+      "opens": "2026-11-17T18:30:00Z"
+    },
+    {
+      "id": "Latency",
+      "title": "Arrival latency of live news, and the RQ2 re-test",
+      "opens": "2026-11-13T18:30:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "label": "Direction from news",
+      "value": "NOT SUPPORTED",
+      "tone": "down"
+    },
+    {
+      "label": "News activity → move size",
+      "value": "q 1.5e-10",
+      "tone": "up"
+    },
+    {
+      "label": "Headline direction vs chance",
+      "value": "at chance",
+      "tone": "down"
+    }
+  ]
+}
