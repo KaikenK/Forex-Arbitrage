@@ -136,7 +136,9 @@ export function useWebSocket() {
 
     // Open/close price streams to match the pairs the backend is running.
     const syncSources = () => {
-      const wanted = new Set(useArbexStore.getState().feedStatus?.symbols ?? ['USDINR']);
+      // Only the pairs the running feed reports: guessing USDINR before /feeds/mode answers opened a
+      // socket the live spot feed rejects.
+      const wanted = new Set(useArbexStore.getState().feedStatus?.symbols ?? []);
       for (const [symbol, ws] of srcSockets) {
         if (!wanted.has(symbol)) { srcSockets.delete(symbol); ws.close(); }
       }

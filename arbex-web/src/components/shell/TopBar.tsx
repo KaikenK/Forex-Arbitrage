@@ -49,7 +49,7 @@ export function TopBar() {
             <span className="hidden text-2xs text-ink-3 xl:block">FX arbitrage · news as risk</span>
           </span>
         </Link>
-        <nav className="flex items-center" aria-label="Views">
+        <nav className="flex min-w-0 items-center overflow-x-auto" aria-label="Views">
           {TABS.map((t) => {
             const active = t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);
             return (
@@ -62,7 +62,7 @@ export function TopBar() {
             );
           })}
         </nav>
-        <PairPicker />
+        <div className="hidden md:block"><PairPicker /></div>
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
@@ -70,10 +70,10 @@ export function TopBar() {
           <span className="hidden xl:inline">Live tests sealed ·</span> <Countdown to={SEALED_UNTIL} done="open" />
         </Chip>
         <Clock />
-        <Chip tone={modeTone} title="Feed mode (switch it on the Health tab)">{mode ?? "—"}</Chip>
-        <span className="flex items-center gap-1.5 text-[11px] text-ink-2">
+        <Chip tone={modeTone} className="hidden sm:inline-flex" title="Feed mode (switch it on the Health tab)">{mode ?? "—"}</Chip>
+        <span className="flex items-center gap-1.5 text-[11px] text-ink-2" title={isConnected ? "Live stream connected" : "Stream offline"}>
           <span className={cn("h-2 w-2 rounded-full", isConnected ? "bg-up shadow-[0_0_6px] shadow-up/60" : "bg-down")} />
-          <span className="num">{isConnected ? "STREAM" : "OFFLINE"}</span>
+          <span className="num hidden sm:inline">{isConnected ? "STREAM" : "OFFLINE"}</span>
         </span>
       </div>
     </header>
