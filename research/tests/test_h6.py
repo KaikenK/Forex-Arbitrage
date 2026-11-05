@@ -40,11 +40,11 @@ def test_an_undecided_clause_blocks_the_run():
 
 
 def test_open_clauses_hold_the_logged_clarifications():
-    """C6-C19, RESEARCH_TRACKER §6 2026-10-25. A change here needs a new §6 entry."""
+    """C6-C19, RESEARCH_TRACKER §6 2026-10-25; C12 amended by C41 (2026-11-05). A change here needs a new §6 entry."""
     assert cb.UNRESOLVED == {
         "event_window_hours": 24.0, "no_data_value": "z_zero", "novelty_missing": "drop_headline",
         "relevance_unmatched": "indirect", "zscore_scheme": "training_months", "zscore_min_history": 30,
-        "baseline_usd_policy": "study", "intraday_entry_exit_lag_minutes": (2, 5),
+        "baseline_usd_policy": "study_inr", "intraday_entry_exit_lag_minutes": (2, 5),
         "usdinr_target_bar": "skip_one_bar", "ic_of": "model_prediction",
         "ic_inference": "date_clustered_rank_regression", "missing_window_rule": "drop_signal_time",
     }

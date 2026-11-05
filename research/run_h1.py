@@ -205,8 +205,11 @@ def run_inr_secondary(embedder: str, events, canonical, calendar, settings) -> d
     """R2 design: INR news-days (UTC date), |daily USD/INR return|, prior 20-day rvol control."""
     from research.build_sentiment_panel import join_prices
 
-    records = build_records(events, canonical, {SECONDARY_PAIR}, settings["gdelt_usd_policy"])
+    records = build_records(events, canonical, {SECONDARY_PAIR}, settings["inr_arm_usd_policy"])   # C41
     kept, counts = apply_exclusions(records, calendar, word_boundaries=settings["market_wrap_word_boundaries"])
+    if kept.empty:                                  # report, never crash on an empty arm
+        return {"exclusions": counts, "news_days": 0, "result": None,
+                "note": "secondary arm not computable: no USD/INR news after exclusions"}
     semantics = compute_event_semantics(events, embedder_factory=_embedder_factory(embedder, events),
                                         scorer=_finbert(events), currencies=["INR"], canonical=canonical)
     kept["news_currency"] = "INR"

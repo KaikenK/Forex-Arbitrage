@@ -80,6 +80,10 @@ UNRESOLVED: dict[str, object] = {
     # headline has no pair); the 2026-10-24 "study" policy maps USD to all four majors. The
     # choice changes n materially. "none" | "study".
     "gdelt_usd_policy": "study",             # C2
+    # The USD/INR secondary arm (R2 design: INR headlines). Under "study" a rupee headline has
+    # no study pair, so that arm was always empty. "study_inr" adds INR -> USD/INR and leaves
+    # USD-only headlines with the majors (C41, 2026-11-05, before any H1 result).
+    "inr_arm_usd_policy": "study_inr",       # C41
     # "previous 20 trading days": the 20 previous weekdays, averaging those whose window is
     # computable ("weekdays"), or the 20 most recent weekdays whose window is computable
     # ("valid_days", looking back at most 40 weekdays).

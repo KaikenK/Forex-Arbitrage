@@ -52,10 +52,11 @@ def test_h1_refuses_to_run_until_every_open_clause_is_decided():
 
 
 def test_open_clauses_hold_the_logged_clarifications():
-    """C1-C5, RESEARCH_TRACKER §6 2026-10-25. A change here needs a new §6 entry."""
+    """C1-C5, RESEARCH_TRACKER §6 2026-10-25, and C41 (2026-11-05). A change here needs a new §6 entry."""
     assert UNRESOLVED == {
         "market_wrap_word_boundaries": True,
         "gdelt_usd_policy": "study",
+        "inr_arm_usd_policy": "study_inr",
         "control_day_rule": "weekdays",
         "control_min_valid_days": 10,
         "walk_forward_min_train_months": 12,

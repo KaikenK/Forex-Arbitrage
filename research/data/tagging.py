@@ -183,12 +183,17 @@ def currencies_to_pairs(currencies: list[str], *, usd_policy: str = "none") -> l
       "study"   - the 2026-10-24 study set: USD events in the four intraday majors, and
                   non-USD currencies only when their pair is one of them (AUD, NZD, CAD and
                   CNY releases are dropped). Requires event-clustered standard errors.
+      "study_inr" - "study", plus INR-tagged events in USD/INR (C41, 2026-11-05): the daily
+                  USD/INR arms of H1 and H6 use rupee/RBI headlines (the R2 design), while
+                  USD-only headlines still go to the four majors only. For the majors this is
+                  identical to "study".
     """
+    allowed = {"study": INTRADAY_STUDY_PAIRS, "study_inr": INTRADAY_STUDY_PAIRS | DAILY_STUDY_PAIRS}
     pairs: list[str] = []
     for code in currencies:
         pair = PAIR_FOR_CURRENCY.get(code)
         if pair is not None:
-            if usd_policy == "study" and pair not in INTRADAY_STUDY_PAIRS:
+            if usd_policy in allowed and pair not in allowed[usd_policy]:
                 continue
             if pair not in pairs:
                 pairs.append(pair)
@@ -199,7 +204,7 @@ def currencies_to_pairs(currencies: list[str], *, usd_policy: str = "none") -> l
                 candidates = USD_INR_PAIRS
             elif usd_policy == "all":
                 candidates = USD_ALL_PAIRS
-            elif usd_policy == "study":
+            elif usd_policy in ("study", "study_inr"):
                 candidates = USD_STUDY_PAIRS
             else:
                 candidates = ()

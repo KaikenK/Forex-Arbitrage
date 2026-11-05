@@ -67,8 +67,10 @@ UNRESOLVED: dict[str, object] = {
     # Minimum earlier values before an expanding z exists (int >= 2; ignored otherwise).
     "zscore_min_history": 30,                         # C11
     # "headlines tagged directly to the pair": usd_policy for USD-only headlines —
-    # "none" (H5 baseline convention) or "study" (H1 C2 convention).
-    "baseline_usd_policy": "study",                   # C12
+    # "none" (H5 baseline convention) or "study" (H1 C2 convention). C41 (2026-11-05, before
+    # any H6 result): "study_inr" = "study" plus rupee/RBI headlines in USD/INR, which "study"
+    # dropped, leaving the USD/INR baseline empty. Majors' streams are unchanged.
+    "baseline_usd_policy": "study_inr",               # C12, amended by C41
     # HistData targets: (max entry lag, max exit lag) in minutes, fail closed.
     "intraday_entry_exit_lag_minutes": (2, 5),        # C13
     # USD/INR "dated as in the R1 re-run": "next_bar" = log(c[d+1]/c[d]) for a signal at
@@ -128,14 +130,14 @@ def _epoch(stamp) -> float:
 def build_currency_streams(rows: pd.DataFrame, currencies: Sequence[str] = H6_CURRENCIES) -> dict[str, CurrencyStream]:
     """rows: event_id, timestamp, headline, news_currency, sentiment, sentiment_confidence, novelty."""
     streams = {c: CurrencyStream() for c in currencies}
-    frame = rows.assign(_t=rows["timestamp"].map(_epoch)).sort_values(["_t", "event_id"])
+    frame = rows.assign(t_epoch=rows["timestamp"].map(_epoch)).sort_values(["t_epoch", "event_id"])
     for row in frame.itertuples():
         stream = streams.get(row.news_currency)
         if stream is None:
             continue
         novelty = getattr(row, "novelty", None)
         novelty = None if novelty is None or (isinstance(novelty, float) and math.isnan(novelty)) else float(novelty)
-        stream.timestamps.append(float(row._t))
+        stream.timestamps.append(float(row.t_epoch))
         stream.polarities.append(float(row.sentiment))
         stream.confidences.append(float(row.sentiment_confidence))
         stream.novelties.append(novelty)
@@ -235,13 +237,13 @@ class PairStream:
 def build_pair_streams(events: pd.DataFrame, pairs: Sequence[str], usd_policy: str) -> dict[str, PairStream]:
     """events: event_id, timestamp, currencies (';'), polarity, confidence (canonical only)."""
     streams = {p: PairStream() for p in pairs}
-    frame = events.assign(_t=events["timestamp"].map(_epoch)).sort_values(["_t", "event_id"])
+    frame = events.assign(t_epoch=events["timestamp"].map(_epoch)).sort_values(["t_epoch", "event_id"])
     for row in frame.itertuples():
         codes = [c for c in str(row.currencies).split(";") if c]
         for pair in currencies_to_pairs(codes, usd_policy=usd_policy):
             stream = streams.get(pair)
             if stream is not None:
-                stream.timestamps.append(float(row._t))
+                stream.timestamps.append(float(row.t_epoch))
                 stream.polarities.append(float(row.polarity))
                 stream.confidences.append(float(row.confidence))
     return streams
