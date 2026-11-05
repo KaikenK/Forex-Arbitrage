@@ -18,12 +18,14 @@ from backend.core.sentiment_bridge import (
 )
 from backend.core.arbitrage.arbitrage_engine import ArbitrageOpportunity, ArbitrageType
 from backend.core.currency_bias_channels import (
+    MIN_DIRECTION_CONFIDENCE,
     CurrencyBiasClient,
     currency_bias_enabled,
     direction_channel,
     residual_exposure,
     risk_channel,
 )
+from backend.core.semantic_apply import currency_index_direction, direction_source
 from backend.core.arbitrage.opportunity_ranker import OpportunityRanker
 from backend.core.arbitrage.opportunity_tracker import OpportunityTracker
 from backend.core.execution.execution_filter import SimulatedExecutionFilter
@@ -70,9 +72,12 @@ class NewsBias:
     service_updated_at: str | None = None
     top_drivers: list[dict[str, str]] = field(default_factory=list)
     reason: str = ""
+    # Set only under SEMANTIC_DIRECTION_SOURCE=currency_index (Phase 2), so the recorded
+    # window snapshot keeps its exact keys while the switch is off.
+    direction_detail: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             "pair": self.pair,
             "status": self.status,
             "window_minutes": self.window_minutes,
@@ -91,6 +96,9 @@ class NewsBias:
             "top_drivers": self.top_drivers,
             "reason": self.reason,
         }
+        if self.direction_detail is not None:
+            out["direction_detail"] = self.direction_detail
+        return out
 
     @classmethod
     def neutral(
@@ -140,7 +148,11 @@ class LiveNewsBiasClient:
         window_minutes: int | None = None,
         cache_ttl_seconds: int | None = None,
         clock: Callable[[], float] | None = None,
+        direction_lookup: Callable[[str], Dict[str, Any] | None] | None = None,
     ) -> None:
+        # Per-pair currency-index payload (CurrencyBiasClient.cached); read only under
+        # SEMANTIC_DIRECTION_SOURCE=currency_index.
+        self._direction_lookup = direction_lookup
         # Share the SentimentBridge transport so base URL, timeout, status
         # tracking and pair normalization live in one place instead of drifting.
         self._bridge = bridge or SentimentBridge()
@@ -268,6 +280,15 @@ class LiveNewsBiasClient:
             f"semantic score {semantic_score:+.2f}, {item_count} articles over "
             f"{self._window_minutes}m, confidence {confidence_adjustment:+.2f}."
         )
+        direction_detail = None
+        if direction_source() == "currency_index":
+            # Phase 2: the label follows the per-pair currency index; V1's call is kept for the
+            # record. The score and the confidence adjustment (magnitude only) are unchanged.
+            lookup = self._direction_lookup(pair) if self._direction_lookup is not None else None
+            direction_detail = {**currency_index_direction(lookup, min_confidence=MIN_DIRECTION_CONFIDENCE),
+                                "source": "currency_index", "v1_direction": direction}
+            direction = direction_detail["direction"]
+            reason = f"{reason} Direction: {direction_detail['reason']} (V1: {direction_detail['v1_direction']})."
 
         return NewsBias(
             pair=pair,
@@ -287,6 +308,7 @@ class LiveNewsBiasClient:
             service_updated_at=updated_at,
             top_drivers=top_drivers,
             reason=reason,
+            direction_detail=direction_detail,
         )
 
 class SemanticEngine:

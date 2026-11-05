@@ -18,6 +18,17 @@ from urllib.request import Request
 from urllib.request import urlopen
 
 from backend.core.news_fallback import RssHeadlines
+from backend.core.semantic_apply import fx_relevance_filter_enabled
+
+
+def _fx_relevant(analysis: dict[str, Any], pair: str) -> bool:
+    """Phase 2 FX-relevance filter: the headline names one of the pair's currencies (same tagger
+    as window v2 and the historical tests)."""
+    from backend.core.window_bias_v2 import _currencies
+
+    feed = analysis.get("feed") if isinstance(analysis.get("feed"), dict) else {}
+    base, _, quote = pair.partition("/")
+    return bool({base, quote} & set(_currencies(str(feed.get("headline") or ""))))
 
 
 def normalize_pair(symbol: str) -> str:
@@ -536,6 +547,8 @@ class SentimentBridge:
         bearish_count = 0
         neutral_count = 0
         in_window: list[tuple[float, dict[str, Any]]] = []
+        fx_filter = fx_relevance_filter_enabled()           # Phase 2, off until after 18 Nov
+        fx_dropped = 0
 
         for analysis in history:
             produced_at = _parse_iso_datetime(analysis.get("produced_at"))
@@ -543,6 +556,9 @@ class SentimentBridge:
                 feed = analysis.get("feed") if isinstance(analysis.get("feed"), dict) else {}
                 produced_at = _parse_iso_datetime(feed.get("timestamp"))
             if produced_at is None or produced_at < cutoff:
+                continue
+            if fx_filter and not _fx_relevant(analysis, normalized_pair):
+                fx_dropped += 1
                 continue
 
             confidence = _clamp(_safe_float(analysis.get("confidence")), 0.0, 1.0)
@@ -577,6 +593,8 @@ class SentimentBridge:
             payload["market_bias"] = 0.0
             payload["source"] = "local_analysis_history"
             payload["service"] = self._service_block()
+            if fx_filter:
+                payload["fx_filter_dropped"] = fx_dropped
             return payload
 
         in_window.sort(key=lambda entry: entry[0], reverse=True)
@@ -603,7 +621,7 @@ class SentimentBridge:
         activity_factor = min(1.0, len(in_window) / ACTIVITY_SATURATION_COUNT)
         semantic_score = _clamp(market_bias * activity_factor, -1.0, 1.0)
 
-        return {
+        payload = {
             "pair": normalized_pair,
             "market_bias": round(market_bias, 4),
             "activity_factor": round(activity_factor, 4),
@@ -621,6 +639,9 @@ class SentimentBridge:
             "source": "local_analysis_history",
             "service": self._service_block(),
         }
+        if fx_filter:
+            payload["fx_filter_dropped"] = fx_dropped
+        return payload
 
     def get_live_articles(self, pair: str, window_minutes: int, limit: int = 12) -> dict[str, Any]:
         normalized_pair = normalize_pair(pair)

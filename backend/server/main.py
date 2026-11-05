@@ -269,6 +269,7 @@ sentiment_bridge = SentimentBridge(pair_allowlist=_sentiment_pair_allowlist)
 # Semantic snapshot attached to every logged live opportunity (H6b). Filled by a background
 # task from cached lookups only, so the opportunity hot path never makes a network call.
 from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snapshot, currency_bias_enabled
+from backend.core import semantic_apply
 
 currency_bias_client = CurrencyBiasClient(sentiment_bridge)
 _window_bias_cache: Dict[str, Dict[str, Any]] = {}
@@ -290,7 +291,7 @@ def _window_bias_v2(client, pair: str) -> Dict[str, Any]:
 async def refresh_semantic_snapshot_cache() -> None:
     from backend.core.semantic_engine import LiveNewsBiasClient
 
-    client = LiveNewsBiasClient(bridge=sentiment_bridge)
+    client = LiveNewsBiasClient(bridge=sentiment_bridge, direction_lookup=currency_bias_client.cached)
     while True:
         try:
             for pair in sorted(_sentiment_pair_allowlist):
@@ -486,9 +487,25 @@ async def _start_live(setup) -> None:
     for source in setup.sources:
         multi_source_streamer.add_source(source)
 
+    sources_by_id = {s.source_id: s for s in setup.sources}
+
+    def _latest_recv_ms(row) -> Dict[str, Optional[int]]:
+        out: Dict[str, Optional[int]] = {}
+        for side in ("buy_source", "sell_source"):
+            src = sources_by_id.get(str(row.get(side)))
+            q = src.hub.latest(src.contract.instrument_key) if src is not None else None
+            out[str(row.get(side))] = q.recv_ts_ms if q is not None else None
+        return out
+
     def _log_live_opportunity(opp):
         row = opp.to_dict()
         row["semantic_snapshot"] = _semantic_snapshot(row)
+        if semantic_apply.apply_mode() == "risk":          # Phase 2, off until after 18 Nov
+            try:
+                semantic_apply.apply_to_row(row, row["semantic_snapshot"], older_leg_age_ms=(
+                    semantic_apply.older_leg_age_ms(row, _latest_recv_ms(row))))
+            except Exception as e:      # the log must never fail because of the application
+                logger.warning(f"Semantic application failed: {e}")
         live_opportunities.append(row)
         rec = setup.recorder
         if rec is not None and rec.session_dir is not None:
@@ -504,7 +521,8 @@ async def _start_live(setup) -> None:
     from backend.server.inprocess_scorer import InProcessScorer
 
     def _scoring_engine(publish):
-        return SemanticEngine(news_bias_provider=LiveNewsBiasClient(bridge=sentiment_bridge),
+        return SemanticEngine(news_bias_provider=LiveNewsBiasClient(
+                                  bridge=sentiment_bridge, direction_lookup=currency_bias_client.cached),
                               publisher=publish, currency_bias_client=currency_bias_client)
 
     multi_source_streamer.on_arbitrage(InProcessScorer(
