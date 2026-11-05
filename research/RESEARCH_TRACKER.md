@@ -462,6 +462,14 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   No prediction-log row after the reconnect repeats an earlier headline × pair (the C38 backend dedup works on a
   reconnect). Kraken on the hotspot: 0–12 quotes a minute around 00:40 IST, 16–52 at 01:43–01:46, 28–48 after
   the reconnect (normal about 177); TrueFX normal. WARP off.
+  **Backend-only restart 2026-11-05 11:52:17 IST (display-only fixes, commits f2596bc, 38e7b01; semantic service
+  not restarted):** in-process dashboard scorer (no Redis), dashboard tick stats, stale crosses labelled on /live,
+  / redirects to /live, neutral defaults on /sentiment/window-bias, dashboard sentiment panel follows the
+  selected pair. Recorder gap 11:52:11-11:52:20 IST (8.8 s). Nothing recorded changes: the scorer is registered
+  after the recorder and never writes; opportunity rows, semantic snapshot (applied=False) and prediction-log
+  fields are checked against a pre-restart baseline on the first new opportunity. Engine-behaviour fixes (apply
+  the risk penalty, direction from the currency index, release actuals, FX-relevance filter) are built behind
+  flags that stay off until after the RQ5 sample closes (18 Nov 00:00 IST).
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
