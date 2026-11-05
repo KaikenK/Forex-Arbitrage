@@ -317,7 +317,7 @@
       const t = Math.max(0, ...legs.map((l) => l.recv_ts_ms || 0));
       if (t && t !== lastSpreadT[sym]) {
         lastSpreadT[sym] = t;
-        const best = bestSpread((d.cross_spreads || []).filter((r) => (r.symbol || "USDINR") === sym));
+        const best = bestSpread((d.cross_spreads || []).filter((r) => (r.symbol || "USDINR") === sym && !r.stale));
         (spreads[sym] ||= []).push(best ? { t, v: pipsOf(best), buy: best.buy, sell: best.sell } : { t, v: null });
       }
       const s = spreads[sym] || [];
@@ -326,8 +326,16 @@
     for (const k in mids) while (mids[k].length && mids[k][0].t < cut) mids[k].shift();
   }
 
-  const bestSpread = (rows) => (rows && rows.length)
-    ? rows.reduce((a, b) => (pipsOf(b) > pipsOf(a) ? b : a)) : null;
+  // Prefer crosses whose legs are both live; a cross against a stale quote (the detector
+  // ignores that leg) is only shown when nothing fresh exists, and is labelled as stale.
+  const bestSpread = (rows) => {
+    if (!rows || !rows.length) return null;
+    const fresh = rows.filter((r) => !r.stale);
+    const pool = fresh.length ? fresh : rows;
+    return pool.reduce((a, b) => (pipsOf(b) > pipsOf(a) ? b : a));
+  };
+  const staleNote = (row) => (row.stale_legs || []).map((l) =>
+    `${prettyLeg(l.id)} (${l.age_ms == null ? "no quote" : `${Math.round(l.age_ms / 1000)} s old`})`).join(", ");
 
   // --- rendering ----------------------------------------------------------
   function render() {
@@ -385,7 +393,7 @@
       b.type = "button";
       b.setAttribute("aria-pressed", String(sym === pair));
       b.append(el("b", null, info(sym).display.replace(/ \(per \d+\)$/, "")));
-      const sub = el("span", best && best.crossed ? "crossed num" : "num",
+      const sub = el("span", best && best.crossed && !best.stale ? "crossed num" : "num",
         best ? `${fmtPaise(pipsOf(best))} ${unit(sym)}` : `${legsOf(sym).length} legs`);
       b.append(sub);
       b.addEventListener("click", () => {
@@ -406,7 +414,13 @@
     }
     const best = bestSpread(spreadsOf(pair));
     const u = unit(pair);
-    if (best) {
+    if (best && best.stale) {
+      // only crosses against a quote the detector ignores: never present them as a dislocation
+      v.textContent = `${fmtPaise(pipsOf(best))} ${u}`;
+      v.className = "hero-value num";
+      sub.textContent = `Stale quote on ${staleNote(best)} — not an opportunity. The arbitrage engine ignores ` +
+        `a leg whose quote is older than its staleness limit, so this ${best.crossed ? "cross" : "gap"} is not traded or recorded.`;
+    } else if (best) {
       v.textContent = `${fmtPaise(pipsOf(best))} ${u}`;
       v.className = "hero-value num" + (best.crossed ? " crossed" : "");
       sub.textContent = best.crossed

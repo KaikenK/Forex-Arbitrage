@@ -497,6 +497,19 @@ async def _start_live(setup) -> None:
 
     multi_source_streamer.on_arbitrage(_log_live_opportunity)
 
+    # Dashboard stream without Redis (display only; registered after the recorder, which it
+    # never touches). Reuses this process's bridge and currency-bias client.
+    from backend.core.redis_client import redis_client as _redis
+    from backend.core.semantic_engine import LiveNewsBiasClient, SemanticEngine
+    from backend.server.inprocess_scorer import InProcessScorer
+
+    def _scoring_engine(publish):
+        return SemanticEngine(news_bias_provider=LiveNewsBiasClient(bridge=sentiment_bridge),
+                              publisher=publish, currency_bias_client=currency_bias_client)
+
+    multi_source_streamer.on_arbitrage(InProcessScorer(
+        _scoring_engine, ws_manager.broadcast_arbitrage, redis_connected=lambda: _redis._is_connected))
+
     # Real depth to the dashboard's orderbook panel (hubs poll on their own threads).
     loop = asyncio.get_running_loop()
     by_key = {s.contract.instrument_key: s for s in setup.sources}
@@ -853,6 +866,10 @@ async def lifespan(app: FastAPI):
                 if arbitrage_state_machine:
                     states = arbitrage_state_machine.get_all_states()
                     await ws_manager.broadcast_state_update(states)
+                if multi_source_streamer is not None:     # dashboard tick counter
+                    from backend.server.inprocess_scorer import dashboard_stats
+                    await ws_manager.broadcast_to_dashboard(
+                        "stats", dashboard_stats(multi_source_streamer.get_stats()))
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -965,9 +982,22 @@ if FRONTEND_DIR.exists():
 # REST Endpoints
 # ============================================================================
 
+@app.get("/legacy")
+async def legacy_terminal():
+    """The original synthetic USD/INR research terminal (kept for synthetic mode)."""
+    research_file = FRONTEND_DIR / "arbitrage_research.html"
+    if research_file.exists():
+        return FileResponse(str(research_file))
+    return {"error": "frontend/arbitrage_research.html not found"}
+
+
 @app.get("/")
 async def root():
-    """Serve the Arbitrage Research terminal."""
+    """Live exchange mode: the live monitor. Otherwise the synthetic research terminal."""
+    if is_live_exchange_mode():
+        # the synthetic USD/INR terminal shows nothing live and opens sockets for an absent pair
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/live", status_code=307)
     # Serve the Arbitrage Research dashboard
     research_file = FRONTEND_DIR / "arbitrage_research.html"
     if research_file.exists():
@@ -1168,7 +1198,12 @@ async def get_sentiment_window_bias(pair: str = "USD/INR", window_minutes: int =
     This is the aggregate the semantic engine actually consumes, exposed so the
     dashboard can show the number that moved a decision rather than a proxy for it.
     """
-    return await asyncio.to_thread(sentiment_bridge.get_window_bias, pair, window_minutes)
+    payload = await asyncio.to_thread(sentiment_bridge.get_window_bias, pair, window_minutes)
+    # An empty window omits these fields; give API consumers one shape (the bridge, which the
+    # recorder's path also uses, is left untouched).
+    for key, value in (("direction", "neutral"), ("semantic_score", 0.0), ("activity_factor", 0.0)):
+        payload.setdefault(key, value)
+    return payload
 
 
 @app.get("/sentiment/currency-bias")
@@ -1489,13 +1524,29 @@ async def get_live_status():
         "legs": legs,
         "symbols": list(DEFAULT_SYMBOLS),
         "instruments": {sym: _instrument_info(sym) for sym in DEFAULT_SYMBOLS},
-        "cross_spreads": _with_basis(cross_spreads(quotes, {s.source_id: s.symbol for s in live_feed_setup.sources})),
+        "cross_spreads": _mark_stale(
+            _with_basis(cross_spreads(quotes, {s.source_id: s.symbol for s in live_feed_setup.sources})), legs),
         "opportunities_seen": len(live_opportunities),
         "recent_opportunities": list(live_opportunities)[-20:],
         "hubs": {name: hub.stats() for name, hub in live_feed_setup.hubs.items()},
         "skipped_feeds": live_feed_setup.skipped,
         "recorded_rows": live_feed_setup.recorder.rows_written if live_feed_setup.recorder else 0,
     }
+
+
+def _mark_stale(rows: List[dict], legs: List[dict]) -> List[dict]:
+    """Flag crosses that use a leg the detector currently ignores (stale, one-sided or no quote).
+
+    Display only: the detector already skips such legs (ExchangeLegSource.get_tick); this stops
+    /live from presenting a cross against a minutes-old quote as a dislocation.
+    """
+    unhealthy = {leg["id"]: leg for leg in legs if not leg.get("healthy")}
+    for row in rows:
+        bad = [unhealthy[i] for i in (row.get("buy"), row.get("sell")) if i in unhealthy]
+        row["stale"] = bool(bad)
+        row["stale_legs"] = [{"id": leg["id"], "age_ms": leg.get("age_ms"),
+                              "reason": leg.get("suppressed_reason")} for leg in bad]
+    return rows
 
 
 def _with_basis(rows: List[dict]) -> List[dict]:
