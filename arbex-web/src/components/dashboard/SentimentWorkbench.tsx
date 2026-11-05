@@ -353,7 +353,9 @@ function biasWidthClass(biasScore: number): string {
   return 'w-2/12';
 }
 
-function formatSigned(value: number, digits = 2): string {
+function formatSigned(value: number | null | undefined, digits = 2): string {
+  // payloads for some pairs omit a score (e.g. no per-pair market score): show a dash, never crash
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(digits)}`;
 }
@@ -470,8 +472,13 @@ async function fetchJson<T>(path: string): Promise<T> {
 }
 
 export function SentimentWorkbench() {
-  const topSymbol = useArbexStore((state) => state.rankedOpportunities[0]?.opportunity.symbols[0] ?? 'USDINR');
-  const pair = useDeferredValue(normalizePair(topSymbol));
+  // The pair the user selected (reconciled by the store to the pairs the feed carries), not the
+  // top-ranked opportunity: with no opportunities that fell back to USD/INR, which no feed has.
+  const selectedSymbol = useArbexStore((state) => state.selectedSymbol);
+  // Not deferred: a deferred pair lags one render behind feedReady and fetched the old default.
+  const pair = normalizePair(selectedSymbol);
+  // Wait for the feed status: until it arrives selectedSymbol is the store default (USDINR).
+  const feedReady = useArbexStore((state) => state.feedStatus !== null);
 
   const [status, setStatus] = useState<SentimentStatusResponse | null>(null);
   const [articles, setArticles] = useState<ArticleTapeResponse | null>(null);
@@ -608,6 +615,11 @@ export function SentimentWorkbench() {
       }
     };
 
+    if (!feedReady) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void refresh();
     const intervalId = window.setInterval(() => {
       void refresh();
@@ -617,7 +629,7 @@ export function SentimentWorkbench() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [pair, deferredHistorySearch, historyEvidenceOnly, historyMinConfidence]);
+  }, [pair, feedReady, deferredHistorySearch, historyEvidenceOnly, historyMinConfidence]);
 
   useEffect(() => {
     let cancelled = false;
@@ -643,12 +655,14 @@ export function SentimentWorkbench() {
       }
     };
 
-    void refreshExplanation();
+    if (feedReady) {
+      void refreshExplanation();
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [pair, selectedEventId]);
+  }, [pair, feedReady, selectedEventId]);
 
   const biasBins = bias?.bins.slice(-6) ?? [];
   // Only rows with BOTH a surprise and a realised reaction can be plotted; the
@@ -733,7 +747,7 @@ export function SentimentWorkbench() {
                           : 'text-slate-300'
                     }`}
                   >
-                    {windowBias.direction.replace('_', ' ').toUpperCase()}
+                    {(windowBias.direction ?? 'neutral').replace('_', ' ').toUpperCase()}
                   </div>
                   <div className="mt-1 text-slate-600">B {windowBias.bullish_count} / S {windowBias.bearish_count} / N {windowBias.neutral_count}</div>
                 </div>
@@ -946,7 +960,7 @@ export function SentimentWorkbench() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="text-slate-200 leading-relaxed">{evidence.title}</div>
                           <span className={`shrink-0 rounded border px-2 py-0.5 uppercase tracking-widest ${chipTone('blue')}`}>
-                            rel {evidence.relevance_score.toFixed(2)}
+                            rel {fixedOrNa(evidence.relevance_score, 2)}
                           </span>
                         </div>
                         <div className="mt-2 text-slate-400">{evidence.snippet}</div>
@@ -1024,8 +1038,8 @@ export function SentimentWorkbench() {
                     <span>{item.category}</span>
                     <span>{item.impact_direction}</span>
                     <span>{formatRelative(item.last_seen_at)}</span>
-                    <span>impact {(item.impact_score * 100).toFixed(1)}</span>
-                    <span>sent {item.sentiment.toFixed(2)}</span>
+                    <span>impact {fixedOrNa(item.impact_score, 1, 100)}</span>
+                    <span>sent {fixedOrNa(item.sentiment, 2)}</span>
                   </div>
                 </div>
               ))}
@@ -1070,7 +1084,7 @@ export function SentimentWorkbench() {
             <div className="text-slate-500">
               {status?.dataset.available
                 ? 'No historical bias bins matched the mirrored Arbex dataset range.'
-                : 'Mirror the sentiment training table into Arbex to unlock historical bias playback context.'}
+                : `No labelled training dataset for ${pair}; historical bias playback exists only for pairs with one.`}
             </div>
           )}
         </div>
@@ -1087,7 +1101,7 @@ export function SentimentWorkbench() {
               <ScatterPlot points={scatterPoints} />
               <div className="mt-2 text-slate-500">
                 x: standardized surprise (actual &minus; forecast) / |forecast| &nbsp;&middot;&nbsp;
-                y: realised USD/INR return, basis points
+                y: realised USD/INR return, basis points (labelled USD/INR training set, not the selected pair)
               </div>
               <div className="mt-1 text-slate-600">
                 Only scheduled releases carry a consensus forecast, so the remaining{' '}
