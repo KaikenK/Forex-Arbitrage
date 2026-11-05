@@ -20,15 +20,13 @@ async function fetchStatus(): Promise<FeedStatus | null> {
  * notices switches made elsewhere (another tab, a restart). `switchMode` asks
  * the backend to swap feeds; it keeps the old feed running if the switch fails.
  */
-export function useFeedMode({ poll = true }: { poll?: boolean } = {}) {
+export function useFeedMode() {
   const feedStatus = useArbexStore((state) => state.feedStatus);
   const setFeedStatus = useArbexStore((state) => state.setFeedStatus);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // One poller for the whole app (the shell); consumers that only switch pass poll: false.
   useEffect(() => {
-    if (!poll) return;
     let cancelled = false;
     const tick = async () => {
       const status = await fetchStatus();
@@ -40,7 +38,7 @@ export function useFeedMode({ poll = true }: { poll?: boolean } = {}) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [setFeedStatus, poll]);
+  }, [setFeedStatus]);
 
   const switchMode = useCallback(async (mode: FeedMode, session?: string) => {
     setSwitching(true);

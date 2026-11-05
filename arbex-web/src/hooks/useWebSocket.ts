@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from 'react';
-import { MarketSourceUpdate, NewsBias, RankedOpportunity, SemanticChannels, ShadowBlock, useArbexStore } from '@/lib/store';
+import { MarketSourceUpdate, NewsBias, RankedOpportunity, useArbexStore } from '@/lib/store';
 import { parseSourceId } from '@/lib/sources';
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_ARBEX_WS_BASE_URL || 'ws://127.0.0.1:8000';
@@ -49,8 +49,6 @@ interface ArbitrageWsPayload {
     verdict_reasons?: string[];
   };
   news_bias?: NewsBias;
-  semantic_channels?: SemanticChannels;
-  shadow?: ShadowBlock;
 }
 
 export function useWebSocket() {
@@ -136,9 +134,7 @@ export function useWebSocket() {
 
     // Open/close price streams to match the pairs the backend is running.
     const syncSources = () => {
-      // Only the pairs the running feed reports: guessing USDINR before /feeds/mode answers opened a
-      // socket the live spot feed rejects.
-      const wanted = new Set(useArbexStore.getState().feedStatus?.symbols ?? []);
+      const wanted = new Set(useArbexStore.getState().feedStatus?.symbols ?? ['USDINR']);
       for (const [symbol, ws] of srcSockets) {
         if (!wanted.has(symbol)) { srcSockets.delete(symbol); ws.close(); }
       }
@@ -224,8 +220,6 @@ export function useWebSocket() {
               execution_verdict: data.execution?.verdict || 'unknown',
               execution_reasons: data.execution?.verdict_reasons || [],
               news_bias: data.news_bias || undefined,
-              semantic_channels: data.semantic_channels || undefined,
-              shadow: data.shadow || undefined,
               // Temporary placeholder for TypeScript strict typing, will be assigned below
               id: '',
             };

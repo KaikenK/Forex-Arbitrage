@@ -30,7 +30,7 @@ export function PairPicker() {
 
   return (
     <div className="flex items-center gap-2">
-      <div role="radiogroup" aria-label="Currency pair" className="flex overflow-hidden rounded-term border border-line-strong">
+      <div role="radiogroup" aria-label="Currency pair" className="flex rounded border border-[#2a2f45] overflow-hidden">
         {symbols.map((sym) => {
           const active = sym === selected;
           const info = instruments?.[sym] ?? fallbackInstrument(sym);
@@ -43,8 +43,8 @@ export function PairPicker() {
               title={info.display}
               onClick={() => setSelected(sym)}
               className={[
-                'num cursor-pointer px-2 py-0.5 text-[11px] font-semibold tracking-wide transition-colors',
-                active ? 'bg-info text-white' : 'text-ink-3 hover:bg-raised hover:text-ink-2',
+                'text-[10px] px-2 py-0.5 font-mono font-semibold tracking-wide transition-colors cursor-pointer',
+                active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-[#1e2235]',
               ].join(' ')}
             >
               {shortPair(info)}
@@ -53,7 +53,7 @@ export function PairPicker() {
         })}
       </div>
       {unsupported.length > 0 && (
-        <span className="num hidden text-[10px] text-risk 2xl:inline" title="Requested in ARBEX_SYMBOLS but this feed has no data for them">
+        <span className="text-[10px] text-amber-400 font-mono" title="Requested in ARBEX_SYMBOLS but this feed has no data for them">
           not in this feed: {unsupported.join(', ')}
         </span>
       )}

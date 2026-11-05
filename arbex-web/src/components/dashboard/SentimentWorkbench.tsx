@@ -299,14 +299,14 @@ interface BenchmarkResponse {
 
 const statusTone = (active: boolean) =>
   active
-    ? 'border-up/40 bg-up/10 text-up'
-    : 'border-risk/40 bg-risk/10 text-risk';
+    ? 'border-emerald-800 bg-emerald-950/30 text-emerald-400'
+    : 'border-amber-800 bg-amber-950/30 text-amber-400';
 
 const chipTone = (tone: 'emerald' | 'amber' | 'blue' | 'slate') => {
-  if (tone === 'emerald') return 'border-up/40 bg-up/10 text-up';
-  if (tone === 'amber') return 'border-risk/40 bg-risk/10 text-risk';
-  if (tone === 'blue') return 'border-info/40 bg-blue-950/30 text-info';
-  return 'border-line-strong bg-raised/50 text-ink';
+  if (tone === 'emerald') return 'border-emerald-800 bg-emerald-950/30 text-emerald-400';
+  if (tone === 'amber') return 'border-amber-800 bg-amber-950/30 text-amber-400';
+  if (tone === 'blue') return 'border-blue-800 bg-blue-950/30 text-blue-400';
+  return 'border-slate-700 bg-slate-800/50 text-slate-300';
 };
 
 function normalizePair(symbol?: string | null): string {
@@ -365,9 +365,9 @@ function formatPercent(value: number): string {
 }
 
 function scoreTone(value: number): string {
-  if (value > 0.05) return 'text-up';
-  if (value < -0.05) return 'text-down';
-  return 'text-ink';
+  if (value > 0.05) return 'text-emerald-400';
+  if (value < -0.05) return 'text-red-400';
+  return 'text-slate-300';
 }
 
 function compactSource(source: string): string {
@@ -677,13 +677,13 @@ export function SentimentWorkbench() {
   const selectedAnalysis = explanation?.analysis ?? history?.items.find((item) => item.event_id === selectedEventId) ?? null;
 
   return (
-    <Card className="bg-raised border-line p-3 text-[10px] font-mono">
+    <Card className="bg-[#141620] border-[#1e2235] p-3 text-[10px] font-mono">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-widest text-ink-3">Sentiment Intelligence</div>
-            <div className="mt-1 text-[11px] text-ink">{pair} raw feed, RAG explanation, rolling impact, and local bias archive</div>
-            <div className="mt-1 text-ink-3">
+            <div className="text-[10px] uppercase tracking-widest text-[#505872]">Sentiment Intelligence</div>
+            <div className="mt-1 text-[11px] text-slate-300">{pair} raw feed, RAG explanation, rolling impact, and local bias archive</div>
+            <div className="mt-1 text-slate-500">
               {status?.dataset.available
                 ? `${status.dataset.row_count} local rows mirrored into Arbex`
                 : 'Local Arbex dataset mirror unavailable'}
@@ -703,62 +703,62 @@ export function SentimentWorkbench() {
         </div>
 
         {error ? (
-          <div className="rounded border border-red-900/70 bg-down/10 p-3 text-down">
+          <div className="rounded border border-red-900/70 bg-red-950/20 p-3 text-red-300">
             {error}
           </div>
         ) : null}
 
         <CurrencyBiasPanel />
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Arbitrage Bias &mdash; 30m Window</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Arbitrage Bias &mdash; 30m Window</span>
+            <span className="text-slate-500">
               {windowBias ? `${windowBias.item_count} analysed / ${windowBias.source === 'local_analysis_history' ? 'reaction model' : 'sentiment only'}` : 'no data'}
             </span>
           </div>
           {windowBias ? (
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                <div className="rounded border border-line bg-inset p-2">
-                  <div className="text-ink-3">market bias</div>
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                  <div className="text-slate-500">market bias</div>
                   <div className={`mt-1 text-[13px] ${scoreTone(windowBias.market_bias)}`}>
                     {formatSigned(windowBias.market_bias, 3)}
                   </div>
-                  <div className="mt-1 text-ink-3">
+                  <div className="mt-1 text-slate-600">
                     applied {formatSigned(windowBias.semantic_score, 3)} &times;{fixedOrNa(windowBias.activity_factor, 2)} activity
                   </div>
                 </div>
-                <div className="rounded border border-line bg-inset p-2">
-                  <div className="text-ink-3">headline sentiment</div>
-                  <div className="mt-1 text-[13px] text-ink-2">
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                  <div className="text-slate-500">headline sentiment</div>
+                  <div className="mt-1 text-[13px] text-slate-400">
                     {formatSigned(windowBias.overall_sentiment, 2)}
                   </div>
-                  <div className="mt-1 text-ink-3">display only &mdash; not directional</div>
+                  <div className="mt-1 text-slate-600">display only &mdash; not directional</div>
                 </div>
-                <div className="rounded border border-line bg-inset p-2">
-                  <div className="text-ink-3">direction</div>
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                  <div className="text-slate-500">direction</div>
                   <div
                     className={`mt-1 text-[13px] ${
                       windowBias.direction === 'risk_on'
-                        ? 'text-up'
+                        ? 'text-emerald-400'
                         : windowBias.direction === 'risk_off'
-                          ? 'text-down'
-                          : 'text-ink'
+                          ? 'text-red-400'
+                          : 'text-slate-300'
                     }`}
                   >
                     {(windowBias.direction ?? 'neutral').replace('_', ' ').toUpperCase()}
                   </div>
-                  <div className="mt-1 text-ink-3">B {windowBias.bullish_count} / S {windowBias.bearish_count} / N {windowBias.neutral_count}</div>
+                  <div className="mt-1 text-slate-600">B {windowBias.bullish_count} / S {windowBias.bearish_count} / N {windowBias.neutral_count}</div>
                 </div>
-                <div className="rounded border border-line bg-inset p-2">
-                  <div className="text-ink-3">confidence</div>
-                  <div className="mt-1 text-[13px] text-ink">{formatPercent(windowBias.confidence)}</div>
-                  <div className="mt-1 text-ink-3">weighted mean</div>
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                  <div className="text-slate-500">confidence</div>
+                  <div className="mt-1 text-[13px] text-slate-300">{formatPercent(windowBias.confidence)}</div>
+                  <div className="mt-1 text-slate-600">weighted mean</div>
                 </div>
               </div>
               {windowBias.overall_sentiment * windowBias.market_bias < 0 && windowBias.item_count > 0 ? (
-                <div className="rounded border border-amber-900/60 bg-risk/10 p-2 text-risk/90">
+                <div className="rounded border border-amber-900/60 bg-amber-950/20 p-2 text-amber-300/90">
                   Headline tone and predicted direction diverge. Expected for this quote: news that is
                   bad for the base currency is bullish for the pair. The reaction model is trained on
                   realised moves and takes precedence.
@@ -766,16 +766,16 @@ export function SentimentWorkbench() {
               ) : null}
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading window bias...' : 'No analysed articles in the current window.'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Raw Live News Feed</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Raw Live News Feed</span>
+            <span className="text-slate-500">
               {feed?.summary.tracked_items ?? 0} mirrored / {feed?.summary.ingest_active ? 'ingest on' : 'ingest off'}
             </span>
           </div>
@@ -783,14 +783,14 @@ export function SentimentWorkbench() {
           {feed && feed.items.length > 0 ? (
             <div className="flex flex-col gap-2">
               {feed.items.map((item) => (
-                <div key={item.event_id} className="rounded border border-line bg-inset p-2">
+                <div key={item.event_id} className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="text-ink leading-relaxed">{item.headline}</div>
+                    <div className="text-slate-200 leading-relaxed">{item.headline}</div>
                     <span className={`shrink-0 rounded border px-2 py-0.5 uppercase tracking-widest ${chipTone(item.provenance === 'upstream' ? 'emerald' : 'amber')}`}>
                       {item.provenance}
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                     <span>{compactSource(item.source)}</span>
                     <span>{item.category}</span>
                     <span>{item.provider}</span>
@@ -802,7 +802,7 @@ export function SentimentWorkbench() {
                       href={item.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-2 block break-all text-info hover:text-info"
+                      className="mt-2 block break-all text-blue-400 hover:text-blue-300"
                     >
                       {item.url}
                     </a>
@@ -811,16 +811,16 @@ export function SentimentWorkbench() {
               ))}
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading raw live feed from news_stream...' : 'No headlines yet: news_stream is offline and the direct RSS fallback returned nothing (check internet / NEWS_RSS_FALLBACK).'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Analyzed Live History</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Analyzed Live History</span>
+            <span className="text-slate-500">
               {history?.summary.tracked_items ?? 0} analyzed / {history?.summary.with_evidence ?? 0} with evidence
             </span>
           </div>
@@ -830,20 +830,20 @@ export function SentimentWorkbench() {
               value={historySearch}
               onChange={(event) => setHistorySearch(event.target.value)}
               placeholder="Search headlines, drivers, evidence"
-              className="rounded border border-line bg-inset px-2 py-1 text-ink outline-none placeholder:text-ink-3"
+              className="rounded border border-[#1e2235] bg-[#0f1219] px-2 py-1 text-slate-200 outline-none placeholder:text-slate-600"
             />
             <select
               aria-label="Minimum analyzed history confidence"
               value={historyMinConfidence}
               onChange={(event) => setHistoryMinConfidence(event.target.value)}
-              className="rounded border border-line bg-inset px-2 py-1 text-ink outline-none"
+              className="rounded border border-[#1e2235] bg-[#0f1219] px-2 py-1 text-slate-200 outline-none"
             >
               <option value="0">all confidence</option>
               <option value="0.5">50%+</option>
               <option value="0.65">65%+</option>
               <option value="0.8">80%+</option>
             </select>
-            <label className="flex items-center gap-2 rounded border border-line bg-inset px-2 py-1 text-ink">
+            <label className="flex items-center gap-2 rounded border border-[#1e2235] bg-[#0f1219] px-2 py-1 text-slate-300">
               <input
                 type="checkbox"
                 checked={historyEvidenceOnly}
@@ -863,12 +863,12 @@ export function SentimentWorkbench() {
                     key={item.event_id}
                     type="button"
                     onClick={() => setSelectedEventId(item.event_id)}
-                    className={`rounded border p-2 text-left transition-colors ${isSelected ? 'border-line-strong bg-inset' : 'border-line bg-inset hover:border-line-strong'}`}
+                    className={`rounded border p-2 text-left transition-colors ${isSelected ? 'border-[#35508f] bg-[#11182a]' : 'border-[#1e2235] bg-[#0f1219] hover:border-[#2a3556]'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-ink leading-relaxed">{item.feed?.headline ?? item.event_id}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+                        <div className="text-slate-200 leading-relaxed">{item.feed?.headline ?? item.event_id}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                           <span>{item.trading_signal}</span>
                           <span>conf {formatPercent(item.confidence)}</span>
                           <span>{item.evidence.length} evidence</span>
@@ -891,35 +891,35 @@ export function SentimentWorkbench() {
               })}
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading analyzed live history...' : 'No analyzed live articles are available yet.'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Semantic Explanation</span>
-            <span className="text-ink-3">{selectedAnalysis ? selectedAnalysis.trading_signal : 'No selection'}</span>
+            <span className="uppercase tracking-widest text-slate-500">Semantic Explanation</span>
+            <span className="text-slate-500">{selectedAnalysis ? selectedAnalysis.trading_signal : 'No selection'}</span>
           </div>
 
           {selectedAnalysis ? (
             <div className="flex flex-col gap-3">
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink leading-relaxed">{selectedAnalysis.feed?.headline ?? selectedAnalysis.event_id}</div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-200 leading-relaxed">{selectedAnalysis.feed?.headline ?? selectedAnalysis.event_id}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                   <span className={scoreTone(selectedAnalysis.sentiment_score)}>sent {formatSigned(selectedAnalysis.sentiment_score, 2)}</span>
                   <span className={scoreTone(selectedAnalysis.market_score)}>mkt {formatSigned(selectedAnalysis.market_score, 4)}</span>
                   <span>conf {formatPercent(selectedAnalysis.confidence)}</span>
                   <span>{selectedAnalysis.affected_symbols.join(', ')}</span>
                 </div>
-                <div className="mt-2 text-ink-2">{selectedAnalysis.signal_rationale}</div>
+                <div className="mt-2 text-slate-400">{selectedAnalysis.signal_rationale}</div>
                 {selectedAnalysis.feed?.url ? (
                   <a
                     href={selectedAnalysis.feed.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 block break-all text-info hover:text-info"
+                    className="mt-2 block break-all text-blue-400 hover:text-blue-300"
                   >
                     {selectedAnalysis.feed.url}
                   </a>
@@ -927,19 +927,19 @@ export function SentimentWorkbench() {
               </div>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <div className="rounded border border-line bg-inset p-2 text-ink-2">
-                  <div className="uppercase tracking-widest text-ink-3">Methodology</div>
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2 text-slate-400">
+                  <div className="uppercase tracking-widest text-slate-500">Methodology</div>
                   <div className="mt-2">sentiment: {selectedAnalysis.methodology.sentiment}</div>
                   <div className="mt-1">market: {selectedAnalysis.methodology.market}</div>
                   <div className="mt-1">confidence: {selectedAnalysis.methodology.confidence}</div>
                   <div className="mt-1">evidence: {selectedAnalysis.methodology.evidence}</div>
                 </div>
-                <div className="rounded border border-line bg-inset p-2 text-ink-2">
-                  <div className="uppercase tracking-widest text-ink-3">Key Drivers</div>
+                <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2 text-slate-400">
+                  <div className="uppercase tracking-widest text-slate-500">Key Drivers</div>
                   <div className="mt-2 flex flex-col gap-2">
                     {selectedAnalysis.key_drivers.slice(0, 5).map((driver) => (
                       <div key={`${selectedAnalysis.event_id}-${driver.label}`}>
-                        <div className="text-ink">{driver.label}</div>
+                        <div className="text-slate-200">{driver.label}</div>
                         <div>{driver.rationale}</div>
                       </div>
                     ))}
@@ -947,24 +947,24 @@ export function SentimentWorkbench() {
                 </div>
               </div>
 
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="mb-1 uppercase tracking-widest text-ink-3">Comparable Scheduled Events</div>
-                <div className="mb-2 text-ink-3">
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="mb-1 uppercase tracking-widest text-slate-500">Comparable Scheduled Events</div>
+                <div className="mb-2 text-slate-600">
                   Nearest labelled calendar events by pair and horizon &mdash; not articles similar to this
                   headline. Relevance scores are shown so weak matches are visible.
                 </div>
                 {selectedAnalysis.evidence.length > 0 ? (
                   <div className="flex flex-col gap-2">
                     {selectedAnalysis.evidence.slice(0, 4).map((evidence) => (
-                      <div key={evidence.evidence_id} className="rounded border border-line bg-inset p-2">
+                      <div key={evidence.evidence_id} className="rounded border border-[#1e2235] bg-[#10131b] p-2">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="text-ink leading-relaxed">{evidence.title}</div>
+                          <div className="text-slate-200 leading-relaxed">{evidence.title}</div>
                           <span className={`shrink-0 rounded border px-2 py-0.5 uppercase tracking-widest ${chipTone('blue')}`}>
                             rel {fixedOrNa(evidence.relevance_score, 2)}
                           </span>
                         </div>
-                        <div className="mt-2 text-ink-2">{evidence.snippet}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+                        <div className="mt-2 text-slate-400">{evidence.snippet}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                           <span>{evidence.evidence_type}</span>
                           <span>{evidence.matching_reason ?? 'retrieval'}</span>
                           <span>{evidence.stance ?? 'neutral'}</span>
@@ -972,7 +972,7 @@ export function SentimentWorkbench() {
                           <span>{evidence.published_at ? formatRelative(evidence.published_at) : 'no time'}</span>
                         </div>
                         {evidence.actual !== null || evidence.forecast !== null || evidence.previous !== null ? (
-                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                             <span>a {evidence.actual ?? 'n/a'}</span>
                             <span>f {evidence.forecast ?? 'n/a'}</span>
                             <span>p {evidence.previous ?? 'n/a'}</span>
@@ -984,7 +984,7 @@ export function SentimentWorkbench() {
                             href={evidence.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-2 block break-all text-info hover:text-info"
+                            className="mt-2 block break-all text-blue-400 hover:text-blue-300"
                           >
                             {evidence.url}
                           </a>
@@ -993,21 +993,21 @@ export function SentimentWorkbench() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-ink-3">No retrieved evidence was attached to the selected analysis.</div>
+                  <div className="text-slate-500">No retrieved evidence was attached to the selected analysis.</div>
                 )}
               </div>
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading semantic explanation...' : 'Select an analyzed live article to inspect its explanation and evidence.'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Live Article Impact Tape</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Live Article Impact Tape</span>
+            <span className="text-slate-500">
               {articles?.summary.active_items ?? 0} active / {articles?.summary.tracked_items ?? 0} tracked
             </span>
           </div>
@@ -1017,10 +1017,10 @@ export function SentimentWorkbench() {
               {articles.items.map((item) => (
                 <div
                   key={item.id}
-                  className={`rounded border p-2 ${item.active_in_window ? 'border-line-strong bg-inset' : 'border-line bg-inset opacity-70'}`}
+                  className={`rounded border p-2 ${item.active_in_window ? 'border-[#2a3556] bg-[#121725]' : 'border-[#1e2235] bg-[#0f1219] opacity-70'}`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="text-ink leading-relaxed">{item.headline}</div>
+                    <div className="text-slate-200 leading-relaxed">{item.headline}</div>
                     <span
                       className={`shrink-0 rounded border px-2 py-0.5 uppercase tracking-widest ${
                         item.impact_label === 'high'
@@ -1033,7 +1033,7 @@ export function SentimentWorkbench() {
                       {item.impact_label} impact
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-3">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                     <span>{item.source}</span>
                     <span>{item.category}</span>
                     <span>{item.impact_direction}</span>
@@ -1045,16 +1045,16 @@ export function SentimentWorkbench() {
               ))}
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading live sentiment article tape...' : 'No active live sentiment drivers are available yet.'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Historical Bias Archive</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Historical Bias Archive</span>
+            <span className="text-slate-500">
               avg {(bias?.summary.average_bias_score ?? 0).toFixed(2)} / conf {(bias?.summary.average_confidence ?? 0).toFixed(2)}
             </span>
           </div>
@@ -1062,17 +1062,17 @@ export function SentimentWorkbench() {
           {biasBins.length > 0 ? (
             <div className="flex flex-col gap-2">
               {biasBins.map((bin) => {
-                const barClass = bin.bias_score >= 0 ? 'bg-up/70' : 'bg-down/70';
+                const barClass = bin.bias_score >= 0 ? 'bg-emerald-500/70' : 'bg-red-500/70';
                 return (
-                  <div key={bin.timestamp} className="rounded border border-line bg-inset p-2">
-                    <div className="mb-1 flex items-center justify-between text-ink-3">
+                  <div key={bin.timestamp} className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                    <div className="mb-1 flex items-center justify-between text-slate-500">
                       <span>{formatBinLabel(bin.timestamp)}</span>
                       <span>{bin.bias_score.toFixed(2)} bias</span>
                     </div>
-                    <div className="h-2 rounded bg-inset">
+                    <div className="h-2 rounded bg-[#090b11]">
                       <div className={`h-2 rounded ${barClass} ${biasWidthClass(bin.bias_score)}`} />
                     </div>
-                    <div className="mt-1 flex items-center justify-between text-ink-3">
+                    <div className="mt-1 flex items-center justify-between text-slate-500">
                       <span>{bin.item_count} items</span>
                       <span>conf {bin.confidence.toFixed(2)}</span>
                     </div>
@@ -1081,7 +1081,7 @@ export function SentimentWorkbench() {
               })}
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {status?.dataset.available
                 ? 'No historical bias bins matched the mirrored Arbex dataset range.'
                 : `No labelled training dataset for ${pair}; historical bias playback exists only for pairs with one.`}
@@ -1089,80 +1089,80 @@ export function SentimentWorkbench() {
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Surprise vs Realised Reaction</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Surprise vs Realised Reaction</span>
+            <span className="text-slate-500">
               {scatterPoints.length} scheduled of {correlation?.correlation?.total ?? 0} labelled events
             </span>
           </div>
           {scatterPoints.length > 0 ? (
             <div className="overflow-x-auto">
               <ScatterPlot points={scatterPoints} />
-              <div className="mt-2 text-ink-3">
+              <div className="mt-2 text-slate-500">
                 x: standardized surprise (actual &minus; forecast) / |forecast| &nbsp;&middot;&nbsp;
                 y: realised USD/INR return, basis points (labelled USD/INR training set, not the selected pair)
               </div>
-              <div className="mt-1 text-ink-3">
+              <div className="mt-1 text-slate-600">
                 Only scheduled releases carry a consensus forecast, so the remaining{' '}
                 {(correlation?.correlation?.total ?? 0) - scatterPoints.length} unscheduled headlines
                 have no surprise value and cannot be plotted. Shaded quadrants mark agreement.
               </div>
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {isLoading ? 'Loading correlation rows...' : 'No labelled events available from news_stream /correlation.'}
             </div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Reaction Model</span>
-            <span className="text-ink-3">
+            <span className="uppercase tracking-widest text-slate-500">Reaction Model</span>
+            <span className="text-slate-500">
               {evaluation?.available ? 'live from news_stream' : 'service unavailable'}
             </span>
           </div>
 
           {evaluation?.available && typeof evaluation.evaluation?.direction_accuracy === 'number' ? (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">direction acc</div>
-                <div className="mt-1 text-[13px] text-ink">{formatPercent(evaluation.evaluation.direction_accuracy)}</div>
-                <div className="mt-1 text-ink-3">n={evaluation.evaluation.holdout_rows ?? holdoutSize(evaluation.evaluation)} holdout</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">direction acc</div>
+                <div className="mt-1 text-[13px] text-slate-200">{formatPercent(evaluation.evaluation.direction_accuracy)}</div>
+                <div className="mt-1 text-slate-600">n={evaluation.evaluation.holdout_rows ?? holdoutSize(evaluation.evaluation)} holdout</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">macro F1</div>
-                <div className="mt-1 text-[13px] text-ink">{fixedOrNa(evaluation.evaluation.direction_macro_f1, 3)}</div>
-                <div className="mt-1 text-ink-3">3-class</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">macro F1</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.direction_macro_f1, 3)}</div>
+                <div className="mt-1 text-slate-600">3-class</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">magnitude MAE</div>
-                <div className="mt-1 text-[13px] text-ink">{fixedOrNa(evaluation.evaluation.magnitude_mae, 1, 10000)} bp</div>
-                <div className="mt-1 text-ink-3">absolute return</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">magnitude MAE</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.magnitude_mae, 1, 10000)} bp</div>
+                <div className="mt-1 text-slate-600">absolute return</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">calibration</div>
-                <div className="mt-1 text-[13px] text-ink">{fixedOrNa(evaluation.evaluation.calibration_score, 3)}</div>
-                <div className="mt-1 text-ink-3">Brier</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">calibration</div>
+                <div className="mt-1 text-[13px] text-slate-200">{fixedOrNa(evaluation.evaluation.calibration_score, 3)}</div>
+                <div className="mt-1 text-slate-600">Brier</div>
               </div>
             </div>
           ) : (
-            <div className="text-ink-3">
+            <div className="text-slate-500">
               {evaluation?.available ? 'No holdout evaluation published for the active model.' : 'Model evaluation unavailable while the semantic service is down.'}
             </div>
           )}
 
           {evaluation?.available && evaluation.evaluation?.horizon_breakdown ? (
             <div className="mt-3">
-              <div className="mb-1 uppercase tracking-widest text-ink-3">By horizon</div>
+              <div className="mb-1 uppercase tracking-widest text-slate-500">By horizon</div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(evaluation.evaluation.horizon_breakdown)
                   .sort((a, b) => Number(a[0]) - Number(b[0]))
                   .map(([horizon, slice]) => (
-                    <div key={horizon} className="rounded border border-line bg-inset px-2 py-1 text-ink-2">
-                      {horizon}m &nbsp;<span className="text-ink">{formatPercent(slice.direction_accuracy)}</span>
-                      &nbsp;<span className="text-ink-3">n={slice.count}</span>
+                    <div key={horizon} className="rounded border border-[#1e2235] bg-[#0f1219] px-2 py-1 text-slate-400">
+                      {horizon}m &nbsp;<span className="text-slate-200">{formatPercent(slice.direction_accuracy)}</span>
+                      &nbsp;<span className="text-slate-600">n={slice.count}</span>
                     </div>
                   ))}
               </div>
@@ -1171,11 +1171,11 @@ export function SentimentWorkbench() {
 
           {benchmark?.available && benchmark.report ? (
             <div className="mt-3">
-              <div className="mb-1 uppercase tracking-widest text-ink-3">Model selection benchmark</div>
+              <div className="mb-1 uppercase tracking-widest text-slate-500">Model selection benchmark</div>
               {benchmark.report.datasets.slice(0, 1).map((dataset) => (
                 <div key={dataset.dataset_name}>
-                  <div className="mb-1 text-ink-3">
-                    {dataset.row_count} rows &middot; best: <span className="text-up">{dataset.best_model}</span>
+                  <div className="mb-1 text-slate-500">
+                    {dataset.row_count} rows &middot; best: <span className="text-emerald-400">{dataset.best_model}</span>
                   </div>
                   <div className="flex flex-col gap-1">
                     {dataset.models.map((model) => (
@@ -1183,15 +1183,15 @@ export function SentimentWorkbench() {
                         key={model.model_family}
                         className={`flex items-center justify-between rounded border px-2 py-1 ${
                           model.model_family === dataset.best_model
-                            ? 'border-emerald-900/70 bg-up/10 text-up'
-                            : 'border-line bg-inset text-ink-2'
+                            ? 'border-emerald-900/70 bg-emerald-950/20 text-emerald-300'
+                            : 'border-[#1e2235] bg-[#0f1219] text-slate-400'
                         }`}
                       >
                         <span>{model.model_family}</span>
                         <span className="flex gap-3">
                           <span>acc {formatPercent(model.direction_accuracy)}</span>
                           <span>F1 {fixedOrNa(model.direction_macro_f1, 3)}</span>
-                          <span className="text-ink-3">n={model.holdout_rows}</span>
+                          <span className="text-slate-600">n={model.holdout_rows}</span>
                         </span>
                       </div>
                     ))}
@@ -1202,36 +1202,36 @@ export function SentimentWorkbench() {
           ) : null}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="uppercase tracking-widest text-ink-3">Service Throughput</span>
-            <span className="text-ink-3">{serviceMetrics?.available ? 'live' : 'unavailable'}</span>
+            <span className="uppercase tracking-widest text-slate-500">Service Throughput</span>
+            <span className="text-slate-500">{serviceMetrics?.available ? 'live' : 'unavailable'}</span>
           </div>
           {serviceMetrics?.available && serviceMetrics.metrics ? (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">requests</div>
-                <div className="mt-1 text-[13px] text-ink">{serviceMetrics.metrics.metrics.analysis_requests}</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">requests</div>
+                <div className="mt-1 text-[13px] text-slate-200">{serviceMetrics.metrics.metrics.analysis_requests}</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">completed</div>
-                <div className="mt-1 text-[13px] text-ink">{serviceMetrics.metrics.metrics.analyses_completed}</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">completed</div>
+                <div className="mt-1 text-[13px] text-slate-200">{serviceMetrics.metrics.metrics.analyses_completed}</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">avg confidence</div>
-                <div className="mt-1 text-[13px] text-ink">{formatPercent(serviceMetrics.metrics.metrics.average_confidence)}</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">avg confidence</div>
+                <div className="mt-1 text-[13px] text-slate-200">{formatPercent(serviceMetrics.metrics.metrics.average_confidence)}</div>
               </div>
-              <div className="rounded border border-line bg-inset p-2">
-                <div className="text-ink-3">archive size</div>
-                <div className="mt-1 text-[13px] text-ink">{serviceMetrics.metrics.metrics.history_size}</div>
+              <div className="rounded border border-[#1e2235] bg-[#0f1219] p-2">
+                <div className="text-slate-500">archive size</div>
+                <div className="mt-1 text-[13px] text-slate-200">{serviceMetrics.metrics.metrics.history_size}</div>
               </div>
             </div>
           ) : (
-            <div className="text-ink-3">news_stream /metrics unavailable.</div>
+            <div className="text-slate-500">news_stream /metrics unavailable.</div>
           )}
         </div>
 
-        <div className="rounded border border-line bg-inset p-3 text-ink-3">
+        <div className="rounded border border-[#1e2235] bg-[#10131b] p-3 text-slate-500">
           <div className="uppercase tracking-widest">Dataset</div>
           <div className="mt-1 break-all">{status?.dataset.training_table_path ?? 'Unavailable'}</div>
           <div className="mt-1">{status?.dataset.first_timestamp ? `${status.dataset.first_timestamp} -> ${status.dataset.last_timestamp}` : 'No local dataset coverage found.'}</div>

@@ -101,7 +101,7 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
                 <h3 className="text-lg font-medium text-white">Execution Credentials</h3>
                 <button 
                   onClick={onClose}
-                  className="p-1 hover:bg-white/10 rounded-full transition-colors text-ink-2 hover:text-white"
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -109,19 +109,19 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
 
               {/* Body */}
               <div className="p-6">
-                <p className="text-sm text-ink-2 mb-6">
+                <p className="text-sm text-gray-400 mb-6">
                   Securely configure your MetaTrader 5 account to allow the semantic engine to route trades automatically.
                 </p>
 
                 {error && (
-                  <div className="mb-4 p-3 bg-down/10 border border-red-500/20 rounded-lg flex items-start gap-3 text-sm text-down">
+                  <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3 text-sm text-red-400">
                     <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                     <p>{error}</p>
                   </div>
                 )}
                 
                 {success && (
-                  <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-start gap-3 text-sm text-up">
+                  <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-start gap-3 text-sm text-green-400">
                     <Check className="w-4 h-4 mt-0.5 shrink-0" />
                     <p>Credentials encrypted and stored securely.</p>
                   </div>
@@ -129,14 +129,14 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
 
                 <form onSubmit={handleSave} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-ink-2 uppercase tracking-wider ml-1">Account ID</label>
+                    <label className="text-xs font-medium text-gray-400 uppercase tracking-wider ml-1">Account ID</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                       <input 
                         type="text" 
                         value={mt5Login}
                         onChange={(e) => setMt5Login(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-info/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
                         placeholder="e.g. 5019234"
                         required
                       />
@@ -144,14 +144,14 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-ink-2 uppercase tracking-wider ml-1">Password</label>
+                    <label className="text-xs font-medium text-gray-400 uppercase tracking-wider ml-1">Password</label>
                     <div className="relative">
-                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                       <input 
                         type="password" 
                         value={mt5Password}
                         onChange={(e) => setMt5Password(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-info/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
                         placeholder="••••••••••••"
                         required
                       />
@@ -159,14 +159,14 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-ink-2 uppercase tracking-wider ml-1">Server Name</label>
+                    <label className="text-xs font-medium text-gray-400 uppercase tracking-wider ml-1">Server Name</label>
                     <div className="relative">
-                      <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
+                      <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                       <input 
                         type="text" 
                         value={mt5Server}
                         onChange={(e) => setMt5Server(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-info/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
                         placeholder="MetaQuotes-Demo"
                         required
                       />
@@ -177,7 +177,7 @@ export default function CredentialsModal({ isOpen, onClose }: CredentialsModalPr
                     <button 
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-2 text-sm font-medium text-ink hover:text-white transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
                     >
                       Cancel
                     </button>

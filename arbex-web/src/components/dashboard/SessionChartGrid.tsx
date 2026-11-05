@@ -124,17 +124,17 @@ function SessionChart({ sessionId, label, symbol, format }: { sessionId: string;
   }, [sessionId, symbol]);
 
   return (
-    <div className="bg-raised border border-line rounded-lg p-2 flex flex-col h-[280px]">
+    <div className="bg-[#141620] border border-[#1e2235] rounded-lg p-2 flex flex-col h-[280px]">
       <div className="flex justify-between items-center mb-2 px-1">
-        <span className="text-[11px] font-mono text-ink-2 tracking-widest uppercase">{label}</span>
+        <span className="text-[11px] font-mono text-slate-400 tracking-widest uppercase">{label}</span>
         <div className="flex gap-3">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-            <span className="text-[9px] text-ink-3 font-mono tracking-widest">BBG</span>
+            <span className="text-[9px] text-slate-500 font-mono tracking-widest">BBG</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-            <span className="text-[9px] text-ink-3 font-mono tracking-widest">RT</span>
+            <span className="text-[9px] text-slate-500 font-mono tracking-widest">RT</span>
           </div>
         </div>
       </div>
@@ -205,13 +205,14 @@ function VenueChart({ symbol, format }: { symbol: string; format: PriceFormat })
   }, [symbol]);
 
   return (
-    <div className="flex h-full min-h-[16rem] flex-col">
-      <div className="mb-1 flex items-center justify-end gap-2 px-1">
+    <div className="bg-[#141620] border border-[#1e2235] rounded-lg p-2 flex flex-col h-[420px]">
+      <div className="flex justify-between items-center mb-2 px-1 gap-2">
+        <span className="text-[11px] font-mono text-slate-400 tracking-widest uppercase">Mid price by venue</span>
         <div className="flex flex-wrap gap-3 justify-end">
           {legend.map(({ id, color }) => (
             <div key={id} className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ background: color }}></span>
-              <span className="text-[9px] text-ink-3 font-mono tracking-widest uppercase">{sourceLabel(id)}</span>
+              <span className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">{sourceLabel(id)}</span>
             </div>
           ))}
         </div>
@@ -219,13 +220,13 @@ function VenueChart({ symbol, format }: { symbol: string; format: PriceFormat })
       <div className="flex-1 w-full relative">
         <div ref={containerRef} className="absolute inset-0" />
         {legend.length === 0 && (
-          <div className="absolute inset-0 grid place-items-center text-center px-6 text-[10px] text-ink-3 font-mono tracking-wide">
+          <div className="absolute inset-0 grid place-items-center text-center px-6 text-[10px] text-slate-500 font-mono tracking-wide">
             Waiting for two-sided quotes. Outside market hours (Mon-Fri 09:00-17:00 IST) books are empty, and BSE often has no orders.
           </div>
         )}
       </div>
       {legend.length === 1 && (
-        <p className="text-[9px] text-ink-3 font-mono mt-1 px-1">
+        <p className="text-[9px] text-slate-500 font-mono mt-1 px-1">
           Only one venue has a live book, so there is nothing to compare yet.
         </p>
       )}

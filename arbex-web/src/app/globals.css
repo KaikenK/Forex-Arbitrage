@@ -4,32 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Arbex terminal tokens ────────────────────────────────────────────────
-   One palette for the dashboard and the backend's /live page. The same values
-   live in frontend/arbex-theme.css as plain custom properties; a test
-   (tests/test_ui_tokens.py) keeps the two in step. Colour carries signal only:
-   up / down for price and edge, risk (amber) for news risk, sealed (violet)
-   for anything that opens on 18 Nov, info (blue) for selection and links. */
-@theme {
-  --color-canvas: #07080c;
-  --color-panel: #0d0f16;
-  --color-raised: #131722;
-  --color-inset: #090b10;
-  --color-line: #1b2030;
-  --color-line-strong: #2a3147;
-  --color-ink: #e6eaf2;
-  --color-ink-2: #a3acc0;
-  --color-ink-3: #5f6882;
-  --color-up: #2fd47a;
-  --color-down: #ff5d6e;
-  --color-risk: #f5a524;
-  --color-info: #4c8dff;
-  --color-sealed: #a78bfa;
-  --text-2xs: 0.625rem;
-  --text-2xs--line-height: 0.875rem;
-  --radius-term: 3px;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -152,33 +126,5 @@
   }
   html {
     @apply font-sans;
-  }
-}
-
-@layer utilities {
-  /* numbers line up in columns and do not jitter as they tick */
-  .num {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-  .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-line-strong) transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--color-line-strong);
-    border-radius: 3px;
-  }
-  .label-caps {
-    font-size: var(--text-2xs);
-    line-height: var(--text-2xs--line-height);
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--color-ink-3);
   }
 }

@@ -5,30 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arbex Live Monitor</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/arbex-theme.css">
 <style>
-  /* Arbex terminal palette: tokens from /static/arbex-theme.css (shared with the dashboard). */
   :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --up-text: #006300;
+    --crossed-wash: rgba(12, 163, 12, 0.10);
+    --flash: rgba(11, 11, 11, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface-1: #1a1a19;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --up-text: #0ca30c;
+      --crossed-wash: rgba(12, 163, 12, 0.16);
+      --flash: rgba(255, 255, 255, 0.08);
+    }
+  }
+  :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: var(--color-canvas);
-    --surface-1: var(--color-panel);
-    --surface-2: var(--color-raised);
-    --text-primary: var(--color-ink);
-    --text-secondary: var(--color-ink-2);
-    --text-muted: var(--color-ink-3);
-    --grid: var(--color-line);
-    --baseline: var(--color-line-strong);
-    --border: var(--color-line);
-    --series-1: var(--color-info);
-    --series-2: #f97316;
-    --series-3: var(--color-up);
-    --series-4: var(--color-sealed);
-    --good: var(--color-up);
-    --warning: var(--color-risk);
-    --critical: var(--color-down);
-    --up-text: var(--color-up);
-    --crossed-wash: rgba(47, 212, 122, 0.12);
-    --flash: rgba(255, 255, 255, 0.06);
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --up-text: #0ca30c;
+    --crossed-wash: rgba(12, 163, 12, 0.16);
+    --flash: rgba(255, 255, 255, 0.08);
   }
 
   * { box-sizing: border-box; }
@@ -36,33 +71,16 @@
     margin: 0;
     background: var(--page);
     color: var(--text-primary);
-    font: 13px/1.45 var(--font-sans);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 1440px; margin: 0 auto; padding: 0 16px 40px; }
-  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  code { font-family: var(--font-mono); }
-  .topbar {
-    position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px;
-    height: 44px; margin: 0 -16px 16px; padding: 0 16px; background: var(--surface-1); border-bottom: 1px solid var(--border);
-  }
-  .brand { display: flex; flex-direction: column; line-height: 1; text-decoration: none; }
-  .brand b { font-size: 13px; letter-spacing: 0.18em; color: var(--text-primary); }
-  .brand span { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
-  .tabs { display: flex; align-items: stretch; height: 100%; }
-  .tabs a { display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--text-muted); text-decoration: none; position: relative; }
-  .tabs a:hover { color: var(--text-secondary); }
-  .tabs a[aria-current="page"] { color: var(--text-primary); }
-  .tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; background: var(--color-info); }
-  .chip { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: var(--radius-term); border: 1px solid;
-          font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
-  .chip.risk { color: var(--color-risk); border-color: rgba(245, 165, 36, 0.4); background: rgba(245, 165, 36, 0.1); }
-  .chip.muted { color: var(--text-secondary); border-color: var(--baseline); background: var(--surface-2); }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+  .num { font-variant-numeric: tabular-nums; }
 
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 18px; }
-  header h1 { font-size: 18px; font-weight: 600; margin: 0 auto 0 0; }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0 auto 0 0; }
   .pill {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 2px 9px; border-radius: var(--radius-term); border: 1px solid var(--baseline);
+    padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
     background: var(--surface-1); color: var(--text-secondary); font-size: 13px; white-space: nowrap;
   }
   .pill strong { color: var(--text-primary); font-weight: 600; }
@@ -73,17 +91,17 @@
   .pairs[hidden] { display: none; }
   .pair {
     display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0;
-    padding: 6px 12px; border-radius: var(--radius-term); border: 1px solid var(--border);
+    padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border);
     background: var(--surface-1); color: var(--text-primary); font: inherit; cursor: pointer; min-width: 96px;
   }
   .pair b { font-weight: 600; font-size: 13px; }
   .pair span { font-size: 12px; color: var(--text-secondary); }
   .pair span.crossed { color: var(--up-text); font-weight: 600; }
-  .pair[aria-pressed="true"] { border-color: var(--color-info); box-shadow: inset 0 0 0 1px var(--color-info); background: rgba(76, 141, 255, 0.08); }
+  .pair[aria-pressed="true"] { border-color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--text-primary); }
   .pair:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
 
-  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-term); padding: 14px 16px; }
-  .label { color: var(--text-muted); font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .label { color: var(--text-secondary); font-size: 13px; }
   .muted { color: var(--text-muted); }
 
   .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: end; margin-bottom: 14px; }
@@ -110,7 +128,7 @@
   @keyframes flash { from { background: var(--flash); } to { background: transparent; } }
 
   .charts { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; margin-bottom: 14px; }
-  .chart-title { margin: 0; color: var(--text-muted); font-size: var(--text-2xs); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+  .chart-title { font-weight: 600; margin: 0; }
   .chart-sub { color: var(--text-secondary); font-size: 13px; margin: 2px 0 8px; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; min-height: 18px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -120,7 +138,7 @@
   .plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 13px; text-align: center; padding: 0 20px; }
   .tip {
     position: absolute; pointer-events: none; z-index: 2; min-width: 150px;
-    background: var(--surface-2); border: 1px solid var(--baseline); border-radius: var(--radius-term);
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 8px 10px; font-size: 12px; display: none;
   }
   .tip .t { color: var(--text-muted); margin-bottom: 4px; }
@@ -130,7 +148,7 @@
   .tip .row span { color: var(--text-secondary); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: var(--text-2xs); letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 6px 8px; border-bottom: 1px solid var(--grid); }
   td { padding: 6px 8px; border-bottom: 1px solid var(--grid); }
   td.r, th.r { text-align: right; }
   .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
@@ -148,21 +166,12 @@
 </head>
 <body>
 <main>
-  <nav class="topbar" aria-label="Views">
-    <a class="brand" id="brand" href="http://localhost:3001/"><b>ARBEX</b><span>live monitor</span></a>
-    <div class="tabs">
-      <a data-dash="/" href="http://localhost:3001/">Desk</a>
-      <a data-dash="/risk" href="http://localhost:3001/risk">Risk</a>
-      <a data-dash="/research" href="http://localhost:3001/research">Research</a>
-      <a data-dash="/health" href="http://localhost:3001/health">Health</a>
-      <a href="" aria-current="page">Live</a>
-    </div>
-  </nav>
   <header>
     <h1>Arbex · Live <span id="title-pair">USD/INR</span> <span id="title-kind">futures</span></h1>
     <span class="pill" id="mode-pill"><span class="dot" id="mode-dot"></span><strong id="mode-text">Connecting…</strong></span>
     <span class="pill"><span id="market-text">–</span></span>
     <span class="pill"><span id="conn-text">–</span></span>
+    <button class="pill" id="theme-btn" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </header>
 
   <nav class="pairs" id="pairs" aria-label="Currency pair" hidden></nav>
@@ -202,8 +211,8 @@
       <p class="chart-title">Recent opportunities</p>
       <p class="chart-sub">Crossed books detected by the arbitrage engine (before costs).</p>
       <table>
-        <thead><tr><th>Time (IST)</th><th>Buy</th><th>Sell</th><th class="r unit-cap">Paise</th><th class="r" title="Risk channel penalty from the semantic snapshot (recorded, not applied)">News risk</th></tr></thead>
-        <tbody id="opps-body"><tr><td colspan="5" class="muted">None yet.</td></tr></tbody>
+        <thead><tr><th>Time (IST)</th><th>Buy</th><th>Sell</th><th class="r unit-cap">Paise</th></tr></thead>
+        <tbody id="opps-body"><tr><td colspan="4" class="muted">None yet.</td></tr></tbody>
       </table>
     </div>
     <div class="card">
@@ -270,13 +279,17 @@
     return css(SLOTS[legColorSlot[venue]]);
   };
 
-  // --- where the API and the dashboard live -------------------------------
-  // ?api=http://127.0.0.1:8000 previews this file from elsewhere; ?dash= points the tabs at a dashboard.
-  const params = new URLSearchParams(location.search);
-  const API = (params.get("api") || "").replace(/[/]$/, "");
-  const DASH = (params.get("dash") || "http://localhost:3001").replace(/[/]$/, "");
-  document.querySelectorAll("[data-dash]").forEach((a) => { a.href = DASH + a.dataset.dash; });
-  $("brand").href = DASH + "/";
+  // --- theme toggle --------------------------------------------------------
+  try { const t = localStorage.getItem("arbex-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  $("theme-btn").addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("arbex-theme", next); } catch (e) {}
+    render();
+  });
 
   // --- history (client-side; the server only keeps the latest quote) ------
   const mids = {};        // legId -> [{t, v}]
@@ -336,22 +349,16 @@
     renderTables();
   }
 
-  // INR futures trade NSE hours (Mon-Fri 09:00-17:00 IST); spot FX trades Sun 22:00 to Fri 22:00 UTC.
-  function marketOpen(sym, now = new Date()) {
-    if ((sym || "USDINR").endsWith("INR")) {
-      const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: IST, weekday: "short", hour: "2-digit", hour12: false })
-        .formatToParts(now).map((x) => [x.type, x.value]));
-      const h = parseInt(p.hour, 10);
-      return !["Sat", "Sun"].includes(p.weekday) && h >= 9 && h < 17;
-    }
-    const d = now.getUTCDay(), h = now.getUTCHours();
-    return !(d === 6 || (d === 5 && h >= 22) || (d === 0 && h < 22));
+  function marketOpen(now = new Date()) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: IST, weekday: "short", hour: "2-digit", hour12: false })
+      .formatToParts(now).map((x) => [x.type, x.value]));
+    const h = parseInt(p.hour, 10);
+    return !["Sat", "Sun"].includes(p.weekday) && h >= 9 && h < 17;
   }
 
   function renderHeader() {
-    const open = marketOpen(pair);
-    const venue = (pair || "USDINR").endsWith("INR") ? "NSE" : "FX";
-    $("market-text").textContent = `${fmtTime(Date.now())} IST · ${venue} ${open ? "open" : "closed"}`;
+    const open = marketOpen();
+    $("market-text").textContent = `${fmtTime(Date.now())} IST · market ${open ? "open" : "closed"}`;
     if (failing) {
       $("conn-text").textContent = "Server unreachable";
       $("conn-text").className = "error";
@@ -621,20 +628,12 @@
     const opps = [...(state.recent_opportunities || [])]
       .filter((o) => ((o.symbols && o.symbols[0]) || "USDINR") === pair).reverse().slice(0, 8);
     if (!opps.length) {
-      const tr = el("tr"); const td = el("td", "muted", "None yet."); td.colSpan = 5; tr.append(td); ob.append(tr);
+      const tr = el("tr"); const td = el("td", "muted", "None yet."); td.colSpan = 4; tr.append(td); ob.append(tr);
     }
     for (const o of opps) {
       const tr = el("tr");
       tr.append(el("td", "num", fmtTime(o.timestamp_ms)), el("td", null, prettyLeg(o.buy_source)),
         el("td", null, prettyLeg(o.sell_source)), el("td", "r num", fmtPaise(o.estimated_profit_pips)));
-      const risk = o.semantic_snapshot && o.semantic_snapshot.risk_channel;
-      const rc = el("td", "r");
-      if (risk && risk.penalty > 0) {
-        const chip = el("span", "chip risk num", "−" + Number(risk.penalty).toFixed(3)); chip.title = risk.reason || ""; rc.append(chip);
-      } else {
-        rc.append(el("span", "chip muted num", risk ? "0" : "–"));
-      }
-      tr.append(rc);
       ob.append(tr);
     }
     const hb = $("hubs-body");
@@ -670,7 +669,7 @@
   // --- polling --------------------------------------------------------------
   async function poll() {
     try {
-      const res = await fetch(`${API}/live/status`, { cache: "no-store" });
+      const res = await fetch("/live/status", { cache: "no-store" });
       const d = await res.json();
       state = d.error ? { error: d.error, legs: [], cross_spreads: [], hubs: {}, skipped_feeds: {} } : d;
       if (!d.error) ingest(d);
