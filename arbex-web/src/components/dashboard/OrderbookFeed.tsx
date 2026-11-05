@@ -5,7 +5,6 @@ import { useArbexStore } from '@/lib/store';
 import { sourceLabel, sourceSymbol } from '@/lib/sources';
 import { spreadUnit } from '@/lib/instruments';
 import { useInstrument } from '@/hooks/useInstrument';
-import { motion } from 'framer-motion';
 
 export function OrderbookFeed() {
   const orderbookData = useArbexStore((state) => state.orderbookData);

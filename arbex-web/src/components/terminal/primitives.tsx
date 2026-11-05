@@ -2,8 +2,9 @@
 
 /* Terminal primitives: the only building blocks the redesigned views use, so every panel,
    number and signal looks the same everywhere. Colours come from the @theme tokens. */
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/hooks/useNow";
 
 export type Tone = "up" | "down" | "risk" | "info" | "sealed" | "muted" | "ink";
 
@@ -164,12 +165,7 @@ function split(ms: number) {
 /** Live countdown to a fixed moment; shows `done` once it has passed. */
 export function Countdown({ to, done = "open", className }: { to: string | Date; done?: React.ReactNode; className?: string }) {
   const target = typeof to === "string" ? new Date(to).getTime() : to.getTime();
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
   if (now === null) return <span className={cn("num", className)}>--:--:--</span>;
   return <span className={cn("num", className)}>{now >= target ? done : split(target - now)}</span>;
 }

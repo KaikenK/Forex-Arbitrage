@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useNow } from "@/hooks/useNow";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useArbexStore } from "@/lib/store";
@@ -17,14 +18,9 @@ const TABS = [
 ];
 
 function Clock() {
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
   const fmt = (tz: string) =>
-    now ? now.toLocaleTimeString("en-GB", { timeZone: tz, hour12: false }) : "--:--:--";
+    now ? new Date(now).toLocaleTimeString("en-GB", { timeZone: tz, hour12: false }) : "--:--:--";
   return (
     <div className="hidden items-center gap-3 lg:flex">
       <span className="num text-[11px] text-ink-2"><span className="label-caps mr-1">IST</span>{fmt("Asia/Kolkata")}</span>
