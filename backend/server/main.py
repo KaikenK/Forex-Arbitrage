@@ -269,12 +269,13 @@ sentiment_bridge = SentimentBridge(pair_allowlist=_sentiment_pair_allowlist)
 # Semantic snapshot attached to every logged live opportunity (H6b). Filled by a background
 # task from cached lookups only, so the opportunity hot path never makes a network call.
 from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snapshot, currency_bias_enabled
-from backend.core import semantic_apply
+from backend.core import semantic_apply, semantic_shadow
 
 currency_bias_client = CurrencyBiasClient(sentiment_bridge)
 _window_bias_cache: Dict[str, Dict[str, Any]] = {}
 _window_bias_v2_cache: Dict[str, Dict[str, Any]] = {}
 _release_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+_shadow_cache: Dict[str, Dict[str, Any]] = {}      # C43 shadow inputs per pair
 SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
 WINDOW_V2_EXTRAS = ("source", "release_items", "news_items", "unoriented_items", "duplicates_dropped",
                     "late_dropped", "expected_move_bps", "release_age_minutes", "evidence_weight",
@@ -301,6 +302,13 @@ async def refresh_semantic_snapshot_cache() -> None:
                     _window_bias_v2_cache[pair] = await asyncio.to_thread(_window_bias_v2, client, pair)
                 except Exception as e:      # shadow only: never disturbs the live window
                     logger.warning(f"Window bias v2 failed for {pair}: {e}")
+                if semantic_shadow.shadow_enabled():
+                    try:
+                        _shadow_cache[pair] = await asyncio.to_thread(
+                            semantic_shadow.pair_shadow, sentiment_bridge, currency_bias_client.cached(pair),
+                            pair, client._window_minutes)
+                    except Exception as e:      # C43 shadow only: never disturbs the live window
+                        logger.warning(f"Semantic shadow inputs failed for {pair}: {e}")
             await asyncio.to_thread(currency_bias_client.refresh)
         except asyncio.CancelledError:
             raise
@@ -514,6 +522,24 @@ async def _start_live(setup) -> None:
 
     multi_source_streamer.on_arbitrage(_log_live_opportunity)
 
+    # C43 shadow engine (ARBEX_SEMANTIC_SHADOW=1): what the Phase 2 switches would record, written
+    # to its own file outside the recordings root; registered after the recorder, never touches it.
+    if semantic_shadow.shadow_enabled():
+        shadow_writer = semantic_shadow.ShadowWriter()
+        logger.info(f"C43 semantic shadow on: {semantic_shadow.shadow_root()}")
+
+        def _log_shadow(opp):
+            try:
+                row = opp.to_dict()
+                pair = normalize_pair(str((row.get("symbols") or [""])[0]))
+                shadow_writer.write(semantic_shadow.shadow_row(
+                    row, _semantic_snapshot(row), pair, _shadow_cache.get(pair),
+                    older_leg_age_ms=semantic_apply.older_leg_age_ms(row, _latest_recv_ms(row))))
+            except Exception as e:      # shadow only: never disturbs detection or the recorder
+                logger.warning(f"Semantic shadow row failed: {e}")
+
+        multi_source_streamer.on_arbitrage(_log_shadow)
+
     # Dashboard stream without Redis (display only; registered after the recorder, which it
     # never touches). Reuses this process's bridge and currency-bias client.
     from backend.core.redis_client import redis_client as _redis
@@ -521,9 +547,14 @@ async def _start_live(setup) -> None:
     from backend.server.inprocess_scorer import InProcessScorer
 
     def _scoring_engine(publish):
+        # Under the C43 shadow the dashboard ranking shows the risk channel applied (display only;
+        # direction is not applied, as in Phase 2). Otherwise ARBEX_CURRENCY_BIAS decides, as before.
+        shadow = semantic_shadow.shadow_enabled()
         return SemanticEngine(news_bias_provider=LiveNewsBiasClient(
                                   bridge=sentiment_bridge, direction_lookup=currency_bias_client.cached),
-                              publisher=publish, currency_bias_client=currency_bias_client)
+                              publisher=publish, currency_bias_client=currency_bias_client,
+                              currency_bias=True if shadow else None,
+                              apply_direction=False if shadow else True)
 
     multi_source_streamer.on_arbitrage(InProcessScorer(
         _scoring_engine, ws_manager.broadcast_arbitrage, redis_connected=lambda: _redis._is_connected))

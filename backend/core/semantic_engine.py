@@ -324,8 +324,11 @@ class SemanticEngine:
         publisher: Publisher | None = None,
         currency_bias_client: CurrencyBiasClient | None = None,
         currency_bias: bool | None = None,
+        apply_direction: bool = True,
     ):
         self._tracker = OpportunityTracker()
+        # False: the direction channel is reported but not subtracted (C43 dashboard, Phase 2).
+        self._apply_direction = apply_direction
         self._filter = SimulatedExecutionFilter()
         self._ranker = OpportunityRanker()
         self._is_running = False
@@ -383,7 +386,8 @@ class SemanticEngine:
                 )
                 feasibility_adjustment = news_bias.confidence_adjustment
             else:
-                channel_penalty = channels["risk"].penalty + channels["direction"].penalty
+                channel_penalty = channels["risk"].penalty + (
+                    channels["direction"].penalty if self._apply_direction else 0.0)
                 biased_opp = replace(
                     opp,
                     confidence_score=_clamp(
@@ -436,6 +440,8 @@ class SemanticEngine:
                         f"{ranking_reason} | Risk channel -{channels['risk'].penalty:.3f} ({channels['risk'].reason})"
                         f" | Direction channel -{channels['direction'].penalty:.3f} ({channels['direction'].reason})"
                     )
+                    if not self._apply_direction:
+                        ranking_reason += " (direction not applied)"
                 
                 # Publish scored opportunity to Redis
                 scored_msg = {

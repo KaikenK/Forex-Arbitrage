@@ -518,7 +518,7 @@ class SentimentBridge:
             history = [dict(item) for item in self._analysis_history.get(normalized_pair, [])]
         return window_bias_v2(history, normalized_pair, self._clock(), max(1, window_minutes))
 
-    def get_window_bias(self, pair: str, window_minutes: int) -> dict[str, Any]:
+    def get_window_bias(self, pair: str, window_minutes: int, *, fx_filter: bool | None = None) -> dict[str, Any]:
         """Aggregate locally mirrored analyses into a directional window bias.
 
         The reaction model's ``market_score`` is the directional term here, NOT the
@@ -547,7 +547,8 @@ class SentimentBridge:
         bearish_count = 0
         neutral_count = 0
         in_window: list[tuple[float, dict[str, Any]]] = []
-        fx_filter = fx_relevance_filter_enabled()           # Phase 2, off until after 18 Nov
+        # Phase 2 (off until after 18 Nov); `fx_filter=True` is the C43 shadow's filtered window.
+        fx_filter = fx_relevance_filter_enabled() if fx_filter is None else fx_filter
         fx_dropped = 0
 
         for analysis in history:
