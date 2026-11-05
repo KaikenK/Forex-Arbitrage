@@ -57,8 +57,11 @@ class InProcessScorer:
         *,
         redis_connected: Callable[[], bool] = lambda: False,
         mode: Optional[str] = None,
+        shadow_lookup: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
     ) -> None:
         self._broadcast = broadcast
+        # C43 shadow row of the same opportunity (by id), attached for the dashboard's breakdown.
+        self._shadow_lookup = shadow_lookup
         self._redis_connected = redis_connected
         self._mode = mode or scorer_mode()
         self._engine = engine_factory(self._publish) if self._mode != "off" else None
@@ -76,6 +79,10 @@ class InProcessScorer:
             return
         reason = str(message.get("ranking_reason") or "")
         message = {**message, "ranking_reason": f"{DISPLAY_TAG} | {reason}" if reason else DISPLAY_TAG}
+        if self._shadow_lookup is not None:
+            shadow = self._shadow_lookup(str((message.get("opportunity") or {}).get("id") or ""))
+            if shadow:
+                message["shadow"] = shadow
         self.scored += 1
         await self._broadcast(message)
 

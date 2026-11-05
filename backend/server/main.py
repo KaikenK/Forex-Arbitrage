@@ -270,12 +270,18 @@ sentiment_bridge = SentimentBridge(pair_allowlist=_sentiment_pair_allowlist)
 # task from cached lookups only, so the opportunity hot path never makes a network call.
 from backend.core.currency_bias_channels import CurrencyBiasClient, channel_snapshot, currency_bias_enabled
 from backend.core import semantic_apply, semantic_shadow
+from backend.server.system_health import GapTracker, ShadowCache, system_health as _system_health
 
 currency_bias_client = CurrencyBiasClient(sentiment_bridge)
 _window_bias_cache: Dict[str, Dict[str, Any]] = {}
 _window_bias_v2_cache: Dict[str, Dict[str, Any]] = {}
 _release_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 _shadow_cache: Dict[str, Dict[str, Any]] = {}      # C43 shadow inputs per pair
+# Display-only state for /system/health and the dashboard's shadow block (never recorded).
+_BACKEND_STARTED = time.time()
+_gap_tracker = GapTracker()
+_shadow_by_id = ShadowCache()
+_shadow_writer_ref: Dict[str, Any] = {"writer": None}
 SEMANTIC_SNAPSHOT_REFRESH_SECONDS = 30.0
 WINDOW_V2_EXTRAS = ("source", "release_items", "news_items", "unoriented_items", "duplicates_dropped",
                     "late_dropped", "expected_move_bps", "release_age_minutes", "evidence_weight",
@@ -526,15 +532,18 @@ async def _start_live(setup) -> None:
     # to its own file outside the recordings root; registered after the recorder, never touches it.
     if semantic_shadow.shadow_enabled():
         shadow_writer = semantic_shadow.ShadowWriter()
+        _shadow_writer_ref["writer"] = shadow_writer
         logger.info(f"C43 semantic shadow on: {semantic_shadow.shadow_root()}")
 
         def _log_shadow(opp):
             try:
                 row = opp.to_dict()
                 pair = normalize_pair(str((row.get("symbols") or [""])[0]))
-                shadow_writer.write(semantic_shadow.shadow_row(
+                shadow = semantic_shadow.shadow_row(
                     row, _semantic_snapshot(row), pair, _shadow_cache.get(pair),
-                    older_leg_age_ms=semantic_apply.older_leg_age_ms(row, _latest_recv_ms(row))))
+                    older_leg_age_ms=semantic_apply.older_leg_age_ms(row, _latest_recv_ms(row)))
+                shadow_writer.write(shadow)
+                _shadow_by_id.put(shadow)       # the dashboard's breakdown of this cross (display)
             except Exception as e:      # shadow only: never disturbs detection or the recorder
                 logger.warning(f"Semantic shadow row failed: {e}")
 
@@ -557,7 +566,8 @@ async def _start_live(setup) -> None:
                               apply_direction=False if shadow else True)
 
     multi_source_streamer.on_arbitrage(InProcessScorer(
-        _scoring_engine, ws_manager.broadcast_arbitrage, redis_connected=lambda: _redis._is_connected))
+        _scoring_engine, ws_manager.broadcast_arbitrage, redis_connected=lambda: _redis._is_connected,
+        shadow_lookup=_shadow_by_id.get))
 
     # Real depth to the dashboard's orderbook panel (hubs poll on their own threads).
     loop = asyncio.get_running_loop()
@@ -587,6 +597,8 @@ async def _start_live(setup) -> None:
     for hub in setup.hubs.values():
         hub.add_listener(_publish_depth)
         hub.add_listener(_observe_basis)
+        # recorder silences for /system/health (display only)
+        hub.add_listener(lambda hub_name, quotes: _gap_tracker.observe(q.recv_ts_ms for q in quotes.values()))
     await multi_source_streamer.start(symbols=DEFAULT_SYMBOLS)
     logger.info(f"Live exchange pipeline initialized with {len(setup.sources)} legs")
 
@@ -1526,6 +1538,21 @@ async def live_monitor_page():
     if page.exists():
         return FileResponse(str(page))
     return {"error": "frontend/live_monitor.html not found"}
+
+
+@app.get("/system/health")
+async def get_system_health():
+    """Display only: backend uptime, recorder rows and silences since start, C43 shadow output, leg
+    health and the semantic service link, for the dashboard's Health view."""
+    legs = []
+    if is_live_exchange_mode() and live_feed_setup:
+        legs = [{"id": s.source_id, "healthy": s.is_healthy()} for s in live_feed_setup.sources]
+    return _system_health(
+        started_at=_BACKEND_STARTED, mode=current_data_mode().value, gaps=_gap_tracker,
+        recorder=live_feed_setup.recorder if live_feed_setup else None,
+        shadow_enabled=semantic_shadow.shadow_enabled(), shadow_writer=_shadow_writer_ref["writer"],
+        shadow_cache=_shadow_by_id, shadow_root=str(semantic_shadow.shadow_root()), legs=legs,
+        semantic=sentiment_bridge._service_block())
 
 
 @app.get("/live/status")
