@@ -55,6 +55,33 @@ export function detectorScore(opp: RankedOpportunity): { value: number; rebuilt:
   return { value: Math.min(1, Math.max(0, shown - windowAdj + risk + direction)), rebuilt: true };
 }
 
+/* The risk channel's constants (backend/core/currency_bias_channels.py), used only to show what the
+   channel would take off a cross on this pair right now. */
+export const RISK_CAP = 0.06;
+export const RISK_RATIO_SPAN = 2.0;
+export const RELEASE_PENALTY = 0.03;
+
+export interface EventRisk {
+  expected_move_bps?: number | null;
+  baseline_move_bps?: number | null;
+  risk_ratio?: number | null;
+  release_proximity?: unknown;
+  next_release?: { minutes?: number; event?: string } | null;
+  last_release?: { minutes?: number; event?: string } | null;
+  calendar?: string;
+  recent_scored_items?: number;
+}
+
+export function riskPenaltyNow(er: EventRisk | null | undefined): number {
+  if (!er) return 0;
+  let penalty = 0;
+  if (typeof er.risk_ratio === "number") {
+    penalty = RISK_CAP * Math.min(1, Math.max(0, (er.risk_ratio - 1) / RISK_RATIO_SPAN));
+  }
+  if (er.release_proximity !== null && er.release_proximity !== undefined) penalty += RELEASE_PENALTY;
+  return Math.min(RISK_CAP, penalty);
+}
+
 export const DIRECTION_LABEL: Record<string, string> = {
   risk_on: "pair up", risk_off: "pair down", neutral: "neutral",
   bullish: "pair up", bearish: "pair down",
