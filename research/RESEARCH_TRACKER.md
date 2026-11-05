@@ -492,6 +492,16 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   inputs (risk channel available, inputs a few seconds old) and no shadow error. At 20:07 IST a scored cross on
   `/ws/arbitrage` carried the display tag, the risk channel and "direction not applied". Counts and fields
   only; no outcome read.
+  **Wi-Fi drop, 2026-11-05 evening (RQ5-extension, C40, C43 and prospective data; counts only):** the laptop lost
+  the iPhone hotspot at 22:40:04 IST and rejoined at 22:41:01 (Windows WLAN log). Recorder silent 22:39:55.5–
+  22:41:07.7 IST (72.2 s), then 6.9 s more while the feeds reconnected. Since the 19:49:52 restart there are 8
+  silences over 5 s in all hubs, 134.6 s in total: 20:22:19 (8.7 s), 21:55:39 (5.3 s + 5.5 s), 22:17:27 (7.2 s),
+  22:31:26 (12.9 s), 22:32:30 (15.9 s), the drop (72.2 s) and 22:41:08 (6.9 s). C40's gap rule drops any window
+  that overlaps them. Both services stayed up and nothing was restarted; the backend's link to the semantic
+  service succeeded again at 22:41:54 IST. No prediction-log row was logged in the first minutes after the
+  reconnect (last before the drop 22:33:06). Kraken on the hotspot: 0–16 quotes a minute 22:30–22:41 (normal
+  about 177) and its legs stale, as earlier in the evening; TrueFX normal. The dashboard dev server (:3001)
+  and the Colab runtime were turned off at the owner's request at ~21:12 IST (display and idle only).
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
