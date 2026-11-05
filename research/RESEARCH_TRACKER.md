@@ -470,6 +470,10 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   fields are checked against a pre-restart baseline on the first new opportunity. Engine-behaviour fixes (apply
   the risk penalty, direction from the currency index, release actuals, FX-relevance filter) are built behind
   flags that stay off until after the RQ5 sample closes (18 Nov 00:00 IST).
+  **Verified 2026-11-05 12:14 IST** on the first post-restart opportunity: opportunity keys, semantic-snapshot
+  shape, applied=False and prediction-log keys identical to the pre-restart baseline; backend log shows the
+  in-process scorer received it. The Claude app was closed ~12:20 IST; both services kept running (detached),
+  recorder still writing at 13:52 IST, so no further gap.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
