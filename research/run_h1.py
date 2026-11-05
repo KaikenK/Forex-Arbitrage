@@ -57,14 +57,16 @@ RESULTS = ARTIFACTS / "h1_results.json"
 class _Lookup:
     """Precomputed per-headline outputs behind the embedder / scorer interfaces."""
 
-    def __init__(self, by_headline: dict):
+    def __init__(self, by_headline: dict, dtype=None):
         self.by_headline = by_headline
+        self.dtype = dtype
 
     def fit(self, texts):
         return self
 
     def encode(self, texts):
-        return np.vstack([self.by_headline[t] for t in texts])
+        matrix = np.vstack([self.by_headline[t] for t in texts])
+        return matrix if self.dtype is None else matrix.astype(self.dtype)
 
     def score_many(self, texts):
         return [self.by_headline[t] for t in texts]
@@ -83,10 +85,25 @@ def _embedder_factory(name: str, events: pd.DataFrame):
         return HashingEmbedder
     parts = sorted((SCORES / "embed").glob("part-*.npy"))
     ids = pd.concat([pd.read_parquet(p.with_name(p.name.replace(".npy", ".ids.parquet"))) for p in parts])
-    vectors = np.vstack([np.load(p) for p in parts]).astype(np.float64)
+    # Memory (2026-11-05, engineering, results unchanged): the vectors stay float32 as stored,
+    # filled into one preallocated array, and each stream is converted to float64 in
+    # `_Lookup.encode`. float32 -> float64 is exact, so every encoded matrix equals the old
+    # whole-archive float64 conversion bit for bit; the peak memory falls from ~3x the archive
+    # (float32 parts + stack + float64 copy) to ~1x plus one stream.
+    width = np.load(parts[0], mmap_mode="r").shape[1]
+    vectors = np.empty((len(ids), width), dtype=np.float32)
+    row = 0
+    for p in parts:
+        block = np.load(p)
+        if block.dtype != np.float32:              # score_archive writes float32; anything else would round
+            raise ValueError(f"{p.name} is {block.dtype}, expected float32")
+        vectors[row:row + len(block)] = block
+        row += len(block)
+    if row != len(ids):
+        raise ValueError(f"embed parts hold {row} vectors but {len(ids)} ids")
     headline_of = _headline_of(events)
     lookup = {headline_of[e]: v for e, v in zip(ids["event_id"], vectors) if e in headline_of.index}
-    return lambda: _Lookup(lookup)
+    return lambda: _Lookup(lookup, dtype=np.float64)
 
 
 def _finbert(events: pd.DataFrame) -> _Lookup:
