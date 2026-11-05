@@ -42,7 +42,9 @@ time and never while the live semantic service or backend is running.
 | RQ2-E2E real release headlines (structured vs FinBERT vs V1 vs V1-clean) | `rq2_e2e` | `rq2_e2e.json` | frozen sample, FinBERT scores |
 | Release-to-arrival latency of live news | `arrival_latency` | `arrival_latency.json` | after 2026-11-13 23:59 IST |
 | RQ2 arrival-time re-test at the observed latency | `arrival_retest` | `reaction_eval_arrival<offset>.json` | `arrival_latency.json` |
-| Prospective test: deployed V1 / release model | `live_scoring_v1`, `live_scoring_release` | `live_predictions_score_{v1,release}.json` | after 2026-11-18 00:00 IST |
+| Prospective test: deployed V1 / release model V2.0 / V2.1 (primary) | `live_scoring_v1`, `live_scoring_release_v20`, `live_scoring_release_v21` | `live_predictions_score_{v1,release_v20,release_v21}.json` | after 2026-11-18 00:00 IST |
+| RQ5 extension (C34) | `rq5_extension` | `rq5_extension_results.json` | after 2026-11-18 00:00 IST |
+| C40 news as risk on the live recorder | `c40` | `c40_results.json` | after 2026-11-18 00:00 IST |
 | News-source inventory (appendix) | `feed_inventory` | `feed_inventory.json`, `paper/news_sources.md` | none |
 | Paper tables and figures (LaTeX) | `paper_assets` | `research/paper/latex/{tables,figures}/` | `reaction_eval.json` |
 

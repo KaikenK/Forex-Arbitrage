@@ -34,6 +34,7 @@ from research.reaction import metrics
 TICKERS = {"EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "JPY=X", "USD/CHF": "CHF=X", "USD/INR": "INR=X"}
 DEFAULT_SINCE = datetime(2026, 10, 25, tzinfo=UTC)
 FRESH_HOURS = 24                                    # C37 secondary result: item age at receipt
+SCORING_OPENS_UTC = datetime(2026, 11, 17, 18, 30, tzinfo=UTC)   # 2026-11-18 00:00 IST (reproduce.LIVE_SCORING_FROM_UTC)
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 
 
@@ -138,7 +139,13 @@ def summarize(scored: pd.DataFrame) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, *, now: datetime | None = None, bars=None) -> int:
+    """`now` and `bars` (pair, start, end -> Series) are for tests only; the command line uses the
+    wall clock and Yahoo."""
+    if (now or datetime.now(UTC)) < SCORING_OPENS_UTC:
+        raise SystemExit(f"Live scoring opens {SCORING_OPENS_UTC.isoformat()}; no outcome is joined before then "
+                         "(RESEARCH_TRACKER §2 prospective test, schedule in §6).")
+    bars = bars or hourly_bars
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--predictions", type=Path, default=None, help="default: the backend's prediction log")
     parser.add_argument("--since", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=DEFAULT_SINCE)
@@ -146,7 +153,7 @@ def main() -> int:
                         default=datetime.now(UTC))
     parser.add_argument("--basis", choices=["v1", "release"], default="v1")
     parser.add_argument("--out", type=Path, default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.predictions is None:
         from research.measure_arrival_latency import default_predictions_path
         args.predictions = default_predictions_path()
@@ -155,9 +162,9 @@ def main() -> int:
     end = datetime.now(UTC)
     returns = np.full(len(frame), np.nan)
     for pair, idx in frame.groupby("pair").groups.items():
-        bars = hourly_bars(pair, args.since, end + pd.Timedelta(days=1))
+        series = bars(pair, args.since, end + pd.Timedelta(days=1))
         for k in idx:
-            returns[k] = outcome(bars, frame.at[k, "published_at"], frame.at[k, "horizon"])
+            returns[k] = outcome(series, frame.at[k, "published_at"], frame.at[k, "horizon"])
     frame["outcome_bps"] = returns
     scored = frame[np.isfinite(frame["outcome_bps"]) & (frame["outcome_bps"] != 0)].reset_index(drop=True)
     result = {

@@ -30,6 +30,8 @@ GDELT_CUTOFF_UTC = datetime(2026, 11, 5, 0, 0, tzinfo=UTC)      # 2026-11-05 05:
 LATENCY_SAMPLE_END_UTC = datetime(2026, 11, 13, 18, 29, tzinfo=UTC)   # arrival-latency study (§6)
 LIVE_SCORING_FROM_UTC = datetime(2026, 11, 17, 18, 30, tzinfo=UTC)    # 2026-11-18 00:00 IST
 V1_DEPLOYMENT_END = "2026-11-01T21:09:00+00:00"                        # release model deployed (§8)
+C38_DEPLOYED = "2026-11-04T18:37:56+00:00"                             # V2.0 -> V2.1 (§8, C38 analysis plan)
+LIVE_SAMPLE_END = "2026-11-17T18:30:00+00:00"                          # 2026-11-18 00:00 IST: no row after it
 HISTDATA_YEARS = range(2018, 2026)
 MAJORS = ("EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF")
 
@@ -217,9 +219,21 @@ STEPS: tuple[Step, ...] = (
     Step("live_scoring_v1", "Table: prospective test of the deployed V1 model",
          ("research.score_live_predictions", "--basis", "v1", "--until", V1_DEPLOYMENT_END),
          "live_predictions_score_v1.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
-    Step("live_scoring_release", "Table: prospective test of the release model",
-         ("research.score_live_predictions", "--basis", "release", "--since", V1_DEPLOYMENT_END),
-         "live_predictions_score_release.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
+    # C38 analysis plan (§6): the release model is reported for V2.0 (its deployment to the C38
+    # deploy) and V2.1 (the C38 deploy to 2026-11-18 00:00 IST, primary), each on its own.
+    Step("live_scoring_release_v20", "Table: prospective test of the release model, V2.0",
+         ("research.score_live_predictions", "--basis", "release", "--since", V1_DEPLOYMENT_END,
+          "--until", C38_DEPLOYED, "--out", "research/artifacts/live_predictions_score_release_v20.json"),
+         "live_predictions_score_release_v20.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
+    Step("live_scoring_release_v21", "Table: prospective test of the release model, V2.1 (primary)",
+         ("research.score_live_predictions", "--basis", "release", "--since", C38_DEPLOYED,
+          "--until", LIVE_SAMPLE_END, "--out", "research/artifacts/live_predictions_score_release_v21.json"),
+         "live_predictions_score_release_v21.json", _not_before(LIVE_SCORING_FROM_UTC, "live scoring")),
+    Step("rq5_extension", "Table: RQ5 ranking value on the recordings after the H6b window (C34)",
+         ("research.run_h6b", "--rq5-extension"), "rq5_extension_results.json",
+         _not_before(LIVE_SCORING_FROM_UTC, "RQ5 extension")),
+    Step("c40", "Table: C40 news as risk on the live recorder (pre-registered)",
+         ("research.run_c40",), "c40_results.json", _not_before(LIVE_SCORING_FROM_UTC, "C40")),
     Step("feed_inventory", "Table: news-source inventory (appendix)", ("research.feed_inventory",),
          "feed_inventory.json", lambda ctx: None),
     Step("paper_assets", "Paper tables and figures (LaTeX)", ("research.paper.make_paper_assets",),
