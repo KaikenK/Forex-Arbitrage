@@ -502,6 +502,12 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   reconnect (last before the drop 22:33:06). Kraken on the hotspot: 0–16 quotes a minute 22:30–22:41 (normal
   about 177) and its legs stale, as earlier in the evening; TrueFX normal. The dashboard dev server (:3001)
   and the Colab runtime were turned off at the owner's request at ~21:12 IST (display and idle only).
+  **Laptop off overnight, 2026-11-06 (owner's planned shutdown; RQ5-extension, C40, C43, prospective and
+  arrival-latency data; counts only):** recorder silent 2026-11-06 01:05:13 → 09:43:59 IST (8.65 h); news was
+  not received or logged over the same period. Both services started 09:42–09:44 IST with the unchanged
+  launcher (`services.ps1 start`, code 5678eb7, C42 switches off, C43 shadow on): semantic service up 09:42:54,
+  backend 09:43:57, first quote 09:43:59. Backend link to the service live, ingest active. Kraken legs stale again
+  on the hotspot (4 of 8 legs in use); TrueFX normal.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
