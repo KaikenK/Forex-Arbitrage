@@ -523,6 +523,12 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   owner's request at 18:14:12 IST (last quote 18:14:08) for the rest of the day; they will be restarted from
   outside the Claude app (`arbex_restart.bat`) so an app close no longer stops them. 13 opportunities and 13 C43
   shadow rows recorded today up to the stop (one to one); the 19:00 IST US employment release is not covered.
+
+  **Restart, 2026-11-06 evening (counts only):** recorder silent 18:14:08 → 21:19:59 IST (3.10 h, owner away).
+  Both services restarted with the unchanged launcher (`arbex_restart.bat` via `services.ps1 restart`, code
+  ff42e97, C42 switches off, C43 shadow on), launched through the Windows shell rather than from the app's
+  shell: semantic 21:19:31, backend 21:19:52, first quote 21:19:59. Backend link to the service live. Kraken legs
+  stale again (TrueFX only).
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
