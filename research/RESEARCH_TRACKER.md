@@ -508,6 +508,21 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   launcher (`services.ps1 start`, code 5678eb7, C42 switches off, C43 shadow on): semantic service up 09:42:54,
   backend 09:43:57, first quote 09:43:59. Backend link to the service live, ingest active. Kraken legs stale again
   on the hotspot (4 of 8 legs in use); TrueFX normal.
+
+  **Service stops and network outage, 2026-11-06 (RQ5-extension, C40, C43, prospective and arrival-latency
+  data; counts only):** (1) both services stopped at about 11:02:56 IST with no exit line in either log, consistent
+  with the Claude desktop app closing (they had been started from inside it and were attached to its job object);
+  restarted with the unchanged launcher (`services.ps1 start`, code 82c6a56, C42 switches off, C43 shadow on):
+  semantic 11:06:44, backend 11:07:17, first quote about 11:07:21 IST, recorder gap about 4.4 min. (2) Two short
+  silences 11:46:06 → 11:46:12 (6.1 s) and 11:46:12 → 11:46:19 (7.1 s). (3) Network outage on the iPhone hotspot
+  12:24:15 → 15:47:43 IST (3.39 h, 12,208.1 s): every news feed failed DNS lookup from 12:24:33, the Windows time
+  service could not reach its peer at 13:30:19 and resynchronised at 15:48:27; no sleep or power-off event in the
+  System log. No quotes or news were received in that interval. (4) Silence 15:55:26 → 15:55:34 (8.1 s), then a
+  second outage 15:57:13 → 18:13:37 IST (2.27 h, 8,183.9 s), again with feed DNS failures from 15:58:17.
+  Recorder silence since the 11:07 restart totals 20,413.3 s (5 gaps over 5 s). (5) Services stopped on the
+  owner's request at 18:14:12 IST (last quote 18:14:08) for the rest of the day; they will be restarted from
+  outside the Claude app (`arbex_restart.bat`) so an app close no longer stops them. 13 opportunities and 13 C43
+  shadow rows recorded today up to the stop (one to one); the 19:00 IST US employment release is not covered.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
