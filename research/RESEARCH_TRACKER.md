@@ -592,6 +592,15 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   every month complete (about 28k–32k bars each; only bar counts were checked, no price was examined). Earlier
   than C45's "at run time", which changes nothing in the test. Cached in the app's private AppData copy, like the
   2018–2025 files, and copied unchanged to `C:\Users\xyreo\arbex\data\histdata_2026` for the Colab run.
+  **C45 extraction done, 2026-11-21 19:41 IST (counts only; no headline text read, nothing scored):** run from a
+  second Google account the owner signed in with (its own BigQuery sandbox, so no wait for the 1 Dec quota reset; no
+  billing account; 2-step verification turned on by the owner, which Google Cloud now requires), project `arbex-c45`,
+  dataset `gdelt_fx` (US). Statement = `research/sql/c45_gkg_extract.sql` as committed (d821b63), typed into the
+  console and checked character for character against the file before it ran; dry run of the SELECT 84.03 GB; all
+  three statements succeeded in 13 s. `fx_headlines`: 999,027 rows, 18 months, 24,830–66,633 a month (2025-06 lowest).
+  `daily_counts`: 562 of the 579 days 2025-04-01..2026-10-31; **no GKG rows at all for 2025-06-15..2025-07-01
+  (17 days)**, which explains June's low count; the DEVIATION 5 gap rules flag them (count zero) and C17 drops them.
+  The sandbox expires tables 60 days after creation (about 2027-01-20), so ingestion runs before then.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
