@@ -21,6 +21,15 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y -q
 apt-get install -y -q git curl ca-certificates
 
+echo "== swap (small servers: FinBERT needs about 1 GB on top of the backend)"
+mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$mem_mb" -lt 3000 ] && ! swapon --show | grep -q /swapfile; then
+    fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap -q /swapfile && swapon /swapfile
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    echo 'vm.swappiness=10' > /etc/sysctl.d/90-arbex-swap.conf && sysctl -q -p /etc/sysctl.d/90-arbex-swap.conf
+    echo "   4 GB swap added (memory ${mem_mb} MB)"
+fi
+
 echo "== service user and folders"
 id arbex >/dev/null 2>&1 || useradd --system --home-dir $BASE --shell /usr/sbin/nologin arbex
 mkdir -p $BASE $DATA/recordings $DATA/shadow $DATA/runtime $DATA/cache $DATA/hf /etc/arbex
