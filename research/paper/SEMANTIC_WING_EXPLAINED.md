@@ -24,6 +24,7 @@ The guide is written for someone who has never seen the project; a glossary of t
 12. [Glossary](#12-glossary)
 13. [Background reading](#13-background-reading)
 14. [Where everything lives](#14-where-everything-lives)
+15. [Dataset sizes, and how to make each one better](#15-dataset-sizes-and-how-to-make-each-one-better)
 
 ---
 
@@ -450,3 +451,65 @@ A short, non-technical tour of the ideas this project builds on. Verify the exac
 | Demo data and anything the demo writes | `C:\Users\xyreo\arbex\demo\` |
 | Copies of the shadow log | `C:\Users\xyreo\arbex\data\` |
 | Code branch | `semantic-microservice` on GitHub |
+
+---
+
+## 15. Dataset sizes, and how to make each one better
+
+### 15.1 Rows are not the same as evidence
+
+Many rows can come from a few independent events. For example, one US jobs report produces a row for each of four pairs; 30,000 live opportunities came from only 8 days. What limits how sure we can be is the number of **independent units**:
+- release moments, for the release tests;
+- trading days, for news and live tests;
+- rare outcomes, such as the few price gaps that vanish.
+
+The tables below give both counts.
+
+### 15.2 Historical tests
+
+| Test | Rows | Independent units | What limits it | How to improve it |
+|---|---|---|---|---|
+| Positive control, H2/H3 (US releases × 4 pairs, 2018–2025) | about 1,370 per pair; 1,482 US releases | about 770 release moments per pair | US releases only; the calendar ends April 2025 | (1) Validate release clocks for euro-area, UK and Swiss agencies (only 17 US families are validated now), which adds non-US releases. (2) Extend prices and calendar past April 2025. (3) Add earlier years (2010–2017) as a **pre-registered replication**, if the calendar dump covers them. |
+| RQ1–RQ4 (1,385 releases with a surprise × 4 pairs) | 3,687 release × pair rows at 15 min; 4,514 for RQ1 | 900 release moments; 76 test months | Same calendar limits; only 3 JPY and 30 CHF releases | Same as above. Adding non-US releases matters most for yen and franc. Tick data (Dukascopy, about 0.75 GB) would show the first 10–60 seconds, where most of the reaction happens. |
+| R1 (daily, US releases) | 1,608 releases | 932 release dates | Daily prices hide minute-level reactions | Nothing more to gain at daily resolution. Use intraday data instead, already done for the majors. |
+| GDELT news archive | 3,690,637 headlines extracted; 1,569,940 currency-tagged (Oct 2019 – Apr 2025); 955,570 after removing copies | 67 months; about 1,450–1,720 days | English only; titles only; timestamps rounded to 15 minutes; no titles before Sept 2019 | (1) Extend to May 2025 – Nov 2026: the BigQuery free quota resets monthly. (2) Add GDELT's translated non-English stream. (3) Use a source with exact publication times (a wire service) so horizons shorter than 30 minutes can be tested. |
+| H1 novelty | 243,360 rows; 234,273 headlines | 1,717 dates | Headlines naming only the US dollar get no novelty score and are dropped | Count how many are dropped (open Step E) and test them separately. Size is not the problem: the result is a precise "no". |
+| H1 rupee arm | 101,176 headlines | 1,436 news-days | Daily rupee prices only | Find intraday USD/INR data (paid, or the NSE/BSE currency-futures APIs already wired: Upstox, Kite). |
+| H5 currency mood | 3,640 test rows | 1,455 dates; 1,293 days with VIX | Daily data | More years (extend GDELT), not more rows per day. |
+| H6 currency score | 5,006 rows (4,077 out-of-sample) | 1,455 dates; 55 test months | Daily, Monday–Thursday only | Same as H5. The result is a clear "no", so more data is unlikely to change it. |
+| window30 (30-minute news window) | about 255,000–261,000 signal times | 1,445 dates | 15-minute GDELT timestamps | **The main positive result.** Replicate it, pre-registered, on May 2025 – Nov 2026 GDELT data that the study never touched. Precise timestamps would allow 5–15 minute tests. |
+| RQ2-E2E (real release headlines) | 2,410 candidates; 245 rows the reader could parse | 535 moments; only 51 with a parsed number | The tagger keeps only headlines naming a currency, so "US CPI rises 0.5%" never enters | Collect release headlines by indicator name ("payrolls", "CPI", "jobless claims"), and widen the reader's patterns. Live feeds like investinglive print "X vs Y expected", which parses well. |
+
+### 15.3 Model training data
+
+| Data | Size | Problem | How to improve it |
+|---|---|---|---|
+| V1 text model, USD/INR training rows | 743 rows; 553 after removing 190 synthetic ones | Small, and partly synthetic; the majors part was trained on template headlines | Rebuild from real headlines labelled by the moves that followed. Given the direction results, the realistic aim is a size/risk model, not a direction model. |
+| Release model | Fitted on the 1,385-release history | Works as designed | Refit after adding non-US releases and newer years. |
+
+### 15.4 Live recordings and tests
+
+| Test | Rows | Independent units | What limits it | How to improve it |
+|---|---|---|---|---|
+| Recording overall | 37,604 opportunities; quotes from 2 venues | About 8 UTC days with data, about 5.5 with both venues | Laptop off, app closes, Wi-Fi and hotspot drops; recording stopped 7 Nov | Run on an always-on machine with a wired or stable connection (a desktop or a small cloud server), so the laptop's state does not matter. Record **at least 30 weekdays**. |
+| H6b ranking | 36,668 opportunities | 6 days; 790 vanished gaps | Few days; 98% of gaps survive one second | More days, as above. Add a pre-registered second outcome with more variation, such as the realised edge after 5–30 seconds. |
+| RQ5 extension | 916 opportunities | 3 days; 42 vanished gaps | Kraken degraded on the hotspot; only 3 days after the engine update | Same as the line above. |
+| C40 news as risk | 37,561 opportunities | 8 days; 832 vanished; **4 release windows, 0 usable controls** | The calendar archive held one week, so no comparison weeks existed | Archive the calendar every week, starting at least 3 weeks **before** the test window; record about 3 months to reach the 30 release windows the test needs. |
+| C43 shadow | 318 opportunities | 2 days; 18 vanished | The shadow ran only 2 days | More days. The shadow is no longer needed now that the penalty is applied: new recordings hold both the raw and the adjusted score. |
+| Prospective tests (did live calls get direction right?) | V1: 124 calls; V2.0: 26; V2.1: 23 | 4, 3 and 2 days; V2.1 is only **4 releases** | Few releases caught; only 2 of 10 big releases matched a headline | Aim for about **100 releases**, which gives about ±10 percentage points: roughly 3 months at 8–10 matched releases a week. Raise coverage with faster sources: cache-busting for fxstreet, one shared poller, and direct agency feeds (BLS, BEA, ECB). |
+| News arrival delay | 19 headline rows | 9 releases (10 needed) | Same coverage problem | Two more weeks with better coverage reaches the pre-registered minimum. |
+| Venues | Kraken + TrueFX | 8 legs | TrueFX is indicative (not tradable); Kraken has no exchange timestamp and an unusable USD/JPY book | Add venues with tradable quotes and exchange timestamps, such as broker demo APIs with streaming prices, or Bitstamp for EUR and GBP. More legs also mean more crosses. |
+
+### 15.5 Demo data
+
+| Data | Size | How to improve it |
+|---|---|---|
+| Replay session | 42,840 quote rows; 2 hours (3 Nov, 19:00–21:00 IST); about 120 opportunities per loop | Cut a longer slice (4–6 hours; a whole day is about 180 MB and is loaded into memory), or several sessions selectable from the dashboard's feed menu. |
+
+### 15.6 The three changes that would help most
+
+1. **Record for longer on a machine that stays on.** Days are the unit of evidence, and every live test was limited by having 2–8 of them. About 6–12 weeks of weekdays would turn the live tests into real tests.
+2. **Archive the economic calendar every week and improve news coverage.** This makes C40 computable and the prospective tests meaningful (about 100 releases).
+3. **Replicate the window30 result on news the study never touched** (May 2025 onwards), pre-registered. This is the cheapest way to strengthen the main finding, because no new recording is needed.
+
+Each of these is a new sample: it needs its own entry in the research log before any of its data is examined.
