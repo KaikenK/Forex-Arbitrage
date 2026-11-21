@@ -1,0 +1,92 @@
+{
+  "rule": "RESEARCH_TRACKER \u00a72 RQ1\u2013RQ5 prospective test (2026-11-02)",
+  "basis": "release",
+  "since": "2026-11-01T21:09:00+00:00",
+  "until": "2026-11-04T18:37:56+00:00",
+  "computed_at": "2026-11-21T11:18:40.238246+00:00",
+  "rows_logged": 26,
+  "repeat_rows_dropped": 13631,
+  "rows_scored": 26,
+  "date_clusters": 3,
+  "events": 26,
+  "accuracy": 0.6153846153846154,
+  "accuracy_ci95": [
+    0.16666666666666666,
+    1.0
+  ],
+  "p_vs_coin": 0.545743237420502,
+  "ic_spearman": -0.1099913617027569,
+  "by_pair": {
+    "EUR/USD": 0.6,
+    "GBP/USD": 0.8,
+    "USD/CHF": 0.6666666666666666,
+    "USD/INR": 0.2,
+    "USD/JPY": 0.8
+  },
+  "reliability": [
+    {
+      "mean_p": 0.5672278829894288,
+      "hit_rate": 1.0,
+      "n": 5
+    },
+    {
+      "mean_p": 0.5955432680494328,
+      "hit_rate": 0.4,
+      "n": 5
+    },
+    {
+      "mean_p": 0.6706395769352735,
+      "hit_rate": 0.8,
+      "n": 10
+    },
+    {
+      "mean_p": 0.7358948793715343,
+      "hit_rate": 0.16666666666666666,
+      "n": 6
+    }
+  ],
+  "ece": 0.30194424739140346,
+  "secondary_fresh_24h": {
+    "rows_logged": 26,
+    "rows_scored": 26,
+    "date_clusters": 3,
+    "events": 26,
+    "accuracy": 0.6153846153846154,
+    "accuracy_ci95": [
+      0.16666666666666666,
+      1.0
+    ],
+    "p_vs_coin": 0.545743237420502,
+    "ic_spearman": -0.1099913617027569,
+    "by_pair": {
+      "EUR/USD": 0.6,
+      "GBP/USD": 0.8,
+      "USD/CHF": 0.6666666666666666,
+      "USD/INR": 0.2,
+      "USD/JPY": 0.8
+    },
+    "reliability": [
+      {
+        "mean_p": 0.5672278829894288,
+        "hit_rate": 1.0,
+        "n": 5
+      },
+      {
+        "mean_p": 0.5955432680494328,
+        "hit_rate": 0.4,
+        "n": 5
+      },
+      {
+        "mean_p": 0.6706395769352735,
+        "hit_rate": 0.8,
+        "n": 10
+      },
+      {
+        "mean_p": 0.7358948793715343,
+        "hit_rate": 0.16666666666666666,
+        "n": 6
+      }
+    ],
+    "ece": 0.30194424739140346
+  }
+}
