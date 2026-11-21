@@ -259,6 +259,21 @@ We tested the live system's own design, a 30-minute rolling news window, on five
 > **News is a risk signal, not a direction signal.**
 > It tells you when to be careful, not which way to bet.
 
+### 7.6 The key result, repeated on news the study had never seen (C45, 21 Nov 2026)
+
+A result found once could be luck, so we repeated the test on fresh data.
+- **The data:** 18 months of headlines the study had never used (May 2025 – Oct 2026), about 400,000 currency headlines, or 250,000 after removing copies.
+- **The test:** fixed in the research log before any of that data was downloaded.
+- **One change, also decided in advance:** the calendar we had ends in April 2025, so the test kept only half-hours away from each currency's usual release times (for example 08:30 New York, 07:00 London).
+
+| | Original (2019–2025) | Repeat on new data (2025–2026) |
+|---|---|---|
+| Does more news mean a bigger move in the next 60 minutes? | Yes (strength 0.048) | **Yes (strength 0.041, p = 0.003)** |
+| Next 30 minutes? | Yes (0.043) | **Yes (0.044, p = 0.0002)** |
+| Does the news mood predict direction? | No (hit rate 50%) | **No (hit rate 49.8%)** |
+
+The finding held, with almost the same strength, on news the study had never seen and at times when no scheduled release was due. Direction stayed at chance.
+
 ---
 
 ## 8. What we found: the live system
@@ -317,7 +332,7 @@ So the live results neither confirm nor refute the historical finding. They simp
    - currency scores;
    - the live models.
 2. **A simple economic rule beats a learned model** for releases, at the moment of release.
-3. **News activity predicts how much prices will move.** This was tested on five and a half years of data and is the main positive finding. It supports using news as a **risk signal**: a reason to be careful, not a reason to bet.
+3. **News activity predicts how much prices will move.** This was tested on five and a half years of data and is the main positive finding. It was then **repeated on 18 months of news the study had never seen, with almost the same strength** (§7.6). It supports using news as a **risk signal**: a reason to be careful, not a reason to bet.
 4. **Live evidence that the risk signal improves ranking is inconclusive.** One live test found it slightly harmful, one slightly helpful, the others found no difference. All rested on too little data.
 5. **Free financial data has silent errors that flip conclusions.** We found four and documented how to detect and fix them.
 6. **The product follows the evidence.**
@@ -486,7 +501,7 @@ The tables below give both counts.
 | H1 rupee arm | 101,176 headlines | 1,436 news-days | Daily rupee prices only | Find intraday USD/INR data (paid, or the NSE/BSE currency-futures APIs already wired: Upstox, Kite). |
 | H5 currency mood | 3,640 test rows | 1,455 dates; 1,293 days with VIX | Daily data | More years (extend GDELT), not more rows per day. |
 | H6 currency score | 5,006 rows (4,077 out-of-sample) | 1,455 dates; 55 test months | Daily, Monday–Thursday only | Same as H5. The result is a clear "no", so more data is unlikely to change it. |
-| window30 (30-minute news window) | about 255,000–261,000 signal times | 1,445 dates | 15-minute GDELT timestamps | **The main positive result.** Replicate it, pre-registered, on May 2025 – Nov 2026 GDELT data that the study never touched. Precise timestamps would allow 5–15 minute tests. |
+| window30 (30-minute news window) | about 255,000–261,000 signal times | 1,445 dates | 15-minute GDELT timestamps | **The main positive result. Done (C45, 21 Nov 2026):** it replicated on May 2025 – Oct 2026 news (§7.6). Still open: the like-for-like check on the original sample, and precise timestamps for 5–15 minute tests. |
 | RQ2-E2E (real release headlines) | 2,410 candidates; 245 rows the reader could parse | 535 moments; only 51 with a parsed number | The tagger keeps only headlines naming a currency, so "US CPI rises 0.5%" never enters | Collect release headlines by indicator name ("payrolls", "CPI", "jobless claims"), and widen the reader's patterns. Live feeds like investinglive print "X vs Y expected", which parses well. |
 
 ### 15.3 Model training data
@@ -519,6 +534,6 @@ The tables below give both counts.
 
 1. **Record for longer on a machine that stays on.** Days are the unit of evidence, and every live test was limited by having 2–8 of them. About 6–12 weeks of weekdays would turn the live tests into real tests.
 2. **Archive the economic calendar every week and improve news coverage.** This makes C40 computable and the prospective tests meaningful (about 100 releases).
-3. **Replicate the window30 result on news the study never touched** (May 2025 onwards), pre-registered. This is the cheapest way to strengthen the main finding, because no new recording is needed.
+3. ~~Replicate the window30 result on news the study never touched.~~ **Done on 21 Nov 2026 (C45): it replicated** (§7.6).
 
 Each of these is a new sample: it needs its own entry in the research log before any of its data is examined.

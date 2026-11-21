@@ -36,7 +36,7 @@ One page. Follow it top to bottom.
 | 2 | Chart + Arbitrage Feed | "When one venue's bid is above the other's ask, the prices have crossed. That's an arbitrage opportunity. Each card shows the pair, the gap in pips, where to buy and sell, and a confidence score." |
 | 3 | A card's confidence | "The confidence is the detector's score **minus a news risk penalty**. When news says a pair is about to move more than usual, we trust the gap less." |
 | 4 | Sentiment Intelligence panel | "This is the semantic wing reading **live news right now**. Headlines are scored with FinBERT, a financial language model, and rolled up per currency and per pair." |
-| 5 | The research (say it, or show the guide) | "We tested whether news predicts **direction**. It doesn't, by the time you can read it: markets react to economic releases within a minute, and our news arrives about 20 minutes later. In every test, direction from news was a coin flip. But **news activity predicts how big the next move will be**, and that held strongly across five and a half years of data. So the product uses news as a **risk signal**, never to bet on direction." |
+| 5 | The research (say it, or show the guide) | "We tested whether news predicts **direction**. It doesn't, by the time you can read it: markets react to economic releases within a minute, and our news arrives about 20 minutes later. In every test, direction from news was a coin flip. But **news activity predicts how big the next move will be**. That held across five and a half years of data, and **we then repeated it on 18 months of news the study had never seen, with the test fixed in advance, and got the same result**. So the product uses news as a **risk signal**, never to bet on direction." |
 | 6 | Cloud live view (if open) | "This is the live recorder, running on a cloud server so the study keeps collecting data. These are real Kraken and TrueFX prices right now." |
 | 7 | Honest limits | "TrueFX is an indicative feed, so these are price discrepancies, not guaranteed profit. Our live sample was short, so the live ranking evidence is still inconclusive. That's what the cloud recorder is for." |
 
@@ -44,6 +44,7 @@ One page. Follow it top to bottom.
 - Reactions to releases happen **within 1 minute** and persist for 2 hours (1,385 releases, 2018–2025).
 - A simple economics rule calls release direction right **68%** of the time at 15 minutes, beating a learned model at 64%. **From the moment an article arrives: 49%**, a coin flip.
 - News activity predicts the size of the next 30–60 minutes across **about 258,000** pair × half-hour observations, 2019–2025 (q < 1e-8).
+- **Repeated on 18 months of news the study had never seen** (May 2025 – Oct 2026, about 400,000 headlines), with the test fixed in advance: **same effect, same size** (strength 0.041 vs 0.048, p = 0.003). Direction is still a coin flip (49.8%).
 - Live, our news arrived **about 23 minutes** after a release (median).
 
 ---
