@@ -545,6 +545,23 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   recorded. Totals at the end: 37,604 opportunities (25 Oct to 6 Nov UTC), 30,392 from the C28 clean start, 916 after
   the H6b window end, 902 after the C38 deploy; 318 C43 shadow rows (313 in the app's private AppData copy, 5 in the
   real AppData folder, §6 2026-11-21).
+
+  **Phase 2 switched on, and a demo mode, 2026-11-21 (engineering; after every 18 Nov step was run and logged, as
+  `RUNBOOK_18NOV.md` requires):** launchers in `C:\Users\xyreo\arbex\run` (outside the repo; backups of the previous
+  versions in `run\backup_2026-11-21`). `backend.cmd` (live mode) now sets `ARBEX_APPLY_SEMANTIC=risk`,
+  `SEMANTIC_DIRECTION_SOURCE=currency_index`, `SEMANTIC_FX_RELEVANCE_FILTER=1`; `semantic.cmd` sets
+  `SEMANTIC_FX_RELEVANCE_FILTER=1`. `SEMANTIC_RELEASE_ACTUALS` is still not built (Step F not done). The direction
+  channel is never applied. `services.ps1` gains a mode (`live` = record real quotes, as before; `demo` = replay) and
+  starts the dashboard (:3001) with the services; one-click launchers `arbex_demo.bat`, `arbex_live.bat`
+  (`arbex_restart.bat` now means live), `arbex_stop.bat`. **Demo mode** (`backend_demo.cmd`): the backend replays two
+  recorded hours of real Kraken + TrueFX quotes (2026-11-03 13:30–15:30 UTC, 42,840 quote rows copied unchanged to
+  `C:\Users\xyreo\arbex\demo\recordings\2026-11-03_demo`) in a loop, with live news from the semantic service and the
+  Phase 2 switches on. It writes nothing into the research recordings, shadow folder or prediction log: its record
+  dir, shadow dir and runtime dir (`SEMANTIC_RUNTIME_DIR`) all point under `C:\Users\xyreo\arbex\demo`; replay builds
+  no recorder. Started 2026-11-21 16:57 IST through the Windows shell (outside the Claude app). Checked: feed mode
+  `replay`, 8 legs, opportunities carry `raw_confidence_score` and `semantic_applied` (risk mode); dashboard and
+  `/live` render; the research prediction log and recordings unchanged since 2026-11-07. Any future live recording
+  runs with the Phase 2 switches on and is a new sample (§6 2026-11-21).
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
