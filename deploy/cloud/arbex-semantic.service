@@ -11,6 +11,8 @@ ExecStart=/opt/arbex/start-semantic.sh
 Restart=always
 RestartSec=10
 TimeoutStartSec=300
+# uvicorn waits for the backend's open /v1/feed stream on stop; do not wait 90 s for it
+TimeoutStopSec=15
 
 [Install]
 WantedBy=multi-user.target

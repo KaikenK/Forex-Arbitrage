@@ -577,6 +577,12 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   (it answered 429 intermittently from the laptop), so that source is missing from this sample; Finnhub is off
   until the owner copies `config.toml` to the server (logged here when done). Laptop scripts in
   `C:\Users\xyreo\arbex\cloud` (status, pull into `C:\Users\xyreo\arbex\cloud_data`, tunnel) tested.
+  **Finnhub on, cloud recorder, 2026-11-21 (before the first weekday of C44):** the owner copied `config.toml` to the
+  server (`/etc/arbex/config.toml`, root:arbex 640) and restarted the semantic service at 12:59:00 UTC; uvicorn waited
+  on the backend's open feed stream, so systemd killed it after its 90 s stop timeout; back 13:00:30 UTC, FinBERT
+  warm-up 20.4 s, backend link available again 13:01 UTC. Recorder not restarted (no quote gap). No Finnhub fetch
+  error since. The unit's stop timeout is now 15 s (`deploy/cloud/arbex-semantic.service`, systemd reloaded, no
+  restart). Configuration from here on is fixed for the sample.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
