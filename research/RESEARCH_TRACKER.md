@@ -563,6 +563,20 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   `replay`, 8 legs, opportunities carry `raw_confidence_score` and `semantic_applied` (risk mode); dashboard and
   `/live` render; the research prediction log and recordings unchanged since 2026-11-07. Any future live recording
   runs with the Phase 2 switches on and is a new sample (§6 2026-11-21).
+
+  **Cloud recorder deployed, 2026-11-21 (C44 sample starts; counts and quality only):** Azure for Students
+  subscription (no card), resource group `arbex-rg`, server `arbex-rec` in Central India (the subscription allows
+  only Korea Central, Malaysia West, UAE North, Indonesia Central and Central India), size Standard_B2ats_v2
+  (2 vCPU, 0.9 GB memory, free 750 h/month for 12 months) with a 4 GB swap file, 64 GB Premium SSD, Ubuntu 24.04,
+  static public IP 20.219.133.247, inbound SSH only (key login, laptop key `~/.ssh/arbex_azure`). Code pinned at
+  9eff2f0 (`setup.sh` with `COMMIT=`). Both services started 2026-11-21 12:43:12 UTC (18:13 IST) under systemd;
+  FinBERT ON (warm-up 24.1 s); backend linked to the service (`available: true`); first quote 12:43 UTC; calendar
+  archive started with week W46. Saturday: FX closed, so only Kraken quotes until the Sunday open; the first
+  two-venue data and the first weekday of the sample are Monday 2026-11-23. Memory at start: 0.3 GB used, about
+  0.55 GB in swap. **Differences noticed at start (inputs only):** fxstreet's RSS answers 403 to the Azure address
+  (it answered 429 intermittently from the laptop), so that source is missing from this sample; Finnhub is off
+  until the owner copies `config.toml` to the server (logged here when done). Laptop scripts in
+  `C:\Users\xyreo\arbex\cloud` (status, pull into `C:\Users\xyreo\arbex\cloud_data`, tunnel) tested.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.

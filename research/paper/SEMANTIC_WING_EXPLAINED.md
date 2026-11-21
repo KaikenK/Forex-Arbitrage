@@ -389,7 +389,16 @@ The semantic service loads FinBERT first, so allow about two minutes for everyth
 
 ### 11.4 Continuing to record later
 
-Nothing has been deleted or locked, so the study can be extended at any time:
+**A cloud recorder has been running since 21 November 2026**, so the laptop no longer needs to stay on.
+- **Where:** an Azure for Students server in Central India, free for 12 months; no card is attached, so it cannot charge anything.
+- **What it records:** everything live mode records, with the same settings.
+- **From the laptop**, in `C:\Users\xyreo\arbex\cloud\`:
+  - `cloud_status.bat` checks the server's health;
+  - `cloud_pull.bat` copies the data to `C:\Users\xyreo\arbex\cloud_data`;
+  - `cloud_tunnel.bat` shows the cloud live monitor at http://localhost:18000/live.
+- **The rule:** this is a new study (C44 in the research log). Its outcomes are not looked at until 30 weekdays are recorded and an analysis plan is logged.
+
+Recording on the laptop is still possible too, and nothing has been deleted or locked:
 1. Run `arbex_live.bat` on a weekday.
 2. Before looking at any of the new data, add an entry to the research log describing the new sample and how it will be analysed.
 3. Never mix the new recording with the 25 Oct – 7 Nov sample.
