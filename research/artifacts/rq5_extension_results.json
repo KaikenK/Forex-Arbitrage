@@ -1,0 +1,105 @@
+{
+  "settings": {
+    "model_nesting": "cumulative",
+    "one_sided_next_quote": "drop"
+  },
+  "window_end_utc": "2026-11-17T18:30:00+00:00",
+  "opportunities": 37604,
+  "framing": "exploratory, descriptive; not a decision test",
+  "window_arms": "C34: plus_window, plus_window_risk_direction (no decision weight)",
+  "venue_caveat": "TrueFX is an indicative feed: crosses are price discrepancies, not executable arbitrage",
+  "generated_at": "2026-11-21T11:19:57.117941+00:00",
+  "rq5_extension": {
+    "window_start_utc": "2026-11-04T18:30:00+00:00",
+    "window_end_utc": "2026-11-17T18:30:00+00:00",
+    "rows": 916,
+    "days": 3,
+    "skipped": {
+      "before_window_start": 36688
+    },
+    "window_bias_coverage": {
+      "rows_with_items": 809,
+      "rows_adjusted": 644,
+      "rows_with_v2": 916
+    },
+    "ranking": {
+      "auc": {
+        "detector": 0.8145090988340417,
+        "plus_risk": 0.8266317968835132,
+        "plus_risk_direction": 0.8266862809196905,
+        "plus_window": 0.8143184047074207,
+        "plus_window_risk_direction": 0.8250790018524572,
+        "plus_window_v2": 0.8127656096763648,
+        "plus_window_v2_directional": 0.815884820747521
+      },
+      "ci95": {
+        "detector": [
+          0.6444444444444445,
+          0.8753968253968254
+        ],
+        "plus_risk": [
+          0.6666666666666666,
+          0.8526818590950004
+        ],
+        "plus_risk_minus_detector": [
+          -0.027380952380952395,
+          0.022222222222222143
+        ],
+        "plus_risk_direction": [
+          0.6666666666666666,
+          0.8527227722772277
+        ],
+        "plus_risk_direction_minus_detector": [
+          -0.027380952380952395,
+          0.022222222222222143
+        ],
+        "plus_window": [
+          0.6444444444444445,
+          0.888095238095238
+        ],
+        "plus_window_minus_detector": [
+          -0.0024953968407791516,
+          0.012698412698412653
+        ],
+        "plus_window_risk_direction": [
+          0.6666666666666666,
+          0.8615079365079366
+        ],
+        "plus_window_risk_direction_minus_detector": [
+          -0.01388888888888884,
+          0.022222222222222143
+        ],
+        "plus_window_v2": [
+          0.6444444444444445,
+          0.8753968253968254
+        ],
+        "plus_window_v2_minus_detector": [
+          -0.007534644829925385,
+          0.0007671221667622241
+        ],
+        "plus_window_v2_directional": [
+          0.6444444444444445,
+          0.8753968253968254
+        ],
+        "plus_window_v2_directional_minus_detector": [
+          -0.00021804438414574356,
+          0.00217862695360449
+        ]
+      },
+      "n": 916,
+      "n_days": 3,
+      "positives": 874,
+      "locked_arms": [
+        "detector",
+        "plus_risk",
+        "plus_risk_direction"
+      ]
+    },
+    "realised_edge_pips": {
+      "mean": 3.0737991266378724,
+      "median": 2.4000000000001798,
+      "n": 916
+    }
+  },
+  "prediction_log_rows": 32052
+}
