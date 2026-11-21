@@ -585,6 +585,13 @@ Write ideas here instead of building them. Revisit only after M6 is done.
   warm-up 20.4 s, backend link available again 13:01 UTC. Recorder not restarted (no quote gap). No Finnhub fetch
   error since. The unit's stop timeout is now 15 s (`deploy/cloud/arbex-semantic.service`, systemd reloaded, no
   restart). Configuration from here on is fixed for the sample.
+  **HistData 2026 monthly files for C45, downloaded 2026-11-21 13:37–13:40 UTC (owner approved; counts only):**
+  HistData publishes the current year by month, so `research/data/histdata.py` gained `download_month` and the
+  loader reads a year's monthly zips when it has no yearly zip (tests added; research suite 294 passed), and
+  `fetch_histdata --months 2026:1-10`. 40 files (EUR/USD, GBP/USD, USD/JPY, USD/CHF × January–October 2026), 11.4 MB,
+  every month complete (about 28k–32k bars each; only bar counts were checked, no price was examined). Earlier
+  than C45's "at run time", which changes nothing in the test. Cached in the app's private AppData copy, like the
+  2018–2025 files, and copied unchanged to `C:\Users\xyreo\arbex\data\histdata_2026` for the Colab run.
 - **Positive control (M3)**: record = FAIL on (a), runs 1–2. Both failures traced to clock
   defects (calendar placeholders, HistData DST). On correctly timed data the original gate
   specification passes all three criteria (post-hoc), and so does the Option A store.
