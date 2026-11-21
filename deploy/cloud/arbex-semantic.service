@@ -1,0 +1,16 @@
+[Unit]
+Description=Arbex semantic service (news reader, FinBERT) on :9000
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=arbex
+Group=arbex
+EnvironmentFile=/etc/arbex/semantic.env
+ExecStart=/opt/arbex/start-semantic.sh
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

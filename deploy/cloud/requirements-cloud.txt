@@ -1,0 +1,38 @@
+# Arbex recorder on a Linux cloud server: the backend (live recorder) and the semantic service
+# with FinBERT. Pinned to the versions that ran on the laptop (Python 3.14, November 2026).
+# MetaTrader5 is Windows-only and not needed (the live spot recorder never imports it).
+# torch is installed separately from the CPU-only index (see setup.sh).
+
+# backend
+fastapi==0.116.1
+starlette==0.47.3
+uvicorn[standard]==0.35.0
+websockets==15.0.1
+pydantic==2.12.5
+pydantic-settings==2.13.1
+python-dotenv==1.2.1
+redis==7.4.0
+numpy==2.3.5
+pandas==2.3.3
+pyarrow==23.0.0
+scipy==1.17.0
+xxhash==3.6.0
+prometheus_client==0.24.1
+requests==2.32.5
+websocket-client==1.9.0
+httpx==0.28.1
+certifi==2025.11.12
+
+# semantic service
+structlog==25.5.0
+feedparser==6.0.12
+scikit-learn==1.8.0
+praw==7.8.1
+prawcore==2.4.0
+yfinance==0.2.66
+
+# FinBERT
+transformers==5.3.0
+tokenizers==0.22.2
+huggingface_hub==1.7.2
+safetensors==0.7.0

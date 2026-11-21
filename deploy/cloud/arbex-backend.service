@@ -1,0 +1,16 @@
+[Unit]
+Description=Arbex backend and live recorder on :8000
+After=network-online.target arbex-semantic.service
+Wants=network-online.target arbex-semantic.service
+
+[Service]
+User=arbex
+Group=arbex
+WorkingDirectory=/opt/arbex/app
+EnvironmentFile=/etc/arbex/backend.env
+ExecStart=/opt/arbex/venv/bin/python -m backend.server.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
