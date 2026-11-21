@@ -234,6 +234,8 @@ STEPS: tuple[Step, ...] = (
          _not_before(LIVE_SCORING_FROM_UTC, "RQ5 extension")),
     Step("c40", "Table: C40 news as risk on the live recorder (pre-registered)",
          ("research.run_c40",), "c40_results.json", _not_before(LIVE_SCORING_FROM_UTC, "C40")),
+    Step("c43", "Table: C43 shadow-engine analysis (exploratory, no decision weight)",
+         ("research.run_c43",), "c43_results.json", _not_before(LIVE_SCORING_FROM_UTC, "C43")),
     Step("feed_inventory", "Table: news-source inventory (appendix)", ("research.feed_inventory",),
          "feed_inventory.json", lambda ctx: None),
     Step("paper_assets", "Paper tables and figures (LaTeX)", ("research.paper.make_paper_assets",),
