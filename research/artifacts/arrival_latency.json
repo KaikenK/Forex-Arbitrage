@@ -1,0 +1,127 @@
+{
+  "pre_registration": "RESEARCH_TRACKER \u00a76 ARRIVAL-LATENCY STUDY (2026-11-02)",
+  "since": "2026-11-01T21:49:00+00:00",
+  "until": "2026-11-13T18:29:00+00:00",
+  "computed_at": "2026-11-21T11:17:26.350733+00:00",
+  "rows": 19,
+  "releases": 9,
+  "receipt_latency": {
+    "n": 19,
+    "median_min": 37.5182148,
+    "p25_min": 15.578353183333334,
+    "p75_min": 74.0290008,
+    "within_1_min": 0.0,
+    "within_2_min": 0.05263157894736842,
+    "within_5_min": 0.05263157894736842,
+    "within_15_min": 0.2631578947368421
+  },
+  "publisher_latency": {
+    "n": 19,
+    "median_min": 4.616666666666666,
+    "p25_min": 0.11666666666666667,
+    "p75_min": 42.725,
+    "within_1_min": 0.3684210526315789,
+    "within_2_min": 0.3684210526315789,
+    "within_5_min": 0.5789473684210527,
+    "within_15_min": 0.631578947368421
+  },
+  "effective_latency": {
+    "n": 9,
+    "median_min": 23.076403266666667,
+    "p25_min": 6.6853436833333335,
+    "p75_min": 37.5182148,
+    "within_1_min": 0.0,
+    "within_2_min": 0.1111111111111111,
+    "within_5_min": 0.1111111111111111,
+    "within_15_min": 0.4444444444444444
+  },
+  "by_source": {
+    "finnhub:news": {
+      "n": 1,
+      "median_min": 50.18307433333334,
+      "p25_min": 50.18307433333334,
+      "p75_min": 50.18307433333334,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.0
+    },
+    "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms": {
+      "n": 1,
+      "median_min": 76.35524156666666,
+      "p25_min": 76.35524156666666,
+      "p75_min": 76.35524156666666,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.0
+    },
+    "https://feeds.bloomberg.com/economics/news.rss": {
+      "n": 1,
+      "median_min": 30.16235141666667,
+      "p25_min": 30.16235141666667,
+      "p75_min": 30.16235141666667,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.0
+    },
+    "https://investinglive.com/feed/news": {
+      "n": 7,
+      "median_min": 33.992440116666664,
+      "p25_min": 15.578353183333334,
+      "p75_min": 50.50507208333333,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.2857142857142857
+    },
+    "https://www.bankofengland.co.uk/rss/news": {
+      "n": 1,
+      "median_min": 1.6413975166666668,
+      "p25_min": 1.6413975166666668,
+      "p75_min": 1.6413975166666668,
+      "within_1_min": 0.0,
+      "within_2_min": 1.0,
+      "within_5_min": 1.0,
+      "within_15_min": 1.0
+    },
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html": {
+      "n": 1,
+      "median_min": 6.8508630833333335,
+      "p25_min": 6.8508630833333335,
+      "p75_min": 6.8508630833333335,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 1.0
+    },
+    "https://www.cnbc.com/id/20910258/device/rss/rss.html": {
+      "n": 3,
+      "median_min": 140.18332608333333,
+      "p25_min": 115.67871518333332,
+      "p75_min": 140.21126975833334,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.0
+    },
+    "https://www.fxstreet.com/rss/news": {
+      "n": 4,
+      "median_min": 35.793512025,
+      "p25_min": 26.883729070833333,
+      "p75_min": 46.403564895833334,
+      "within_1_min": 0.0,
+      "within_2_min": 0.0,
+      "within_5_min": 0.0,
+      "within_15_min": 0.25
+    }
+  },
+  "observed_offset_min": null,
+  "offset_rule": "median effective latency rounded up to (1, 2, 3, 5, 10, 15); None if < 10 releases",
+  "coverage": {
+    "calendar_events": 10,
+    "matched": 2,
+    "coverage": 0.2
+  }
+}

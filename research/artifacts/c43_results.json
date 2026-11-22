@@ -1,0 +1,94 @@
+{
+  "framing": "C43, pre-specified 2026-11-05; exploratory, descriptive, no decision weight",
+  "shadow": {
+    "files": 3,
+    "rows_read": 318,
+    "duplicate_ids": 0,
+    "per_folder": {
+      "C:\\Users\\xyreo\\arbex\\data\\shadow_app": 313,
+      "C:\\Users\\xyreo\\arbex\\data\\shadow_real": 5
+    }
+  },
+  "shadow_ids": 318,
+  "shadow_span_utc": [
+    "2026-11-05T14:35:13.807000+00:00",
+    "2026-11-06T15:54:19.124000+00:00"
+  ],
+  "evaluable_rows": 318,
+  "skipped": {},
+  "a_adjusted_vs_detector": {
+    "what": "still-crossed AUC, adjusted vs detector confidence, same opportunities",
+    "n": 318,
+    "auc": {
+      "detector": 0.8437037037037037,
+      "adjusted": 0.8629629629629629
+    },
+    "ci95": {
+      "detector": [
+        0.6444444444444445,
+        0.8817543859649123
+      ],
+      "adjusted": [
+        0.6666666666666666,
+        0.8983625730994153
+      ],
+      "adjusted_minus_detector": [
+        0.01660818713450296,
+        0.022222222222222143
+      ]
+    },
+    "n_days": 2,
+    "positives": 300,
+    "not_still_crossed": 18
+  },
+  "b_filtered_vs_unfiltered_activity": {
+    "what": "AUC for NOT still crossed, FX-filtered vs unfiltered activity_factor, same rows",
+    "n": 318,
+    "auc_not_still_crossed": {
+      "filtered": 0.7855555555555556,
+      "unfiltered": 0.7487962962962963
+    },
+    "ci95": {
+      "filtered": [
+        0.6333333333333333,
+        0.7855555555555556
+      ],
+      "unfiltered": [
+        0.6666666666666666,
+        0.7487962962962963
+      ],
+      "filtered_minus_unfiltered": [
+        -0.033333333333333326,
+        0.03675925925925927
+      ]
+    },
+    "n_days": 2,
+    "vanished": 18,
+    "bootstrap_draws": 2000
+  },
+  "c_direction_agreement": {
+    "what": "V1 window direction vs currency-index window direction (inputs only)",
+    "n_with_both": 318,
+    "agree": 280,
+    "agree_share": 0.8805031446540881,
+    "n_both_directional": 4,
+    "agree_share_both_directional": 0.0,
+    "crosstab": {
+      "neutral|neutral": 280,
+      "neutral|risk_on": 15,
+      "risk_off|neutral": 13,
+      "risk_off|risk_on": 4,
+      "risk_on|neutral": 6
+    }
+  },
+  "d_filter_removal": {
+    "what": "share of window items the FX filter removes (inputs only)",
+    "rows": 221,
+    "pooled_share_removed": 0.8316666666666667,
+    "median_row_share_removed": 0.9428571428571428,
+    "items_kept": 202,
+    "items_removed": 998
+  },
+  "venue_caveat": "TrueFX is an indicative feed: crosses are price discrepancies, not executable arbitrage",
+  "generated_at": "2026-11-21T11:22:29.584987+00:00"
+}

@@ -99,22 +99,15 @@ def calendar_coverage(archive: Path | None, matched: set[tuple[str, str]], since
     return {"calendar_events": len(events), "matched": hit, "coverage": hit / len(events)}
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--predictions", type=Path, default=None, help="default: default_predictions_path()")
-    parser.add_argument("--calendar-archive", type=Path, default=None, help="default: default_calendar_archive()")
-    parser.add_argument("--since", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=SINCE)
-    parser.add_argument("--until", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=UNTIL)
-    args = parser.parse_args()
-    args.predictions = args.predictions or default_predictions_path()
-    args.calendar_archive = args.calendar_archive or default_calendar_archive()
-    frame = load(args.predictions, args.since, args.until)
+def compute(predictions: Path, calendar_archive: Path | None, since: datetime, until: datetime) -> dict:
+    """The study's result for one prediction log and window (the 2026-11-02 definitions)."""
+    frame = load(predictions, since, until)
     first = frame.groupby(["release_event", "release_utc"])["receipt_latency_min"].min() if len(frame) else pd.Series(dtype=float)
     matched = {(e, t.isoformat()) for e, t in first.index} if len(first) else set()
     a_star = observed_offset([m for m in first.tolist() if math.isfinite(m)])
-    result = {
+    return {
         "pre_registration": "RESEARCH_TRACKER §6 ARRIVAL-LATENCY STUDY (2026-11-02)",
-        "since": args.since.isoformat(), "until": args.until.isoformat(), "computed_at": datetime.now(UTC).isoformat(),
+        "since": since.isoformat(), "until": until.isoformat(), "computed_at": datetime.now(UTC).isoformat(),
         "rows": int(len(frame)), "releases": int(len(first)),
         "receipt_latency": _summary(frame["receipt_latency_min"]) if len(frame) else {"n": 0},
         "publisher_latency": _summary(frame["publisher_latency_min"]) if len(frame) else {"n": 0},
@@ -122,9 +115,22 @@ def main() -> int:
         "by_source": {src: _summary(g["receipt_latency_min"]) for src, g in frame.groupby("feed_url")} if len(frame) else {},
         "observed_offset_min": a_star,
         "offset_rule": f"median effective latency rounded up to {OFFSETS}; None if < {MIN_RELEASES} releases",
-        "coverage": calendar_coverage(args.calendar_archive, matched, args.since, args.until),
+        "coverage": calendar_coverage(calendar_archive, matched, since, until),
     }
-    out = ARTIFACTS / "arrival_latency.json"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--predictions", type=Path, default=None, help="default: default_predictions_path()")
+    parser.add_argument("--calendar-archive", type=Path, default=None, help="default: default_calendar_archive()")
+    parser.add_argument("--since", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=SINCE)
+    parser.add_argument("--until", type=lambda s: datetime.fromisoformat(s).astimezone(UTC), default=UNTIL)
+    parser.add_argument("--out", type=Path, default=ARTIFACTS / "arrival_latency.json")
+    args = parser.parse_args()
+    args.predictions = args.predictions or default_predictions_path()
+    args.calendar_archive = args.calendar_archive or default_calendar_archive()
+    result = compute(args.predictions, args.calendar_archive, args.since, args.until)
+    out = args.out
     out.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     print(json.dumps({k: result[k] for k in ("rows", "releases", "effective_latency", "observed_offset_min")}, default=str))
     return 0

@@ -36,7 +36,7 @@ import bisect
 import json
 import os
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -288,7 +288,9 @@ def resend_exclusions(periods: Sequence[Mapping], *, tail_minutes: int = RESEND_
 def evaluation_rows(opportunities: Sequence[dict], quotes, *, one_sided: str,
                     window_end: datetime = WINDOW_END_UTC,
                     window_start: datetime | None = None,
-                    exclude: Sequence[tuple[datetime, datetime]] = ()) -> tuple[list[dict], dict]:
+                    exclude: Sequence[tuple[datetime, datetime]] = (),
+                    extra: Callable[[Mapping], dict] | None = None) -> tuple[list[dict], dict]:
+    """`extra(opp)` adds fields to each evaluated row (C44 interim: the recorded adjusted score)."""
     rows, skipped = [], defaultdict(int)
     end_ms = int(window_end.timestamp() * 1000)
     start_ms = None if window_start is None else int(window_start.timestamp() * 1000)
@@ -326,7 +328,8 @@ def evaluation_rows(opportunities: Sequence[dict], quotes, *, one_sided: str,
                      "window_items": int(window.get("item_count") or 0),
                      "has_v2": bool(v2), "window_v2_adjustment": float(v2.get("confidence_adjustment") or 0.0),
                      "window_v2_score": float(v2.get("semantic_score") or 0.0),
-                     "residual": int(v2.get("residual_exposure") or 0), **outcome})
+                     "residual": int(v2.get("residual_exposure") or 0), **outcome,
+                     **(extra(opp) if extra is not None else {})})
     return rows, dict(skipped)
 
 

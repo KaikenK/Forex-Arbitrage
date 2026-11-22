@@ -33,6 +33,8 @@ from research.eventstudy.schema import PriceSeries
 from .prices_intraday import parse_histdata_m1_line
 
 PAGE_URL = "https://www.histdata.com/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/{slug}/{year}"
+# The current year is published month by month (one zip per month) until the year is complete.
+MONTH_PAGE_URL = PAGE_URL + "/{month}"
 GET_URL = "https://www.histdata.com/get.php"
 USER_AGENT = "Mozilla/5.0"
 BAR_DURATION = timedelta(minutes=1)
@@ -52,6 +54,19 @@ def _slug(pair: str) -> str:
 def zip_path(cache_dir: Path, pair: str, year: int) -> Path:
     upper = pair.replace("/", "").upper()
     return Path(cache_dir) / upper / f"HISTDATA_COM_ASCII_{upper}_M1_{year}.zip"
+
+
+def month_zip_path(cache_dir: Path, pair: str, year: int, month: int) -> Path:
+    upper = pair.replace("/", "").upper()
+    return Path(cache_dir) / upper / f"HISTDATA_COM_ASCII_{upper}_M1_{year}{month:02d}.zip"
+
+
+def year_zips(cache_dir: Path, pair: str, year: int) -> list[Path]:
+    """The cached zips holding `year`: the yearly file if present, else whichever monthly files are."""
+    yearly = zip_path(cache_dir, pair, year)
+    if yearly.exists():
+        return [yearly]
+    return [p for m in range(1, 13) if (p := month_zip_path(cache_dir, pair, year, m)).exists()]
 
 
 def _http_get(url: str, headers: dict[str, str]) -> bytes:
@@ -90,10 +105,29 @@ def download_year(
     which must never be cached as if it were data. The write is atomic.
     """
     path = zip_path(cache_dir, pair, year)
+    page = PAGE_URL.format(slug=_slug(pair), year=year)
+    return _download(page, path, f"{pair} {year}", http_get=http_get, http_post=http_post)
+
+
+def download_month(
+    pair: str,
+    year: int,
+    month: int,
+    cache_dir: Path,
+    *,
+    http_get: HttpGet | None = None,
+    http_post: HttpPost | None = None,
+) -> tuple[Path, bool]:
+    """Ensure one pair-month zip of a year HistData still publishes by month. Same checks as a year."""
+    path = month_zip_path(cache_dir, pair, year, month)
+    page = MONTH_PAGE_URL.format(slug=_slug(pair), year=year, month=month)
+    return _download(page, path, f"{pair} {year}-{month:02d}", http_get=http_get, http_post=http_post)
+
+
+def _download(page: str, path: Path, label: str, *, http_get: HttpGet | None,
+              http_post: HttpPost | None) -> tuple[Path, bool]:
     if path.exists() and zipfile.is_zipfile(path):
         return path, False
-
-    page = PAGE_URL.format(slug=_slug(pair), year=year)
     html = (http_get or _http_get)(page, {"User-Agent": USER_AGENT}).decode("utf-8", "replace")
     fields = _form_fields(html)
     raw = (http_post or _http_post)(
@@ -102,7 +136,7 @@ def download_year(
         {"User-Agent": USER_AGENT, "Referer": page, "Content-Type": "application/x-www-form-urlencoded"},
     )
     if not raw.startswith(b"PK") or not zipfile.is_zipfile(io.BytesIO(raw)):
-        raise HistDataError(f"HistData returned no zip for {pair} {year} ({len(raw)} bytes)")
+        raise HistDataError(f"HistData returned no zip for {label} ({len(raw)} bytes)")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
@@ -142,7 +176,9 @@ def load_windowed_series(
     minute of reaction — understating exactly the 1-minute jump the positive control tests.
 
     Returns the series and the list of years that were needed but not cached, so a caller
-    can report missing coverage instead of silently analysing a partial sample.
+    can report missing coverage instead of silently analysing a partial sample. A year with
+    no yearly zip is read from its monthly zips (the current year); it counts as missing only
+    when none is cached, so callers that need whole months check `year_zips` themselves.
     """
     keep = {hour.astimezone(UTC).replace(minute=0, second=0, microsecond=0) for hour in hours}
     years = sorted({hour.year for hour in keep})
@@ -150,14 +186,15 @@ def load_windowed_series(
     prices: list[float] = []
     missing: list[int] = []
     for year in years:
-        path = zip_path(cache_dir, pair, year)
-        if not path.exists():
+        paths = year_zips(cache_dir, pair, year)
+        if not paths:
             missing.append(year)
             continue
-        for stamp, close in iter_m1_bars(path):
-            if stamp.replace(minute=0, second=0) in keep:
-                times.append(stamp + BAR_DURATION)
-                prices.append(close)
+        for path in paths:
+            for stamp, close in iter_m1_bars(path):
+                if stamp.replace(minute=0, second=0) in keep:
+                    times.append(stamp + BAR_DURATION)
+                    prices.append(close)
     if any(later < earlier for earlier, later in zip(times, times[1:])):
         order = sorted(range(len(times)), key=times.__getitem__)
         times = [times[i] for i in order]

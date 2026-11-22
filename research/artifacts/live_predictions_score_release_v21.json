@@ -1,0 +1,82 @@
+{
+  "rule": "RESEARCH_TRACKER \u00a72 RQ1\u2013RQ5 prospective test (2026-11-02)",
+  "basis": "release",
+  "since": "2026-11-04T18:37:56+00:00",
+  "until": "2026-11-17T18:30:00+00:00",
+  "computed_at": "2026-11-21T11:18:58.282250+00:00",
+  "rows_logged": 26,
+  "repeat_rows_dropped": 13631,
+  "rows_scored": 23,
+  "date_clusters": 2,
+  "events": 23,
+  "accuracy": 0.9130434782608695,
+  "accuracy_ci95": [
+    0.9,
+    0.9230769230769231
+  ],
+  "p_vs_coin": 0.017477157817971843,
+  "ic_spearman": 0.574800584596096,
+  "by_pair": {
+    "EUR/USD": 1.0,
+    "GBP/USD": 1.0,
+    "USD/CHF": 1.0,
+    "USD/INR": 0.0,
+    "USD/JPY": 1.0
+  },
+  "reliability": [
+    {
+      "mean_p": 0.6533394785807765,
+      "hit_rate": 0.8888888888888888,
+      "n": 9
+    },
+    {
+      "mean_p": 0.6950893156321171,
+      "hit_rate": 0.8,
+      "n": 5
+    },
+    {
+      "mean_p": 0.7304997710530865,
+      "hit_rate": 1.0,
+      "n": 9
+    }
+  ],
+  "ece": 0.22043479022324558,
+  "secondary_fresh_24h": {
+    "rows_logged": 26,
+    "rows_scored": 23,
+    "date_clusters": 2,
+    "events": 23,
+    "accuracy": 0.9130434782608695,
+    "accuracy_ci95": [
+      0.9,
+      0.9230769230769231
+    ],
+    "p_vs_coin": 0.017477157817971843,
+    "ic_spearman": 0.574800584596096,
+    "by_pair": {
+      "EUR/USD": 1.0,
+      "GBP/USD": 1.0,
+      "USD/CHF": 1.0,
+      "USD/INR": 0.0,
+      "USD/JPY": 1.0
+    },
+    "reliability": [
+      {
+        "mean_p": 0.6533394785807765,
+        "hit_rate": 0.8888888888888888,
+        "n": 9
+      },
+      {
+        "mean_p": 0.6950893156321171,
+        "hit_rate": 0.8,
+        "n": 5
+      },
+      {
+        "mean_p": 0.7304997710530865,
+        "hit_rate": 1.0,
+        "n": 9
+      }
+    ],
+    "ece": 0.22043479022324558
+  }
+}

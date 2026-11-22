@@ -138,6 +138,36 @@ def test_windowed_loader_reports_uncached_years(tmp_path: Path) -> None:
     assert missing == [2019]
 
 
+def test_month_download_uses_the_month_page_and_its_own_file(tmp_path: Path) -> None:
+    from research.data.histdata import download_month, month_zip_path
+
+    http = FakeHttp(_zip(LINES))
+    path, downloaded = download_month("EUR/USD", 2026, 3, tmp_path, http_get=http.get, http_post=http.post)
+    assert downloaded and path == month_zip_path(tmp_path, "EUR/USD", 2026, 3)
+    assert path.name == "HISTDATA_COM_ASCII_EURUSD_M1_202603.zip"
+    assert http.posts[0][2]["Referer"].endswith("/eurusd/2026/3")
+    with pytest.raises(HistDataError):
+        download_month("EUR/USD", 2026, 4, tmp_path, http_get=FakeHttp(b"<html>no</html>").get,
+                       http_post=FakeHttp(b"<html>no</html>").post)
+    assert not month_zip_path(tmp_path, "EUR/USD", 2026, 4).exists()
+
+
+def test_windowed_loader_reads_monthly_zips_when_the_year_has_no_yearly_file(tmp_path: Path) -> None:
+    from research.data.histdata import download_month, year_zips
+
+    jan = ["20260105 083000;1;1;1;1.0400;0", "20260105 083100;1;1;1;1.0410;0"]
+    feb = ["20260202 083000;1;1;1;1.0500;0"]
+    for month, lines in ((1, jan), (2, feb)):
+        download_month("EUR/USD", 2026, month, tmp_path, http_get=FakeHttp(_zip(lines)).get,
+                       http_post=FakeHttp(_zip(lines)).post)
+    assert [p.name[-10:] for p in year_zips(tmp_path, "EUR/USD", 2026)] == ["202601.zip", "202602.zip"]
+    hours = [datetime(2026, 1, 5, 13, tzinfo=UTC), datetime(2026, 2, 2, 13, tzinfo=UTC)]
+    series, missing = load_windowed_series("EUR/USD", hours, tmp_path)
+    assert missing == [] and series.prices == pytest.approx([1.0400, 1.0410, 1.0500])
+    _, missing = load_windowed_series("EUR/USD", [datetime(2027, 1, 4, 13, tzinfo=UTC)], tmp_path)
+    assert missing == [2027]
+
+
 def _event(at: datetime) -> Event:
     return Event(event_id="e", timestamp=at, pair="EUR/USD", categories=("cpi",), surprise=1.0, source="calendar")
 

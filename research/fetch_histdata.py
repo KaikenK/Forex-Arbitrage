@@ -7,6 +7,7 @@ be impolite to a free service. Resumable: cached years are skipped.
 
   python -m research.fetch_histdata
   python -m research.fetch_histdata --pairs EUR/USD --years 2018-2019
+  python -m research.fetch_histdata --months 2026:1-10     (the current year, published by month)
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from research.data.cache_paths import histdata_cache_dir
-from research.data.histdata import HistDataError, download_year
+from research.data.histdata import HistDataError, download_month, download_year
 from research.data.tagging import USD_STUDY_PAIRS
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
@@ -40,18 +41,25 @@ def main() -> int:
     parser.add_argument("--years", default=DEFAULT_YEARS, help="e.g. 2018-2025 or 2018,2020")
     parser.add_argument("--pause", type=float, default=DEFAULT_PAUSE_SECONDS)
     parser.add_argument("--cache-dir", type=Path, default=histdata_cache_dir())
+    parser.add_argument("--months", default=None, help="YEAR:M1-M2, e.g. 2026:1-10 (monthly files instead of years)")
     args = parser.parse_args()
 
     pairs = [pair.strip().upper() for pair in args.pairs.split(",") if pair.strip()]
-    years = _years(args.years)
-    print(f"{len(pairs)} pairs x {len(years)} years -> {args.cache_dir}")
+    if args.months:
+        year_text, span = args.months.split(":", 1)
+        years = [(int(year_text), m) for m in _years(span)]
+        fetch = lambda pair, item, cache: download_month(pair, item[0], item[1], cache)  # noqa: E731
+    else:
+        years = _years(args.years)
+        fetch = download_year
+    print(f"{len(pairs)} pairs x {len(years)} files -> {args.cache_dir}")
 
     started = time.monotonic()
     downloaded, cached, failed = 0, 0, []
     for pair in pairs:
         for year in years:
             try:
-                path, fresh = download_year(pair, year, args.cache_dir)
+                path, fresh = fetch(pair, year, args.cache_dir)
             except (HistDataError, OSError) as exc:
                 failed.append({"pair": pair, "year": year, "error": f"{type(exc).__name__}: {exc}"[:200]})
                 print(f"  {pair} {year}: FAILED {exc}", flush=True)

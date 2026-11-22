@@ -1,0 +1,283 @@
+{
+  "framing": "C40, pre-registered 2026-11-05; BH over C40-1..3, day-cluster bootstrap",
+  "end_utc": "2026-11-17T18:30:00+00:00",
+  "opportunities": 37604,
+  "releases_high_impact": 10,
+  "calendar_weeks": 1,
+  "recorder_gaps": 2135,
+  "gap_rule_seconds": 5.0,
+  "venue_caveat": "TrueFX is an indicative feed: crosses are price discrepancies, not executable arbitrage",
+  "generated_at": "2026-11-21T11:20:53.906889+00:00",
+  "main": {
+    "rows": 37561,
+    "days": 8,
+    "pairs": [
+      "EURUSD",
+      "GBPUSD",
+      "USDCHF"
+    ],
+    "skipped": {
+      "next_poll_after_gap": 43
+    },
+    "window_counts": {
+      "control_unusable": 24,
+      "release_window_unusable": 4
+    },
+    "tests": {
+      "C40-1": {
+        "release_windows": 4,
+        "control_windows": 0,
+        "release_windows_with_opportunity": 3,
+        "release_opportunities": 315,
+        "control_opportunities": 0,
+        "not_computable": "3 release windows contain an opportunity (needs 30) or no control opportunity"
+      },
+      "C40-2": {
+        "field": "older_leg_age_ms",
+        "n": 37561,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.4954674354733317,
+        "auc_ci95": [
+          0.46219415662989566,
+          0.5508652612837307
+        ],
+        "n_days": 8,
+        "vanished": 832,
+        "p_one_sided": 0.6551724137931034,
+        "bootstrap_draws": 2000,
+        "q_bh": 0.6551724137931034,
+        "passes": false
+      },
+      "C40-3": {
+        "field": "activity_factor",
+        "n": 30351,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5311516412177842,
+        "auc_ci95": [
+          0.4246739289555029,
+          0.5520450880313248
+        ],
+        "n_days": 6,
+        "vanished": 615,
+        "p_one_sided": 0.2178910544727636,
+        "bootstrap_draws": 2000,
+        "q_bh": 0.4357821089455272,
+        "passes": false
+      }
+    },
+    "decision": {
+      "news_as_risk_live": "NOT SUPPORTED",
+      "feed_quality_C40-2": false,
+      "rule": "supported if C40-1 or C40-3 passes in the stated direction after BH (q < 0.05)"
+    },
+    "reported_only": {
+      "C40-1_wide_window_-15_+30": {
+        "release_windows": 3,
+        "control_windows": 0,
+        "release_windows_with_opportunity": 3,
+        "release_opportunities": 892,
+        "control_opportunities": 0,
+        "not_computable": "3 release windows contain an opportunity (needs 30) or no control opportunity"
+      },
+      "C40-2_exchange_clock_age": {
+        "field": "older_leg_exchange_age_ms",
+        "n": 0,
+        "expected_sign": "AUC > 0.5",
+        "not_computable": "0 opportunities with an outcome and older_leg_exchange_age_ms (needs 200)"
+      },
+      "C40-3_full_span_incl_pre_C28": {
+        "field": "activity_factor",
+        "n": 37561,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.51016187690716,
+        "auc_ci95": [
+          0.3890366276441964,
+          0.594883776225571
+        ],
+        "n_days": 8,
+        "vanished": 832,
+        "p_one_sided": 0.3278360819590205,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_item_count_clean": {
+        "field": "item_count",
+        "n": 30351,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5684968645489522,
+        "auc_ci95": [
+          0.45028665361833775,
+          0.5864556971344186
+        ],
+        "n_days": 6,
+        "vanished": 615,
+        "p_one_sided": 0.17491254372813594,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_h6b_window_part": {
+        "field": "activity_factor",
+        "n": 29437,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5321596036343514,
+        "auc_ci95": [
+          0.371458148476782,
+          0.549951423684829
+        ],
+        "n_days": 4,
+        "vanished": 573,
+        "p_one_sided": 0.24887556221889057,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_rq5_extension_part": {
+        "field": "activity_factor",
+        "n": 914,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5505406290956749,
+        "auc_ci95": [
+          0.5208828592507583,
+          0.6666666666666666
+        ],
+        "n_days": 3,
+        "vanished": 42,
+        "p_one_sided": 0.0004997501249375312,
+        "bootstrap_draws": 2000
+      }
+    }
+  },
+  "sensitivity_minus_resends_C39": {
+    "rows": 33738,
+    "days": 8,
+    "pairs": [
+      "EURUSD",
+      "GBPUSD",
+      "USDCHF"
+    ],
+    "skipped": {
+      "resend_period": 3823,
+      "next_poll_after_gap": 43
+    },
+    "window_counts": {
+      "control_unusable": 24,
+      "release_window_unusable": 4
+    },
+    "tests": {
+      "C40-1": {
+        "release_windows": 4,
+        "control_windows": 0,
+        "release_windows_with_opportunity": 3,
+        "release_opportunities": 315,
+        "control_opportunities": 0,
+        "not_computable": "3 release windows contain an opportunity (needs 30) or no control opportunity"
+      },
+      "C40-2": {
+        "field": "older_leg_age_ms",
+        "n": 33738,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.49846920866877437,
+        "auc_ci95": [
+          0.4625936525473715,
+          0.5576890609916259
+        ],
+        "n_days": 8,
+        "vanished": 701,
+        "p_one_sided": 0.5247376311844077,
+        "bootstrap_draws": 2000,
+        "q_bh": 0.5262368815592204,
+        "passes": false
+      },
+      "C40-3": {
+        "field": "activity_factor",
+        "n": 26891,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.4985676176458993,
+        "auc_ci95": [
+          0.42104755255076265,
+          0.5774831685699676
+        ],
+        "n_days": 6,
+        "vanished": 490,
+        "p_one_sided": 0.5262368815592204,
+        "bootstrap_draws": 2000,
+        "q_bh": 0.5262368815592204,
+        "passes": false
+      }
+    },
+    "decision": {
+      "news_as_risk_live": "NOT SUPPORTED",
+      "feed_quality_C40-2": false,
+      "rule": "supported if C40-1 or C40-3 passes in the stated direction after BH (q < 0.05)"
+    },
+    "reported_only": {
+      "C40-1_wide_window_-15_+30": {
+        "release_windows": 3,
+        "control_windows": 0,
+        "release_windows_with_opportunity": 3,
+        "release_opportunities": 892,
+        "control_opportunities": 0,
+        "not_computable": "3 release windows contain an opportunity (needs 30) or no control opportunity"
+      },
+      "C40-2_exchange_clock_age": {
+        "field": "older_leg_exchange_age_ms",
+        "n": 0,
+        "expected_sign": "AUC > 0.5",
+        "not_computable": "0 opportunities with an outcome and older_leg_exchange_age_ms (needs 200)"
+      },
+      "C40-3_full_span_incl_pre_C28": {
+        "field": "activity_factor",
+        "n": 33738,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.4853562147519983,
+        "auc_ci95": [
+          0.3985525145326109,
+          0.6079947956532203
+        ],
+        "n_days": 8,
+        "vanished": 701,
+        "p_one_sided": 0.5527236381809095,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_item_count_clean": {
+        "field": "item_count",
+        "n": 26891,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5285554659726093,
+        "auc_ci95": [
+          0.4519062837637113,
+          0.6149091315834327
+        ],
+        "n_days": 6,
+        "vanished": 490,
+        "p_one_sided": 0.12243878060969515,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_h6b_window_part": {
+        "field": "activity_factor",
+        "n": 25977,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.49515047313139676,
+        "auc_ci95": [
+          0.2957243538679412,
+          0.5650331118407046
+        ],
+        "n_days": 4,
+        "vanished": 448,
+        "p_one_sided": 0.6051974012993503,
+        "bootstrap_draws": 2000
+      },
+      "C40-3_rq5_extension_part": {
+        "field": "activity_factor",
+        "n": 914,
+        "expected_sign": "AUC > 0.5",
+        "auc_not_still_crossed": 0.5505406290956749,
+        "auc_ci95": [
+          0.5208828592507583,
+          0.6666666666666666
+        ],
+        "n_days": 3,
+        "vanished": 42,
+        "p_one_sided": 0.0004997501249375312,
+        "bootstrap_draws": 2000
+      }
+    },
+    "resend_periods": 17
+  }
+}

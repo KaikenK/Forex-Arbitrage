@@ -404,6 +404,13 @@ def test_h6b_window_bias_arm_and_rq5_extension(monkeypatch):
                                      window_end=h.RQ5_END_UTC)
     assert len(ext) == 1 and skipped == {"before_window_start": 2}
     monkeypatch.setattr("sys.argv", ["run_h6b", "--recordings", ".", "--rq5-extension"])
+
+    class _BeforeGate(datetime):        # the gate reads the wall clock; pin it before 18 Nov
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 10, tzinfo=UTC)
+
+    monkeypatch.setattr(h, "datetime", _BeforeGate)
     with pytest.raises(SystemExit, match="RQ5 extension window is still open"):
         h.main()
 
