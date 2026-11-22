@@ -1,0 +1,56 @@
+\begin{tabular}{@{}p{0.60\columnwidth}rr@{}}
+\toprule
+Test & $p$ & $q$ (BH)\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{RQ2}}\\
+\quad direction vs coin, release 0--1 & $1.6\times10^{-32}$ & $1.1\times10^{-31}$\\
+\quad direction vs coin, release 0--5 & $2.2\times10^{-21}$ & $7.6\times10^{-21}$\\
+\quad direction vs coin, release 0--15 (primary) & $1.1\times10^{-17}$ & --\\
+\quad direction vs coin, release 0--30 & $6.7\times10^{-15}$ & $1.6\times10^{-14}$\\
+\quad direction vs coin, release 0--60 & $1.5\times10^{-12}$ & $2.7\times10^{-12}$\\
+\quad direction vs coin, release 0--120 & $9.8\times10^{-9}$ & $1.4\times10^{-8}$\\
+\quad direction vs coin, arrival 15--30 & 0.082 & 0.095\\
+\quad direction vs coin, arrival 15--60 (primary) & 0.265 & --\\
+\quad direction vs coin, arrival 15--120 & 0.852 & 0.852\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{window30}}\\
+\quad direction (rank IC), 30 min & 0.951 & 0.951\\
+\quad direction (rank IC), 60 min & 0.739 & 0.887\\
+\quad activity (log abnormal move), 30 min & $2.0\times10^{-9}$ & $6.1\times10^{-9}$\\
+\quad activity (log abnormal move), 60 min & $2.4\times10^{-11}$ & $1.5\times10^{-10}$\\
+\quad caution (rank IC), 30 min & 0.093 & 0.139\\
+\quad caution (rank IC), 60 min & 0.022 & 0.044\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{C45}}\\
+\quad activity (T2-clock), 30 min & $2.4\times10^{-4}$ & $4.8\times10^{-4}$\\
+\quad activity (T2-clock), 60 min & 0.003 & 0.003\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{C40}}\\
+\quad C40-1 release windows vs controls & not computable & --\\
+\quad C40-2 quote age (feed check) & 0.655 & 0.655\\
+\quad C40-3 activity factor & 0.218 & 0.436\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{H1}}\\
+\quad novelty coefficient, majors (wrong sign) & $5.4\times10^{-4}$ & --\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{H5}}\\
+\quad lexicon: implied-surprise beta (a) & $4.4\times10^{-11}$ & --\\
+\quad lexicon: loss difference (a) & 0.003 & --\\
+\quad lexicon: market component vs VIX change (b) & 0.138 & --\\
+\quad lexicon: market component vs USD/JPY (b) & 0.804 & --\\
+\quad lexicon: market component vs USD/CHF (b) & 0.002 & --\\
+\quad finbert: implied-surprise beta (a) & 0.013 & --\\
+\quad finbert: loss difference (a) & 0.525 & --\\
+\quad finbert: market component vs VIX change (b) & 0.026 & --\\
+\quad finbert: market component vs USD/JPY (b) & 0.227 & --\\
+\quad finbert: market component vs USD/CHF (b) & $2.4\times10^{-5}$ & --\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{H6}}\\
+\quad pair-bias coefficient, daily & 0.891 & --\\
+\midrule
+\multicolumn{3}{@{}l}{\textit{prospective}}\\
+\quad sign accuracy vs coin, deployed V1 model & 0.817 & --\\
+\quad sign accuracy vs coin, release model V2.0 & 0.546 & --\\
+\quad sign accuracy vs coin, release model V2.1 (4 events; not interpretable) & 0.017 & --\\
+\bottomrule
+\end{tabular}

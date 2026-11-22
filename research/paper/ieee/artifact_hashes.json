@@ -1,0 +1,27 @@
+{
+  "source_commit": "639fcdf",
+  "hashing": "sha256 of file bytes, CRLF normalised to LF",
+  "files": {
+    "RESEARCH_TRACKER.md": "cb6cd67eb6fe87bcbbf2f4914773d8a417677102688578a7ecfbacce1facf156",
+    "REPRODUCE.md": "5dc0daf6ebe8c3e875835306f48faac33fc3effb1a4a8ad12e1cd47220651a1c",
+    "artifacts/reaction_eval.json": "f0c45a5cb271a9d7911f9a85e7b2303c7d8beb0f82b93a9d146464308473feb8",
+    "artifacts/arrival_latency.json": "88f1069570b2cb1d432bdf42cf33f93973b7daffb915424b891db5a13df5a116",
+    "artifacts/window30_results.json": "875bdc65c99c311a1b06a26b54592137ecfac6a85e2639d59d8980e2301e815d",
+    "artifacts/c45_results.json": "c268216f0716e885b532807278f95616e748146fd5a859165fc45602df798319",
+    "artifacts/c45_release_clocks.json": "e97b770d00b579ecb107aa1596db54b19be242b19a711b8df193bda376eb9adc",
+    "artifacts/h1_results.json": "ae884cdfa04091d93ee7cf056de3d6b352a21bb4dadd8bcdbc3318338930d452",
+    "artifacts/h5_results.json": "c67bb52b78f3cf242884c94480a2b69355201eb547bbf9753f3a5bbd9e1bd78f",
+    "artifacts/h6_results.json": "56bbe4e771d707fb694161ba5c244eae924be433cdabce8d8f737d3b519b3259",
+    "artifacts/h6b_results.json": "587b6f4802468bfd0dedc9db52d79253377e532d892d602312e65f71499a426b",
+    "artifacts/rq5_extension_results.json": "05742c8dc56c74d5ad6d2460fcef395dbdcebb5988dd868d78f221ac88f28fc4",
+    "artifacts/c40_results.json": "d01f27b0135b0b2eb91bc5b2d103702ce94c8ab0a2f565030fafd0df933dbafc",
+    "artifacts/c43_results.json": "5920b6dde5de0d3cdd40efe1b417d969bae7f1df40e362ab1f3590f5108f691c",
+    "artifacts/live_predictions_score_v1.json": "d689c74787a687a39e38157306bc24713bf759cf559b76f82ee81c2b2ce0d264",
+    "artifacts/live_predictions_score_release_v20.json": "bb6d702f142815326959339ff0436ce2ba865f51a61074a5ceaa5fc8614a6a3a",
+    "artifacts/live_predictions_score_release_v21.json": "f317f9eee3a0f3054cf8fe8e0a6b8c376736532b9706df1f39f7edc6b86f552d",
+    "artifacts/positive_control.json": "b26dd33cc5693a08345c52c49d85890d611dae0bc85ecc6a00d71023a135541d",
+    "artifacts/h2h3.json": "7ba8a10f43669d135a1890c57efacff8b217dc14d00b180fb31388f6f43592a7",
+    "artifacts/rq2_e2e.json": "dffd8610f0e132c6fd4125b040651e4f80b7e0bd40ed6e57aba61bb7ff0fae90",
+    "artifacts/calendar_events.manifest.json": "dbfd2dae1624bfc5404b7e8d52ef715a4d7e89aaa79f84d702469287e660b511"
+  }
+}
