@@ -2,7 +2,7 @@
   "source_commit": "639fcdf",
   "hashing": "sha256 of file bytes, CRLF normalised to LF",
   "files": {
-    "RESEARCH_TRACKER.md": "cb6cd67eb6fe87bcbbf2f4914773d8a417677102688578a7ecfbacce1facf156",
+    "RESEARCH_TRACKER.md": "f68a959246f0aff2d482b4cff0ca800a715699e223dc7daaa0eeac84899e4c27",
     "REPRODUCE.md": "5dc0daf6ebe8c3e875835306f48faac33fc3effb1a4a8ad12e1cd47220651a1c",
     "artifacts/reaction_eval.json": "f0c45a5cb271a9d7911f9a85e7b2303c7d8beb0f82b93a9d146464308473feb8",
     "artifacts/arrival_latency.json": "88f1069570b2cb1d432bdf42cf33f93973b7daffb915424b891db5a13df5a116",

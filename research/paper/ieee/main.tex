@@ -10,6 +10,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{adjustbox}
 \usepackage{textcomp}
 \usepackage[hidelinks]{hyperref}
 
@@ -60,8 +61,9 @@ data quality
 \section{Introduction}
 A cross-venue arbitrage detector flags the moments when one venue's bid exceeds another venue's
 ask. Once both legs fill, the position is close to market-neutral. What remains is execution
-risk: legging exposure while the second leg is pending, and stale quotes around news
-\cite{chaboud2014}. A news layer is only useful to such a detector if it answers, for each
+risk: legging exposure while the second leg is pending, and stale quotes around news.
+Algorithmic traders in the FX market are known to remove triangular arbitrage
+opportunities~\cite{chaboud2014}, so what is left for a detector is short-lived. A news layer is only useful to such a detector if it answers, for each
 article and each pair, four questions. Is the pair affected? Which way does it move? By how
 much? How sure is the answer? The last answer has to be a probability that means what it says,
 because a ranker uses it as a weight.
@@ -85,9 +87,9 @@ reproducibility package (Sections~\ref{sec:data} and~\ref{sec:repro}).
 High-frequency FX responses to macroeconomic announcements are documented by
 Andersen et al.~\cite{abdv2003}, Faust et al.~\cite{faust2007} and Evans and
 Lyons~\cite{evanslyons2008}: surprises move exchange rates within minutes, with signs that follow
-economic priors, and volatility stays elevated for a while afterwards~\cite{ederington1993}. Our
+economic priors, and volatility stays elevated for roughly fifteen minutes afterwards~\cite{ederington1993}. Our
 scheduled-release study replicates this on corrected data and turns it into an article-level
-predictor. Tetlock~\cite{tetlock2011} shows that markets react less to stale news, which
+predictor. Tetlock~\cite{tetlock2011} studies whether investors react to stale information, which
 motivates our novelty hypothesis, and Gro{\ss}-Klu{\ss}mann and Hautsch~\cite{grossklussmann2011}
 quantify news-implied reactions with automated text analytics. Baker et al.~\cite{bbd2016} build
 news-based indices of the kind our currency-level factor follows. Sentiment baselines use
@@ -204,6 +206,7 @@ primary window ($p=0.27$).
 \begin{table}[t]\centering\footnotesize
 \caption{Out-of-sample direction accuracy (\%). $^\dagger$ primary. 95\% intervals are clustered by
 release moment.}\label{tab:dir}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
 Window (min) & Learned model & Theory rule & Majority\\
@@ -218,6 +221,7 @@ arrival 15--60$^\dagger$ & 48.8 [46.6, 51.0] & 51.0 [48.0, 53.7] & 50.5\\
 arrival 15--120 & 50.2 & 50.1 & 49.7\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 \subsubsection{How fast the move happens, and how late the article is}
@@ -252,6 +256,7 @@ $+0.47$, $p=0.15$). After arrival the same-clock volatility baseline beats it (7
 
 \begin{table}[t]\centering\footnotesize
 \caption{Magnitude: MAE (bps) / Spearman $\rho$ out of sample.}\label{tab:mag}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
 Window & Model & Pair mean & Cell mean & Same-clock $v$\\
@@ -260,6 +265,7 @@ release 0--15$^\dagger$ & 12.01 / 0.29 & 11.54 / 0.19 & 11.59 / 0.24 & 11.85 / 0
 arrival 15--60$^\dagger$ & 7.40 / 0.16 & 7.27 / 0.07 & 7.43 / 0.08 & \textbf{7.11} / 0.22\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 \subsection{Confidence (RQ4)}
@@ -270,6 +276,7 @@ Fig.~\ref{fig:rel}). At 15 minutes the expected calibration error is 0.041 and t
 
 \begin{table}[t]\centering\footnotesize
 \caption{Calibration and conformal coverage.}\label{tab:conf}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
 Window & ECE & Brier & Const. & Cov.\ 80\% & Cov.\ 90\%\\
@@ -279,6 +286,7 @@ release 0--15$^\dagger$ & 0.041 & 0.234 & 0.232 & 76.5 & 86.9\\
 arrival 15--60$^\dagger$ & 0.056 & 0.259 & 0.250 & 78.5 & 89.1\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 \begin{figure}[t]\centering
@@ -299,6 +307,7 @@ category (H3) is not supported.
 \begin{table}[t]\centering\footnotesize
 \caption{Sign-oriented cumulative response (bps), US releases, four majors pooled. $^{*}$
 survives Benjamini--Hochberg at $q\le0.05$.}\label{tab:h2}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
 Category & 1 min & 15 min & 60 min & 120 min & Dates\\
@@ -308,12 +317,13 @@ employment & 7.6$^{*}$ & 7.7$^{*}$ & 8.4$^{*}$ & 8.3$^{*}$ & 256\\
 growth & 5.4$^{*}$ & 5.6$^{*}$ & 5.9$^{*}$ & 4.9$^{*}$ & 336\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 %--------------------------------------------------------------------------------------------
 \section{Results: Unscheduled News}\label{sec:unsched}
 Each test below is one pass with its decision rule fixed beforehand. Multiplicity corrections and
-every $p$-value are listed in Appendix~\ref{app:ledger}.
+every $p$-value are listed in the supplementary archive (\texttt{tables/pledger.tex}).
 
 \emph{H1, novelty and move size (not supported).} On 243,360 rows (234,273 events, 1,717 dates),
 semantic novelty has a coefficient that is significant in the wrong direction ($\beta=-0.968$, SE
@@ -374,6 +384,7 @@ were on screen at the same time as T2; T2 was computed first and did not change.
 \begin{table}[t]\centering\footnotesize
 \caption{News activity and the size of the next move: coefficient on $\log(1+\text{activity})$, SEs
 clustered by UTC date. $^\dagger$ registered decision.}\label{tab:c45}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}llrrrrr@{}}
 \toprule
 Sample & Min & Rows & Dates & $\beta$ & SE & $p$\\
@@ -384,6 +395,7 @@ Sample & Min & Rows & Dates & $\beta$ & SE & $p$\\
  & 60$^\dagger$ & 34,556 & 370 & 0.0405 & 0.0136 & 0.0030\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 %--------------------------------------------------------------------------------------------
@@ -418,6 +430,7 @@ to 0.30 for all three models.
 \begin{table}[t]\centering\footnotesize
 \caption{Prospective scoring of deployed models. Accuracy is the share of correct signs; the interval
 is a date-clustered bootstrap.}\label{tab:prosp}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrrrrr@{}}
 \toprule
 Model & Rows & Scored & Dates & Accuracy & IC & ECE\\
@@ -427,6 +440,7 @@ V2.0 release & 26 & 26 & 3 & 61.5 [16.7, 100] & $-0.11$ & 0.30\\
 V2.1 release & 26 & 23 & 2 & 21 of 23 (4 events) & 0.57 & 0.22\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 \subsection{H6b and RQ5: ranking value}
@@ -443,6 +457,7 @@ days give a coarse bootstrap, and the counts of rows overstate the independent i
 \begin{table}[t]\centering\footnotesize
 \caption{Next-poll persistence ranking, AUC. Difference to detector in brackets (95\% day
 bootstrap).}\label{tab:h6b}
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{@{}lrrrr@{}}
 \toprule
 Sample (rows / days) & Detector & + risk & + risk + dir. & + window\\
@@ -452,6 +467,7 @@ H6b clean (29,456 / 4) & 0.948 & 0.942 [$-.011,-.001$] & 0.941 [$-.012,-.001$] &
 RQ5 (916 / 3) & 0.815 & 0.827 [$-.027,+.022$] & 0.827 [$-.027,+.022$] & 0.814 [$-.002,+.013$]\\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
 \subsection{C40: news as risk (not supported)}
@@ -596,17 +612,6 @@ Interval & Length & Cause & Effect on the samples\\
 \bottomrule
 \end{tabular}
 \end{table*}
-
-\section{Ledger of $p$-Values}\label{app:ledger}
-Every test in the paper with the family it was corrected in. $q$ is the Benjamini--Hochberg value
-the analysis script wrote; ``--'' means none was computed. H1, H5 and H6 were decided by a
-pre-set rule with no multiplicity correction. The prospective rows are descriptive scores against
-a coin, not tests; the V2.1 value rests on four events and is not interpretable.
-
-\begin{table}[t]\centering\scriptsize
-\caption{$p$-value ledger.}\label{tab:ledger}
-\input{tables/pledger}
-\end{table}
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
