@@ -45,6 +45,8 @@ One page. Follow it top to bottom.
 - A simple economics rule calls release direction right **68%** of the time at 15 minutes, beating a learned model at 64%. **From the moment an article arrives: 49%**, a coin flip.
 - News activity predicts the size of the next 30–60 minutes across **about 258,000** pair × half-hour observations, 2019–2025 (q < 1e-8).
 - **Repeated on 18 months of news the study had never seen** (May 2025 – Oct 2026, about 400,000 headlines), with the test fixed in advance: **same effect, same size** (strength 0.041 vs 0.048, p = 0.003). Direction is still a coin flip (49.8%).
+- **Honest caveat, if asked:** about two-thirds of that effect is shared with how volatile the market already was over the previous 24 hours (news is busier on volatile days). A smaller part survives that control and is still significant (p = 0.0003).
+- **Direction decays fast:** it's predictable only within the **first minute** after a release (62%); from one minute on it's a coin flip.
 - Live, our news arrived **about 23 minutes** after a release (median).
 
 ---

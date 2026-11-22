@@ -274,6 +274,27 @@ A result found once could be luck, so we repeated the test on fresh data.
 
 The finding held, with almost the same strength, on news the study had never seen and at times when no scheduled release was due. Direction stayed at chance.
 
+### 7.7 Two follow-up checks (23 Nov 2026)
+
+**Is it just volatility? (C46)** News is busier on days when markets are already jumpy, so the test was re-run with two volatility measures added:
+- the move already under way while the news came in;
+- how volatile the market had been over the previous 24 hours.
+
+| | Effect at 60 min | p |
+|---|---|---|
+| Original test | 0.054 | 3e-12 |
+| + recent 24 h volatility and the move in progress | **0.020** | **0.0003** |
+
+About **two-thirds** of the effect is shared with recent volatility. A smaller part survives and stays significant. So news activity tells you something beyond "the market is already busy", but less than the raw number suggests.
+
+**How fast does direction disappear? (C47)** The release test was repeated with the article assumed to arrive at different delays:
+
+| Article arrives | 0 min | 1 min | 2 min | 5 min | 10 min | 15 min | 30 min |
+|---|---|---|---|---|---|---|---|
+| Direction right | 62% | 51% | 52% | 53% | 50% | 49% | 50% |
+
+Direction is predictable only **within the first minute** of a release. From one minute on it is a coin flip, whatever the exact delay.
+
 ---
 
 ## 8. What we found: the live system
