@@ -22,37 +22,31 @@ ARTIFACTS = IEEE.parents[1] / "artifacts"
 
 # ---------------------------------------------------------------- decay figure data
 
-def _profile(mean, se, n=100):
-    return {"mean": mean, "se": se, "p": 0.5, "n": n, "clusters": 50}
+def _decay(offsets=(0, 1, 2, 5, 10, 15, 30)):
+    return {"offsets": [{"offset_min": m, "model_accuracy": 0.5 + 0.01 * i, "model_ci95": [0.45 + 0.01 * i, 0.55 + 0.01 * i],
+                         "model_p_vs_coin": 0.2, "moments": 800 + i, "directed_move_mean_bps": float(i)}
+                        for i, m in enumerate(offsets)]}
 
 
-def _target(theory):
-    return {"direction": {"theory_rule": {"accuracy": theory}}}
-
-
-def _synthetic_inputs():
-    keys = {"r1": "release_1m", "r5": "release_5m", "r15": "release_15m", "r30": "release_30m",
-            "r60": "release_60m", "r120": "release_120m",
-            "a15": "arrival_15+15m", "a45": "arrival_15+45m", "a105": "arrival_15+105m"}
-    reaction = {"horizon_profile": {k: _profile(i + 1.0, 0.5) for i, k in enumerate(keys)},
-                "targets": {t: _target(0.5 + 0.01 * i) for i, t in enumerate(keys.values())}}
+def _latency():
     block = lambda n, med: {"n": n, "median_min": med, "within_1_min": 0.0, "within_2_min": 0.1,  # noqa: E731
                             "within_5_min": 0.1, "within_15_min": 0.4}
-    return reaction, {"effective_latency": block(9, 20.0), "receipt_latency": block(19, 30.0)}
+    return {"effective_latency": block(9, 20.0), "receipt_latency": block(19, 30.0)}
 
 
-def test_decay_data_windows_intervals_and_cdf():
-    reaction, latency = _synthetic_inputs()
-    data = make_decay_figure.decay_data(reaction, latency)
-    assert [p["window_end_min"] for p in data["release"]] == [1, 5, 15, 30, 60, 120]
-    assert [p["window_end_min"] for p in data["arrival"]] == [30, 60, 120]      # 15 + h
-    p = data["release"][0]
-    assert p["lo_bps"] == pytest.approx(p["mean_bps"] - 1.96 * p["se_bps"])
-    assert p["hi_bps"] == pytest.approx(p["mean_bps"] + 1.96 * p["se_bps"])
-    assert data["arrival"][1]["theory_accuracy"] == pytest.approx(0.57)         # arrival_15+45m is index 7
+def test_decay_data_offsets_intervals_and_cdf():
+    data = make_decay_figure.decay_data(_decay(), _latency())
+    assert [p["offset_min"] for p in data["offsets"]] == [0, 1, 2, 5, 10, 15, 30]
+    p = data["offsets"][2]
+    assert p["accuracy"] == pytest.approx(0.52) and (p["lo"], p["hi"]) == pytest.approx((0.47, 0.57))
     cdf = data["effective"]
     assert cdf["minutes"] == [0.0, 1.0, 2.0, 5.0, 15.0] and cdf["share"] == [0.0, 0.0, 0.1, 0.1, 0.4]
     assert cdf["n"] == 9 and data["receipt"]["n"] == 19
+
+
+def test_decay_data_rejects_missing_offset():
+    with pytest.raises(ValueError):
+        make_decay_figure.decay_data(_decay((0, 1, 2, 5, 10, 15)), _latency())
 
 
 def test_latency_cdf_rejects_decreasing_shares():
@@ -63,10 +57,11 @@ def test_latency_cdf_rejects_decreasing_shares():
 
 def test_decay_data_on_the_committed_artifacts():
     data = make_decay_figure.load_data()
-    r1 = data["release"][0]
-    assert r1["mean_bps"] == pytest.approx(7.15, abs=0.01) and r1["lo_bps"] > 0
-    a45 = data["arrival"][1]
-    assert a45["lo_bps"] < 0 < a45["hi_bps"]                                    # nothing left at arrival
+    first, rest = data["offsets"][0], data["offsets"][1:]
+    assert first["accuracy"] == pytest.approx(0.6225, abs=1e-3) and first["lo"] > 0.55
+    assert all(p["p"] > 0.05 for p in rest)                                     # chance at any delay >= 1 min
+    assert [p["offset_min"] for p in rest if p["lo"] > 0.5] == [5]              # only the 5-min interval just excludes 50%
+    assert data["offsets"][5]["accuracy"] == pytest.approx(0.4876, abs=1e-3)    # reproduces the arrival primary
     assert data["effective"]["share"][-1] == pytest.approx(4 / 9) and data["effective"]["n"] == 9
     assert all(b >= a for a, b in zip(data["receipt"]["share"], data["receipt"]["share"][1:]))
 
