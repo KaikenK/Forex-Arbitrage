@@ -1,0 +1,168 @@
+{
+  "framing": "exploratory, descriptive; offsets fixed before the run; not pre-registered as a test",
+  "window_min": 45,
+  "computed_at": "2026-11-22T19:01:37.768400+00:00",
+  "offsets": [
+    {
+      "offset_min": 0,
+      "window_start_min": 0,
+      "window_end_min": 45,
+      "rows": 3560,
+      "moments": 864,
+      "model_accuracy": 0.6225127913587265,
+      "model_ci95": [
+        0.5927,
+        0.6519
+      ],
+      "model_p_vs_coin": 3.2976594343636517e-15,
+      "theory_accuracy": 0.6478433598183881,
+      "theory_ci95": [
+        0.6207,
+        0.6762
+      ],
+      "majority_accuracy": 0.505056179775281,
+      "mean_abs_move_bps": 19.6049201068059,
+      "directed_move_mean_bps": 8.487775168966765,
+      "directed_move_se_bps": 1.2717511165808169,
+      "directed_move_p": 4.5755671118180297e-11
+    },
+    {
+      "offset_min": 1,
+      "window_start_min": 1,
+      "window_end_min": 46,
+      "rows": 3549,
+      "moments": 859,
+      "model_accuracy": 0.5143997718848018,
+      "model_ci95": [
+        0.4888,
+        0.5409
+      ],
+      "model_p_vs_coin": 0.26877041744056634,
+      "theory_accuracy": 0.5300313122687162,
+      "theory_ci95": [
+        0.5001,
+        0.5593
+      ],
+      "majority_accuracy": 0.48689771766694845,
+      "mean_abs_move_bps": 13.619913425780585,
+      "directed_move_mean_bps": 0.2314068439259237,
+      "directed_move_se_bps": 0.622631729081726,
+      "directed_move_p": 0.710242932319676
+    },
+    {
+      "offset_min": 2,
+      "window_start_min": 2,
+      "window_end_min": 47,
+      "rows": 3554,
+      "moments": 860,
+      "model_accuracy": 0.5210706150341685,
+      "model_ci95": [
+        0.4956,
+        0.5465
+      ],
+      "model_p_vs_coin": 0.10384658454096547,
+      "theory_accuracy": 0.5358158044343377,
+      "theory_ci95": [
+        0.5069,
+        0.5648
+      ],
+      "majority_accuracy": 0.4887450759707372,
+      "mean_abs_move_bps": 13.189072089025313,
+      "directed_move_mean_bps": 0.5762238825015137,
+      "directed_move_se_bps": 0.5813324794134527,
+      "directed_move_p": 0.3218754103224449
+    },
+    {
+      "offset_min": 5,
+      "window_start_min": 5,
+      "window_end_min": 50,
+      "rows": 3550,
+      "moments": 860,
+      "model_accuracy": 0.5259407069555302,
+      "model_ci95": [
+        0.5013,
+        0.5523
+      ],
+      "model_p_vs_coin": 0.05456557509748388,
+      "theory_accuracy": 0.5338645418326693,
+      "theory_ci95": [
+        0.5048,
+        0.5616
+      ],
+      "majority_accuracy": 0.49690140845070424,
+      "mean_abs_move_bps": 12.283206255073386,
+      "directed_move_mean_bps": 0.7284395885886772,
+      "directed_move_se_bps": 0.560985389970823,
+      "directed_move_p": 0.1944819353866358
+    },
+    {
+      "offset_min": 10,
+      "window_start_min": 10,
+      "window_end_min": 55,
+      "rows": 3546,
+      "moments": 859,
+      "model_accuracy": 0.4985730593607306,
+      "model_ci95": [
+        0.4741,
+        0.5211
+      ],
+      "model_p_vs_coin": 0.9063374762627573,
+      "theory_accuracy": 0.5202279202279202,
+      "theory_ci95": [
+        0.4894,
+        0.5523
+      ],
+      "majority_accuracy": 0.49294980259447263,
+      "mean_abs_move_bps": 11.79830982682667,
+      "directed_move_mean_bps": 0.08503293361348313,
+      "directed_move_se_bps": 0.42724896973001547,
+      "directed_move_p": 0.8422932425196975
+    },
+    {
+      "offset_min": 15,
+      "window_start_min": 15,
+      "window_end_min": 60,
+      "rows": 3555,
+      "moments": 862,
+      "model_accuracy": 0.48761742100768574,
+      "model_ci95": [
+        0.4664,
+        0.51
+      ],
+      "model_p_vs_coin": 0.2650835503266945,
+      "theory_accuracy": 0.5100880932082978,
+      "theory_ci95": [
+        0.4804,
+        0.5374
+      ],
+      "majority_accuracy": 0.5052039381153305,
+      "mean_abs_move_bps": 11.158016834945395,
+      "directed_move_mean_bps": -0.14011152777141503,
+      "directed_move_se_bps": 0.33439844827688087,
+      "directed_move_p": 0.6753289692304046
+    },
+    {
+      "offset_min": 30,
+      "window_start_min": 30,
+      "window_end_min": 75,
+      "rows": 3633,
+      "moments": 884,
+      "model_accuracy": 0.49972144846796657,
+      "model_ci95": [
+        0.4774,
+        0.5198
+      ],
+      "model_p_vs_coin": 0.9799786184513051,
+      "theory_accuracy": 0.4991662034463591,
+      "theory_ci95": [
+        0.4739,
+        0.5261
+      ],
+      "majority_accuracy": 0.4891274428846683,
+      "mean_abs_move_bps": 10.658843573565878,
+      "directed_move_mean_bps": -0.029727157490100627,
+      "directed_move_se_bps": 0.3661538648134816,
+      "directed_move_p": 0.9353120916923372
+    }
+  ]
+}
