@@ -15,9 +15,25 @@
 | `(58\%, 65\%, 68\% across terciles)` | reaction_eval.json | targets.release_15m.direction.by_abs_z_tercile[*].accuracy |
 | `The two agree on 82\% of rows` | reaction_eval.json | targets.release_15m.direction.model_agrees_with_theory |
 | `primary window ($p=0.27$)` | reaction_eval.json | targets.arrival_15+45m.direction.model.p_vs_coin |
-| `is 7.2\bps{} in the first minute` | reaction_eval.json | horizon_profile.r1.mean |
-| `between 7.1 and 8.3\bps{}` | reaction_eval.json | horizon_profile.r{1..120}.mean (min, max) |
-| `It is $-0.14$\bps{} (95\% interval $-0.80$ to $+0.52$)` | reaction_eval.json | horizon_profile.a45.{mean,se} (mean +/- 1.96 se) |
+| `Accuracy (\%) & 62.3 & 51.4 & 52.1 & 52.6 & 49.9 & 48.8 & 50.0` | decay_by_offset.json | offsets[*].accuracy |
+| `$p$ & $3.3\times10^{-15}$ & 0.27 & 0.10 & 0.055 & 0.91 & 0.27 & 0.98` | decay_by_offset.json | offsets[*].model p |
+| `Move (bps) & +8.49 & +0.23 & +0.58 & +0.73 & +0.09 & $-0.14$ & $-0.03$` | decay_by_offset.json | offsets[*].directed move |
+| `$p$ & $4.6\times10^{-11}$ & 0.71 & 0.32 & 0.19 & 0.84 & 0.68 & 0.94` | decay_by_offset.json | offsets[*].directed p |
+| `accuracy is 62.3\% and the mean move in the predicted direction is 8.49\bps` | decay_by_offset.json | offsets[0].{model_accuracy,directed_move_mean_bps} |
+| `accuracy is between 48.8\% and 52.6\% and the directed move between $-0.14$ and $+0.73$\bps{} (all $p\ge0.19$)` | decay_by_offset.json | offsets[offset>0].{model_accuracy,directed_move_mean_bps,directed_move_p} (min, max) |
+| `The 5-minute 52.6\% ($p=0.055$; interval 50.1 to 55.2)` | decay_by_offset.json | offsets[offset_min=5].{model_accuracy,model_p_vs_coin,model_ci95} |
+| `Offset 15 reproduces the registered primary (48.8\%)` | decay_by_offset.json | offsets[offset_min=15].model_accuracy (= reaction_eval targets.arrival_15+45m) |
+| `accuracy of 48.8 to 52.6\% at every delay from 1 to 30 minutes` | decay_by_offset.json | offsets[offset>0].model_accuracy (min, max) |
+| `61 to 72\% of that coefficient is shared` | window30_volctl_results.json | T2_activity_{60,30}.models.{plus_level,plus_both}.shrinkage_vs_base (min, max) |
+| `(0.020 at 60 minutes, $p=0.0003$)` | window30_volctl_results.json | T2_activity_60.models.plus_both.{beta,p} |
+| `(224,495 rows and 1,439 dates at 60 minutes; 223,676 and 1,426 at 30)` | window30_volctl_results.json | T2_activity_{60,30}.{rows_with_controls,models.base.n_dates} |
+| `The prior move takes up 9 to 10\% of the coefficient; the trailing level takes up 61\% at 60 minutes and 70\% at 30, and 63\% and 72\% with both.` | window30_volctl_results.json | T2_activity_{60,30}.models.{plus_prior,plus_level,plus_both}.shrinkage_vs_base |
+| `0.020 ($p=0.0003$) at 60 minutes and 0.014 ($p=0.007$) at 30` | window30_volctl_results.json | T2_activity_{60,30}.models.plus_both.{beta,p} |
+| `The base coefficient differs from 0.048 above` | window30_volctl_results.json | T2_activity_60.models.base.beta vs window30 0.048 (0.0544 vs 0.0481) |
+| `Base & 0.0544 & $2.8\times10^{-12}$ & -- & 0.0489 & $1.4\times10^{-10}$ & --` | window30_volctl_results.json | T2_activity_{60,30}.models.base.{beta,p,shrinkage_vs_base} |
+| `+ prior & 0.0498 & $1.3\times10^{-11}$ & 8.6 & 0.0438 & $8.4\times10^{-10}$ & 10.4` | window30_volctl_results.json | T2_activity_{60,30}.models.plus_prior.{beta,p,shrinkage_vs_base} |
+| `+ level & 0.0213 & $2.1\times10^{-4}$ & 60.9 & 0.0148 & 0.0050 & 69.8` | window30_volctl_results.json | T2_activity_{60,30}.models.plus_level.{beta,p,shrinkage_vs_base} |
+| `+ both & 0.0204 & $3.0\times10^{-4}$ & 62.6 & 0.0137 & 0.0074 & 71.9` | window30_volctl_results.json | T2_activity_{60,30}.models.plus_both.{beta,p,shrinkage_vs_base} |
 | `Spearman 0.29 against 0.19 and 0.24` | reaction_eval.json | targets.release_15m.magnitude.{model,pair_mean,cell_mean}.spearman |
 | `(12.01 against 11.54\bps{}, difference $+0.47$, $p=0.15$)` | reaction_eval.json | targets.release_15m.magnitude.pair_mean.{mae_bps,model_minus_baseline_abs_error} |
 | `(7.11 against 7.40\bps, $p<0.001$)` | reaction_eval.json | targets.arrival_15+45m.magnitude.{v_fit,model}.mae_bps, v_fit.model_minus_baseline_abs_error.p |
@@ -40,8 +56,7 @@
 | `quartiles 6.7 and 37.5` | arrival_latency.json | effective_latency.{p25_min,p75_min} |
 | `44\% of releases had an article within 15 minutes` | arrival_latency.json | effective_latency.within_15_min |
 | `only 2 of 10 high-impact calendar events, so its coverage is 20\%` | arrival_latency.json | coverage.{matched,calendar_events,coverage} |
-| `receipt median 37.5 minutes, effective median 23.1 minutes, 44\% of releases` | arrival_latency.json | receipt/effective median, within_15 |
-| `the median effective article delay was 23 minutes over 9 measured releases` | arrival_latency.json | effective_latency.{median_min,n} |
+| `The median effective article delay was 23 minutes over 9 measured releases` | arrival_latency.json | effective_latency.{median_min,n} |
 | `0.043 at 30 minutes ($q=6.1\times10^{-9}$) and 0.048 at 60 minutes ($q=1.5\times10^{-10}$), on 258,237 and 259,081 rows` | window30_results.json | tests.T2_activity_{30,60}.{beta,q_bh,n} |
 | `(hit rate 50.0\%, $p=0.95$ at 30 minutes and $0.74$ at 60)` | window30_results.json | tests.T1_direction_{30,60}.{hit_rate,p} |
 | `at 60 minutes ($q=0.044$)` | window30_results.json | tests.T3_caution_60.q_bh |

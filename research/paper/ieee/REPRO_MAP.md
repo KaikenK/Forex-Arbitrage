@@ -24,9 +24,11 @@ them without the raw inputs (last section).
 |---|---|---|---|
 | Positive control (Error 1) | `research.reproduce --run positive_control` | `positive_control.json` | calendar, HistData |
 | Error 2 (price-file clock), H2 and H3 table | `research.reproduce --run h2h3` | `h2h3.json` (void pre-fix copy: `h2h3_void_pre_dst_fix.json`) | calendar, HistData |
-| Tables RQ1 to RQ4, Fig. decay (a), Fig. reliability | `research.reproduce --run reaction_eval` | `reaction_eval.json`, `reaction_model.json` | calendar, HistData |
+| Tables RQ1 to RQ4, Fig. reliability | `research.reproduce --run reaction_eval` | `reaction_eval.json`, `reaction_model.json` | calendar, HistData |
 | Arrival latency, Fig. decay (b) | `research.reproduce --run arrival_latency` | `arrival_latency.json` | after 2026-11-13 23:59 IST |
-| Arrival re-test at the observed offset | `research.reproduce --run arrival_retest` | `reaction_eval_arrival<offset>.json` | not run: no offset estimated (fewer than 10 releases) |
+| Arrival re-test at the observed offset | `research.reproduce --run arrival_retest` | (none) | not run: no offset estimated (fewer than 10 releases) |
+| Arrival-delay decay (C47, exploratory): Table decay, Fig. decay (a) | `research.run_decay` (offsets 0, 1, 2, 5, 10, 15, 30 min; ran on the laptop at 1d256f4, 2026-11-22) | `decay_by_offset.json`, `reaction_eval_arrival{0,1,2,5,10,15,30}.json` | calendar, HistData; check: offset 15 reproduces the registered arrival primary |
+| Window30 volatility control (C46, exploratory): Table volctl | `research.run_window30_volctl` (ran in Colab on the frozen sample, freeze `d4ef3d7f`; notebook `research/colab/volctl_pipeline.ipynb` on branch `semantic-microservice`; code 1d256f4) | `window30_volctl_results.json` | same inputs as window30 (frozen sample, calendar, HistData); heavy |
 | RQ2-E2E | `research.reproduce --run rq2_e2e` | `rq2_e2e.json` | frozen sample, FinBERT scores |
 | H1 novelty | `research.reproduce --run h1_primary` then `h1_decide` | `h1_results.json` | scores stamped with the freeze hash |
 | H5 currency factor | `research.reproduce --run h5_lexicon`, `h5_finbert`, `h5_decide` | `h5_results.json` | scores stamped with the freeze hash |
@@ -56,10 +58,11 @@ python -m research.paper.ieee.check_paper           # braces, environments, cita
 python -m pytest research/tests/test_ieee_assets.py
 ```
 
-Two further scripts exist but have not been run, and nothing in the paper depends on them:
-`research/run_decay.py` (the arrival test at assumed delays 0, 1, 2, 5, 10, 15 and 30 minutes) and
-`research/run_window30_volctl.py` (window30 T2 with controls for volatility in the news window; its
-protocol text is `VOLCTL_PREREG_DRAFT.md` and must be logged in the tracker before it is run).
+The two exploratory runs above were executed on the owner's data machines on 2026-11-22/23 and
+their artifacts are committed; the paper reads the artifacts only. Their tracker entries are C46
+(pre-registered 2026-11-22, result 2026-11-23) and C47 (entry and result 2026-11-23);
+`VOLCTL_PREREG_DRAFT.md` is the superseded draft of C46. The decay figure and its table are built
+from `decay_by_offset.json` and `arrival_latency.json`.
 
 ## Pre-registration
 

@@ -42,14 +42,17 @@ A cross-venue foreign-exchange (FX) arbitrage detector finds crossed quotes but 
 of them news has made risky. We test what news can add: direction, move size and ranking. For
 scheduled releases, a fixed theory rule gets the direction of the 15-minute reaction right 68.4\%
 of the time (95\% interval 65.4 to 71.3, 1,385 releases) and a learned model 63.5\%. From the time
-an article appears, the direction is gone: 48.8\% (46.6 to 51.0), and the median effective article
-delay was 23 minutes over 9 measured releases. For unscheduled news, direction is null, but
-headline activity predicts the size of the next move (coefficients 0.043 and 0.048, about 258,000
-rows), and the effect replicated on 18 new months (0.0405, $p=0.003$). In a live recording the
-news channels gave no ranking gain (every interval contains zero) and a news-as-risk test was not
-supported; the live sample is small and partly contaminated, which we disclose. We report three
-silent data errors that each changed a conclusion, and we provide an internal pre-registration
-log with a reproducibility package.
+an article appears, the direction is gone: 48.8\% (46.6 to 51.0) at the registered 15-minute delay,
+and an exploratory scan finds accuracy of 48.8 to 52.6\% at every delay from 1 to 30 minutes, none
+significantly different from a coin ($p\ge0.055$). The
+median effective article delay was 23 minutes over 9 measured releases. For unscheduled news,
+direction is null, but headline activity predicts the size of the next move (coefficients 0.043 and
+0.048), and the effect replicated on 18 new months (0.0405, $p=0.003$). An
+exploratory control shows that 61 to 72\% of that coefficient is shared with the previous 24 hours'
+volatility; a smaller effect survives (0.020 at 60 minutes, $p=0.0003$). In a live recording the
+news channels gave no ranking gain and a news-as-risk test was not supported; the live sample is
+small and partly contaminated. We report three silent data errors that each changed a conclusion,
+with an internal pre-registration log and a reproducibility package.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -73,10 +76,12 @@ results that went against our expectation. Our contributions are:
 \begin{enumerate}
 \item A pre-registered separation of what is predictable at the time of a scheduled release from
 what is predictable when an article about it arrives, with the article delay measured on live
-feeds (Sections~\ref{sec:sched} and~\ref{sec:live}).
+feeds and an exploratory scan showing no direction distinguishable from chance for any delay of one minute or more
+(Sections~\ref{sec:sched} and~\ref{sec:live}).
 \item Evidence that news \emph{activity} predicts the size of the next move, replicated out of
-sample, while direction and novelty fail; the novelty hypothesis (H1) was significant with the
-wrong sign and is reported as such (Section~\ref{sec:unsched}).
+sample, but with most of the coefficient shared with the previous 24 hours' volatility and a
+smaller effect surviving the control, while direction and novelty fail; the novelty hypothesis (H1)
+was significant with the wrong sign and is reported as such (Section~\ref{sec:unsched}).
 \item Live ranking tests (H6b, RQ5, C40, C43 and prospective scoring) that find no ranking value
 for the news channels, with their limits stated (Section~\ref{sec:live}).
 \item Three silent errors in free FX and news data, each shown to change a result, and a
@@ -185,12 +190,12 @@ months gives 76 test months (2019-01 to 2025-04). Inference is clustered by rele
 
 \subsection{Deployed system}
 A semantic microservice (V2) matches a headline to a calendar release, extracts the actual
-figure, computes the standardized surprise $z$ and returns per-pair direction, a calibrated
-probability and an expected move. A currency index gives a per-currency news bias (FinBERT
-polarity $\times$ confidence $\times$ novelty $\times$ relevance, 12-hour decay); the pair bias
-is base minus quote. A risk channel penalizes a pair when the expected move is large relative to
-its 24-hour median or a high-impact release is within $-15$ to $+10$ minutes. A direction channel
-penalizes a trade when the index opposes its residual exposure.
+figure, computes $z$ and returns per-pair direction, a calibrated probability and an expected move.
+A currency index gives a per-currency news bias (FinBERT polarity $\times$ confidence $\times$
+novelty $\times$ relevance, 12-hour decay); the pair bias is base minus quote. A risk channel
+penalizes a pair when the expected move is large relative to its 24-hour median or a high-impact
+release is within $-15$ to $+10$ minutes; a direction channel penalizes a trade when the index
+opposes its residual exposure.
 
 %--------------------------------------------------------------------------------------------
 \section{Results: Scheduled Releases}\label{sec:sched}
@@ -225,25 +230,46 @@ arrival 15--120 & 50.2 & 50.1 & 49.7\\
 \end{table}
 
 \subsubsection{How fast the move happens, and how late the article is}
-The mean move in the learned model's predicted direction is 7.2\bps{} in the first minute and
-between 7.1 and 8.3\bps{} at every release-anchored window up to 120 minutes
-(Fig.~\ref{fig:decay}a). It is $-0.14$\bps{} (95\% interval $-0.80$ to $+0.52$) in the
-primary arrival window starting 15 minutes after the release. So the move is in the price within
-the first minute, and nothing predictable remains at 15 minutes.
+The registered arrival window starts 15 minutes after the release, so we also ran an exploratory
+scan of the assumed article delay $d$ (C47): the learned model's direction on the window
+$r(d,d{+}45)$ for $d\in\{0,1,2,5,10,15,30\}$ minutes, with offsets fixed before the run and no
+correction for seven offsets (Table~\ref{tab:decay}, Fig.~\ref{fig:decay}a). At $d=0$, the release
+reaction itself, accuracy is 62.3\% and the mean move in the predicted direction is 8.49\bps. From
+one minute on, accuracy is between 48.8\% and 52.6\% and the directed move between $-0.14$ and
+$+0.73$\bps{} (all $p\ge0.19$). The 5-minute 52.6\% ($p=0.055$; interval 50.1 to 55.2) is one of seven tests and we do
+not read it as a signal. Offset 15 reproduces the registered primary (48.8\%). So the move is in the
+price within the first minute, and the arrival result does not depend on the 15-minute assumption.
 
-Fewer than half of the articles arrive by then. Over 19 article--feed rows for 9 releases, the
+\begin{table}[t]\centering\footnotesize
+\caption{Exploratory scan of the assumed article delay $d$ (min): model direction accuracy on
+$r(d,d{+}45)$ with $p$ against a coin, and mean move in the predicted direction (bps) with its $p$.
+Seven offsets, no correction; $d=0$ is the release reaction.}\label{tab:decay}
+\begin{adjustbox}{max width=\columnwidth}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+$d$ (min) & 0 & 1 & 2 & 5 & 10 & 15 & 30\\
+\midrule
+Accuracy (\%) & 62.3 & 51.4 & 52.1 & 52.6 & 49.9 & 48.8 & 50.0\\
+$p$ & $3.3\times10^{-15}$ & 0.27 & 0.10 & 0.055 & 0.91 & 0.27 & 0.98\\
+Move (bps) & +8.49 & +0.23 & +0.58 & +0.73 & +0.09 & $-0.14$ & $-0.03$\\
+$p$ & $4.6\times10^{-11}$ & 0.71 & 0.32 & 0.19 & 0.84 & 0.68 & 0.94\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+Fewer than half of the articles arrive within 15 minutes. Over 19 article--feed rows for 9 releases, the
 median delay from release to our first receipt was 37.5 minutes per row and 23.1 minutes per
 release for the first article to arrive (effective latency; quartiles 6.7 and 37.5), and 44\% of
 releases had an article within 15 minutes (Fig.~\ref{fig:decay}b). The latency study could match
 only 2 of 10 high-impact calendar events, so its coverage is 20\%, and with fewer than 10 releases
-it did not estimate an offset. We did not evaluate delays between 1 and 15 minutes: the
-pre-registered arrival window starts at 15 minutes, and the figure shows nothing in between.
+it did not estimate an offset, so the 15-minute assumption stands, and the scan above shows the
+result does not need it.
 
 \begin{figure}[t]\centering
 \includegraphics[width=\columnwidth]{figures/decay.pdf}
-\caption{(a) Mean move in the direction predicted by the learned model, with 95\% intervals
-clustered by release moment; labels give the accuracy of the theory rule in the same window.
-Arrival-anchored windows start 15 minutes after the release. (b) Share of articles arrived within
+\caption{(a) Direction accuracy of the learned model with 95\% intervals against the assumed
+article delay (diamond: the release reaction at $d=0$; dashed line: chance; exploratory). (b) Share of articles arrived within
 1, 2, 5 and 15 minutes of the release (solid). The dashed segment joins the 15-minute share to the
 median (diamond); the delay between them was not observed.}\label{fig:decay}
 \end{figure}
@@ -323,7 +349,8 @@ growth & 5.4$^{*}$ & 5.6$^{*}$ & 5.9$^{*}$ & 4.9$^{*}$ & 336\\
 %--------------------------------------------------------------------------------------------
 \section{Results: Unscheduled News}\label{sec:unsched}
 Each test below is one pass with its decision rule fixed beforehand. Multiplicity corrections and
-every $p$-value are listed in the supplementary archive (\texttt{tables/pledger.tex}).
+every $p$-value are listed in the supplementary archive (\texttt{tables/pledger.tex}), except those
+of the two exploratory checks of Tables~\ref{tab:decay} and~\ref{tab:volctl}.
 
 \emph{H1, novelty and move size (not supported).} On 243,360 rows (234,273 events, 1,717 dates),
 semantic novelty has a coefficient that is significant in the wrong direction ($\beta=-0.968$, SE
@@ -363,9 +390,41 @@ $1+$activity goes with an abnormal move about 0.4\% larger. A caution score is w
 at 60 minutes ($q=0.044$).
 
 This result is net of the same-clock baseline and of a release flag, and in the replication below
-of scheduled-release clocks. It is \emph{not} controlled for realised volatility in the news
-window itself, so busy news and an already volatile market could produce the same pattern. We read
-activity as a risk indicator, and we do not claim that headlines cause larger moves.
+of scheduled-release clocks. Busy news and an already volatile market could produce the same
+pattern, so we ran a volatility control afterwards (below).
+
+\subsection{Volatility control (C46, exploratory)}
+Registered beforehand (C46), with no decision weight and reported as found, the control
+re-estimates T2 on the rows that have both controls (224,495 rows and 1,439 dates at 60
+minutes; 223,676 and 1,426 at 30), adding the abnormal move already under way inside the news
+window (\emph{prior}), the pair's mean absolute return over the previous 24 hours relative to its
+same-clock norm (\emph{level}), and both; the controls use returns that end before the signal.
+Table~\ref{tab:volctl} gives the result. The prior move takes up 9 to 10\% of the coefficient;
+the trailing level takes up 61\% at 60 minutes and 70\% at 30, and 63\% and 72\% with both. A
+smaller effect survives both controls and stays significant: 0.020 ($p=0.0003$) at 60 minutes and
+0.014 ($p=0.007$) at 30. We therefore read activity as partly a volatility-regime indicator (news
+is busier on volatile days) that still carries a smaller signal about the next move's size, and we
+do not claim that headlines cause larger moves. The base coefficient differs from 0.048 above
+because it is estimated only on rows with both controls. The controls were not run on the
+replication sample below, so we do not know how much of that effect survives them.
+
+\begin{table}[t]\centering\footnotesize
+\caption{Activity coefficient $\beta$ on $\log(1+\text{activity})$ with volatility controls,
+$p$ clustered by UTC date, and shrinkage $1-\beta/\beta_{\text{base}}$ (\%).}\label{tab:volctl}
+\begin{adjustbox}{max width=\columnwidth}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{60 min} & \multicolumn{3}{c}{30 min}\\
+Model & $\beta$ & $p$ & Shrink. & $\beta$ & $p$ & Shrink.\\
+\midrule
+Base & 0.0544 & $2.8\times10^{-12}$ & -- & 0.0489 & $1.4\times10^{-10}$ & --\\
++ prior & 0.0498 & $1.3\times10^{-11}$ & 8.6 & 0.0438 & $8.4\times10^{-10}$ & 10.4\\
++ level & 0.0213 & $2.1\times10^{-4}$ & 60.9 & 0.0148 & 0.0050 & 69.8\\
++ both & 0.0204 & $3.0\times10^{-4}$ & 62.6 & 0.0137 & 0.0074 & 71.9\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
 
 \subsection{Out-of-sample replication (C45)}
 The activity result was the study's main positive finding, so before any new data was extracted we
@@ -376,7 +435,8 @@ clock for either currency in $(t-45\text{ min},t+h]$, with clocks derived from t
 before extraction, and drops the release flag. Table~\ref{tab:c45} shows the replication: the
 60-minute coefficient is 0.0405 ($p=0.003$), which meets the registered rule, and its size is close
 to the original. The two specifications differ, and a like-for-like rerun of T2-clock on the
-original sample is not reported. Direction is null again (rank IC $-0.008$ and $-0.005$; hit rates
+original sample is not reported. The volatility controls above were not run on this sample.
+Direction is null again (rank IC $-0.008$ and $-0.005$; hit rates
 49.4\% and 49.8\%), and the weak caution result at 60 minutes does not replicate (IC 0.000,
 $p=1.00$). The notebook's optional FinBERT cell ran before the T2 output was read, so T1 and T3
 were on screen at the same time as T2; T2 was computed first and did not change.
@@ -488,31 +548,26 @@ one of several reported subsets, and we give it no weight.
 The shadow engine recorded 318 rows over 2 days, with 18 not still crossed. The risk-adjusted score
 had an AUC of 0.863 against 0.844 for the detector; the interval for the difference resamples two
 days and is not valid. The FX-relevance filter removed 83\% of the window's items (998 of 1,200
-item slots over 221 rows with items): most live headlines do not name either currency of the pair.
-The direction of the two window readings agreed on 88\% of rows, almost all because both were
-neutral. We give this analysis no decision weight.
-
-\subsection{Arrival latency}
-Section~\ref{sec:sched} reports the latency result: 19 rows from 9 releases, receipt median 37.5
-minutes, effective median 23.1 minutes, 44\% of releases with an article within 15 minutes, live
-match coverage 20\%. The offset for the re-test was not estimated because fewer than 10 releases
-matched, so the 15-minute assumption stands and the re-test at the observed offset was not run.
+item slots over 221 rows with items), and the two window readings agreed on 88\% of rows, almost
+all because both were neutral. We give this analysis no decision weight.
 
 %--------------------------------------------------------------------------------------------
 \section{Discussion}
 For a ranker, the direction an article reports describes a move that has already happened: the
-reaction is in the price within a minute, and fewer than half of the first articles arrive within
-15. The value of news lies elsewhere: in naming which venue's quote is stale, and in flagging a
-release window as execution risk. News activity predicts how large the next move is, in two
-independent samples, and direction does not survive at any horizon we tested.
+reaction is in the price within a minute, direction is at chance for any article delay of one
+minute or more, and fewer than half of the first articles arrive within 15. The value of news may
+lie elsewhere: in naming which venue's quote is stale, and in flagging a release window as
+execution risk. News activity predicts how large the next move is, in two independent samples, but
+most of that coefficient is shared with the previous day's volatility; direction does not survive
+at any horizon we tested.
 
 That risk reading did not carry over to the live recorder. The risk channel did not improve
 next-poll persistence ranking in H6b or RQ5, the pre-registered C40 test was not supported, and its
 primary comparison could not be computed. The outcome there is persistence of an indicative price
 gap over about a second, which is a different quantity from the size of a 30--60 minute move, so
 we cannot say the historical finding is wrong for arbitrage, only that this recording does not
-confirm it. The activity result also needs a control for volatility already running in the news
-window before it is read as more than a risk indicator.
+confirm it. Since activity is partly a volatility-regime indicator, it may add little to a ranker
+that already uses recent volatility.
 
 Calibration matters more than accuracy for a weighting factor, and our confidence output is
 calibrated historically even where it resolves little; live it was not (ECE 0.22 to 0.30 on small
@@ -524,8 +579,9 @@ USD/INR has no free intraday data and is analysed daily only, outside RQ1--RQ4. 
 releases are too few for currency-level estimates. The GDELT sample is English only, starts in
 2019-10 and uses 15-minute batch timestamps; the replication sample has no GKG rows for the 17
 days from 15 June 2025. Tagging favours precision, so release headlines without a currency word never enter.
-The $\pm5\sigma$ winsorization uses whole-sample $\sigma$. The activity effect is not controlled
-for realised volatility in the news window. Live data come from an indicative feed (TrueFX), Kraken
+The $\pm5\sigma$ winsorization uses whole-sample $\sigma$. The volatility control was
+exploratory and not run on the replication sample, and the delay scan is exploratory with seven
+uncorrected offsets. Live data come from an indicative feed (TrueFX), Kraken
 has no exchange timestamp and an unusable USD/JPY book, the live tests rest on two to eight recorded
 days, and nothing was recorded after 7~Nov 01:19 IST. The live window used a keyword scorer
 before 5~Nov. Prospective results rest on few date clusters and, for V2.1, on four events. Cutoff
@@ -544,9 +600,11 @@ prerequisite is missing.
 \section{Conclusion}
 For a scheduled release, a fixed theory rule predicts the reaction's direction well and a learned
 model does not beat it. By the time an article can be read, the direction is no longer
-predictable, for scheduled or unscheduled news and in historical or live data, and the measured
-article delay is longer than the 15 minutes we assumed. News activity predicts the size of the
-next move and replicated out of sample. In a small, contaminated live recording the news channels
+predictable, for scheduled or unscheduled news and in historical or live data; direction is at
+chance for any article delay of one minute or more, and the measured article delay is longer than
+the 15 minutes we assumed. News activity predicts the size of the next move and replicated out of
+sample, but most of that coefficient is shared with the previous day's volatility; a smaller
+effect survives. In a small, contaminated live recording the news channels
 showed no ranking gain and the news-as-risk test was not supported. Free FX and news data hide
 clock errors that flip conclusions.
 

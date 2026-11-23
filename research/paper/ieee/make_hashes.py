@@ -29,6 +29,8 @@ CITED = [
     "artifacts/live_predictions_score_release_v21.json",
     "artifacts/positive_control.json", "artifacts/h2h3.json", "artifacts/rq2_e2e.json",
     "artifacts/calendar_events.manifest.json",
+    "artifacts/decay_by_offset.json", "artifacts/window30_volctl_results.json",
+    *[f"artifacts/reaction_eval_arrival{o}.json" for o in (0, 1, 2, 5, 10, 15, 30)],
 ]
 
 

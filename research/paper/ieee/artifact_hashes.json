@@ -2,7 +2,7 @@
   "source_commit": "639fcdf",
   "hashing": "sha256 of file bytes, CRLF normalised to LF",
   "files": {
-    "RESEARCH_TRACKER.md": "f68a959246f0aff2d482b4cff0ca800a715699e223dc7daaa0eeac84899e4c27",
+    "RESEARCH_TRACKER.md": "459aa011a025bc40db6fb2121ace944e232cd4f0eaeb2c7c6b1592a1d54d177b",
     "REPRODUCE.md": "5dc0daf6ebe8c3e875835306f48faac33fc3effb1a4a8ad12e1cd47220651a1c",
     "artifacts/reaction_eval.json": "f0c45a5cb271a9d7911f9a85e7b2303c7d8beb0f82b93a9d146464308473feb8",
     "artifacts/arrival_latency.json": "88f1069570b2cb1d432bdf42cf33f93973b7daffb915424b891db5a13df5a116",
@@ -22,6 +22,15 @@
     "artifacts/positive_control.json": "b26dd33cc5693a08345c52c49d85890d611dae0bc85ecc6a00d71023a135541d",
     "artifacts/h2h3.json": "7ba8a10f43669d135a1890c57efacff8b217dc14d00b180fb31388f6f43592a7",
     "artifacts/rq2_e2e.json": "dffd8610f0e132c6fd4125b040651e4f80b7e0bd40ed6e57aba61bb7ff0fae90",
-    "artifacts/calendar_events.manifest.json": "dbfd2dae1624bfc5404b7e8d52ef715a4d7e89aaa79f84d702469287e660b511"
+    "artifacts/calendar_events.manifest.json": "dbfd2dae1624bfc5404b7e8d52ef715a4d7e89aaa79f84d702469287e660b511",
+    "artifacts/decay_by_offset.json": "08be8454b38e58cc9a563c3ab2bcede9bb40847d8df4463f2fc6a647dfd2f582",
+    "artifacts/window30_volctl_results.json": "d825bb4216c13d43b3331ad6c51f571a48a99d2f9e5e01bb93fc539e884a6a49",
+    "artifacts/reaction_eval_arrival0.json": "922c3bf2e4ebef789c7578935929f4994ce82baa7ebbb9466fb52c5ba9c80e3d",
+    "artifacts/reaction_eval_arrival1.json": "ec44437e9045ca30c5621c796f72ef884d11deaee12fa3eeda092b483bdc15b8",
+    "artifacts/reaction_eval_arrival2.json": "ecbd2a21197243da2a2e85160a52aa247db7b2bb76f1c749a2669c481446cb42",
+    "artifacts/reaction_eval_arrival5.json": "e2959b36a1230d86260a5c31fe745c5676bd1fa9fb19c76ed83e2050ea0a762c",
+    "artifacts/reaction_eval_arrival10.json": "ea80286a5ec951e3daf5c57ac655356cead5ab8102c1e256b71f2a7c8d3b477c",
+    "artifacts/reaction_eval_arrival15.json": "f8826465ccd673e375fa60cc56611072cc544d33bf77d716113d6b030f66fec4",
+    "artifacts/reaction_eval_arrival30.json": "e80557def6b0b77022548760e36e0c0537da217499e9f5da69854ede8f91fa08"
   }
 }

@@ -57,6 +57,61 @@ def ci(lo: float, hi: float, n: int = 1, scale: float = 100.0) -> str:
     return f"[{q(lo * scale, n)}, {q(hi * scale, n)}]"
 
 
+def pfmt(p: float) -> str:
+    """p-value for a table cell: scientific below 0.001, three decimals below 0.1, else two."""
+    if p < 0.001:
+        return f"${sci(p)}$"
+    return q(p, 3) if p < 0.1 else q(p, 2)
+
+
+def signed2(x: float) -> str:
+    s = q(x, 2)
+    return f"${s}$" if s.startswith("-") else "+" + s
+
+
+DECAY = "decay_by_offset.json"
+VOLCTL = "window30_volctl_results.json"
+OFFSETS = (0, 1, 2, 5, 10, 15, 30)
+VOL_MODELS = (("base", "Base"), ("plus_prior", "+ prior"), ("plus_level", "+ level"), ("plus_both", "+ both"))
+
+
+def decay_rows(A) -> list[str]:
+    o = {int(r["offset_min"]): r for r in A[DECAY]["offsets"]}
+    cells = lambda f: " & ".join(f(o[m]) for m in OFFSETS)  # noqa: E731
+    return [
+        "Accuracy (\\%) & " + cells(lambda r: pct(r["model_accuracy"])),
+        "$p$ & " + cells(lambda r: pfmt(r["model_p_vs_coin"])),
+        "Move (bps) & " + cells(lambda r: signed2(r["directed_move_mean_bps"])),
+        "$p$ & " + cells(lambda r: pfmt(r["directed_move_p"])),
+    ]
+
+
+def decay_table(A) -> str:
+    rows = [f"$d$ (min) & {' & '.join(str(m) for m in OFFSETS)}"] + decay_rows(A)
+    return ("\\begin{tabular}{@{}lrrrrrrr@{}}\n\\toprule\n" + rows[0] + "\\\\\n\\midrule\n"
+            + "".join(r + "\\\\\n" for r in rows[1:]) + "\\bottomrule\n\\end{tabular}")
+
+
+def volctl_rows(A) -> list[str]:
+    out = []
+    for key, label in VOL_MODELS:
+        cells = []
+        for h in (60, 30):
+            m = A[VOLCTL]["tests"][f"T2_activity_{h}"]["models"][key]
+            shrink = "--" if key == "base" else q(m["shrinkage_vs_base"] * 100, 1)
+            p = f"${sci(m['p'])}$" if m["p"] < 0.001 else q(m["p"], 4)
+            cells += [q(m["beta"], 4), p, shrink]
+        out.append(f"{label} & " + " & ".join(cells))
+    return out
+
+
+def volctl_table(A) -> str:
+    return ("\\begin{tabular}{@{}lrrrrrr@{}}\n\\toprule\n"
+            " & \\multicolumn{3}{c}{60 min} & \\multicolumn{3}{c}{30 min}\\\\\n"
+            "Model & $\\beta$ & $p$ & Shrink. & $\\beta$ & $p$ & Shrink.\\\\\n\\midrule\n"
+            + "".join(r + "\\\\\n" for r in volctl_rows(A)) + "\\bottomrule\n\\end{tabular}")
+
+
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -129,16 +184,50 @@ def build_entries() -> list[Entry]:
     add("primary window ($p=0.27$)", RE, "targets.arrival_15+45m.direction.model.p_vs_coin",
         lambda A: f"primary window ($p={q(T(A, 'arrival_15+45m')['direction']['model']['p_vs_coin'], 2)}$)")
 
-    # --- horizon profile and decay text
-    P = lambda A, k: A[RE]["horizon_profile"][k]  # noqa: E731
-    add("is 7.2\\bps{} in the first minute", RE, "horizon_profile.r1.mean",
-        lambda A: f"is {q(P(A, 'r1')['mean'], 1)}\\bps{{}} in the first minute")
-    add("between 7.1 and 8.3\\bps{}", RE, "horizon_profile.r{1..120}.mean (min, max)",
-        lambda A: "between " + q(min(P(A, f"r{h}")["mean"] for h in (1, 5, 15, 30, 60, 120)), 1) + " and "
-                  + q(max(P(A, f"r{h}")["mean"] for h in (1, 5, 15, 30, 60, 120)), 1) + "\\bps{}")
-    add("It is $-0.14$\\bps{} (95\\% interval $-0.80$ to $+0.52$)", RE, "horizon_profile.a45.{mean,se} (mean +/- 1.96 se)",
-        lambda A: f"It is ${q(P(A, 'a45')['mean'], 2)}$\\bps{{}} (95\\% interval ${q(P(A, 'a45')['mean'] - 1.96 * P(A, 'a45')['se'], 2)}$ to "
-                  f"${'+' + q(P(A, 'a45')['mean'] + 1.96 * P(A, 'a45')['se'], 2)}$)")
+    # --- decay scan (C47) and volatility control (C46)
+    D = lambda A: {int(r["offset_min"]): r for r in A[DECAY]["offsets"]}  # noqa: E731
+    later = lambda A: [r for m, r in D(A).items() if m > 0]  # noqa: E731
+    for i, label in enumerate(("accuracy", "model p", "directed move", "directed p")):
+        add(decay_rows(Loader())[i], DECAY, f"offsets[*].{label}", lambda A, i=i: decay_rows(A)[i])
+    add("accuracy is 62.3\\% and the mean move in the predicted direction is 8.49\\bps", DECAY, "offsets[0].{model_accuracy,directed_move_mean_bps}",
+        lambda A: f"accuracy is {pct(D(A)[0]['model_accuracy'])}\\% and the mean move in the predicted direction is "
+                  f"{q(D(A)[0]['directed_move_mean_bps'], 2)}\\bps")
+    add("accuracy is between 48.8\\% and 52.6\\% and the directed move between $-0.14$ and $+0.73$\\bps{} (all $p\\ge0.19$)", DECAY,
+        "offsets[offset>0].{model_accuracy,directed_move_mean_bps,directed_move_p} (min, max)",
+        lambda A: f"accuracy is between {pct(min(r['model_accuracy'] for r in later(A)))}\\% and {pct(max(r['model_accuracy'] for r in later(A)))}\\% "
+                  f"and the directed move between ${q(min(r['directed_move_mean_bps'] for r in later(A)), 2)}$ and "
+                  f"$+{q(max(r['directed_move_mean_bps'] for r in later(A)), 2)}$\\bps{{}} (all $p\\ge{q(min(r['directed_move_p'] for r in later(A)), 2)}$)")
+    add("The 5-minute 52.6\\% ($p=0.055$; interval 50.1 to 55.2)", DECAY, "offsets[offset_min=5].{model_accuracy,model_p_vs_coin,model_ci95}",
+        lambda A: f"The 5-minute {pct(D(A)[5]['model_accuracy'])}\\% ($p={q(D(A)[5]['model_p_vs_coin'], 3)}$; interval "
+                  f"{q(D(A)[5]['model_ci95'][0] * 100, 1)} to {q(D(A)[5]['model_ci95'][1] * 100, 1)})")
+    add("Offset 15 reproduces the registered primary (48.8\\%)", DECAY, "offsets[offset_min=15].model_accuracy (= reaction_eval targets.arrival_15+45m)",
+        lambda A: f"Offset 15 reproduces the registered primary ({pct(D(A)[15]['model_accuracy'])}\\%)"
+        if pct(D(A)[15]["model_accuracy"]) == pct(T(A, "arrival_15+45m")["direction"]["model"]["accuracy"]) else "offset 15 differs")
+    add("accuracy of 48.8 to 52.6\\% at every delay from 1 to 30 minutes", DECAY, "offsets[offset>0].model_accuracy (min, max)",
+        lambda A: f"accuracy of {pct(min(r['model_accuracy'] for r in later(A)))} to "
+                  f"{pct(max(r['model_accuracy'] for r in later(A)))}\\% at every delay from 1 to 30 minutes")
+    V = lambda A, h, m: A[VOLCTL]["tests"][f"T2_activity_{h}"]["models"][m]  # noqa: E731
+    shr = lambda A: [V(A, h, m)["shrinkage_vs_base"] * 100 for h in (60, 30) for m in ("plus_level", "plus_both")]  # noqa: E731
+    add("61 to 72\\% of that coefficient is shared", VOLCTL, "T2_activity_{60,30}.models.{plus_level,plus_both}.shrinkage_vs_base (min, max)",
+        lambda A: f"{q(min(shr(A)), 0)} to {q(max(shr(A)), 0)}\\% of that coefficient is shared")
+    add("(0.020 at 60 minutes, $p=0.0003$)", VOLCTL, "T2_activity_60.models.plus_both.{beta,p}",
+        lambda A: f"({q(V(A, 60, 'plus_both')['beta'], 3)} at 60 minutes, $p={q(V(A, 60, 'plus_both')['p'], 4)}$)")
+    add("(224,495 rows and 1,439 dates at 60 minutes; 223,676 and 1,426 at 30)", VOLCTL, "T2_activity_{60,30}.{rows_with_controls,models.base.n_dates}",
+        lambda A: f"({comma(A[VOLCTL]['tests']['T2_activity_60']['rows_with_controls'])} rows and {comma(V(A, 60, 'base')['n_dates'])} dates at 60 minutes; "
+                  f"{comma(A[VOLCTL]['tests']['T2_activity_30']['rows_with_controls'])} and {comma(V(A, 30, 'base')['n_dates'])} at 30)")
+    add("The prior move takes up 9 to 10\\% of the coefficient; the trailing level takes up 61\\% at 60 minutes and 70\\% at 30, and 63\\% and 72\\% with both.", VOLCTL,
+        "T2_activity_{60,30}.models.{plus_prior,plus_level,plus_both}.shrinkage_vs_base",
+        lambda A: (f"The prior move takes up {q(min(V(A, h, 'plus_prior')['shrinkage_vs_base'] for h in (60, 30)) * 100, 0)} to "
+                   f"{q(max(V(A, h, 'plus_prior')['shrinkage_vs_base'] for h in (60, 30)) * 100, 0)}\\% of the coefficient; the trailing level takes up "
+                   f"{q(V(A, 60, 'plus_level')['shrinkage_vs_base'] * 100, 0)}\\% at 60 minutes and {q(V(A, 30, 'plus_level')['shrinkage_vs_base'] * 100, 0)}\\% at 30, and "
+                   f"{q(V(A, 60, 'plus_both')['shrinkage_vs_base'] * 100, 0)}\\% and {q(V(A, 30, 'plus_both')['shrinkage_vs_base'] * 100, 0)}\\% with both."))
+    add("0.020 ($p=0.0003$) at 60 minutes and 0.014 ($p=0.007$) at 30", VOLCTL, "T2_activity_{60,30}.models.plus_both.{beta,p}",
+        lambda A: f"{q(V(A, 60, 'plus_both')['beta'], 3)} ($p={q(V(A, 60, 'plus_both')['p'], 4)}$) at 60 minutes and "
+                  f"{q(V(A, 30, 'plus_both')['beta'], 3)} ($p={q(V(A, 30, 'plus_both')['p'], 3)}$) at 30")
+    add("The base coefficient differs from 0.048 above", VOLCTL, "T2_activity_60.models.base.beta vs window30 0.048 (0.0544 vs 0.0481)",
+        lambda A: "The base coefficient differs from 0.048 above" if q(V(A, 60, "base")["beta"], 3) != "0.048" else "no difference")
+    for i, (key, label) in enumerate(VOL_MODELS):
+        add(volctl_rows(Loader())[i], VOLCTL, f"T2_activity_{{60,30}}.models.{key}.{{beta,p,shrinkage_vs_base}}", lambda A, i=i: volctl_rows(A)[i])
 
     # --- magnitude
     def mag(A, k):
@@ -212,11 +301,8 @@ def build_entries() -> list[Entry]:
     add("only 2 of 10 high-impact calendar events, so its coverage is 20\\%", L, "coverage.{matched,calendar_events,coverage}",
         lambda A: f"only {A[L]['coverage']['matched']} of {A[L]['coverage']['calendar_events']} high-impact calendar events, so its coverage is "
                   f"{pct(A[L]['coverage']['coverage'], 0)}\\%")
-    add("receipt median 37.5 minutes, effective median 23.1 minutes, 44\\% of releases", L, "receipt/effective median, within_15",
-        lambda A: f"receipt median {q(A[L]['receipt_latency']['median_min'], 1)} minutes, effective median "
-                  f"{q(A[L]['effective_latency']['median_min'], 1)} minutes, {pct(A[L]['effective_latency']['within_15_min'], 0)}\\% of releases")
-    add("the median effective article delay was 23 minutes over 9 measured releases", L, "effective_latency.{median_min,n}",
-        lambda A: f"the median effective article delay was {q(A[L]['effective_latency']['median_min'], 0)} minutes over "
+    add("The median effective article delay was 23 minutes over 9 measured releases", L, "effective_latency.{median_min,n}",
+        lambda A: f"The median effective article delay was {q(A[L]['effective_latency']['median_min'], 0)} minutes over "
                   f"{A[L]['effective_latency']['n']} measured releases")
 
     # --- window30
